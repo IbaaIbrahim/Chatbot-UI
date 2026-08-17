@@ -1,0 +1,101 @@
+.cb-agent-switcher {
+    position: relative;
+    display: inline-flex;
+}
+
+.cb-agent-switcher-trigger {
+    display: flex;
+    align-items: center;
+    gap: var(--cb-space-2);
+    max-width: 220px;
+    padding: var(--cb-space-1) var(--cb-space-2);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--cb-radius-md);
+    color: var(--cb-text-primary);
+    font-family: var(--cb-font-family);
+    font-size: var(--cb-text-sm);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--cb-transition-fast);
+}
+
+.cb-agent-switcher-trigger:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-color: var(--cb-border-subtle);
+}
+
+.cb-agent-switcher-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    flex-shrink: 0;
+}
+
+.cb-agent-switcher-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cb-agent-switcher-chevron {
+    flex-shrink: 0;
+    color: var(--cb-text-secondary);
+    transition: transform var(--cb-transition-fast);
+}
+
+.cb-agent-switcher-chevron.open {
+    transform: rotate(180deg);
+}
+
+.cb-agent-switcher-menu {
+    position: absolute;
+    top: calc(100% + var(--cb-space-1));
+    left: 0;
+    min-width: 220px;
+    max-width: 280px;
+    margin: 0;
+    padding: var(--cb-space-1);
+    list-style: none;
+    background-color: var(--cb-bg-secondary);
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-md);
+    box-shadow: var(--cb-shadow-lg);
+    z-index: 70;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.cb-agent-switcher-option {
+    display: flex;
+    align-items: center;
+    gap: var(--cb-space-2);
+    padding: var(--cb-space-2) var(--cb-space-3);
+    border-radius: var(--cb-radius-sm);
+    color: var(--cb-text-secondary);
+    font-size: var(--cb-text-sm);
+    cursor: pointer;
+    transition: all var(--cb-transition-fast);
+}
+
+.cb-agent-switcher-option:hover {
+    background-color: var(--cb-bg-tertiary);
+    color: var(--cb-text-primary);
+}
+
+.cb-agent-switcher-option.active {
+    color: var(--cb-text-primary);
+}
+
+.cb-agent-switcher-option-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cb-agent-switcher-check {
+    flex-shrink: 0;
+    color: var(--cb-accent-primary);
+}

@@ -1,0 +1,308 @@
+.cb-composer {
+    padding: var(--cb-space-4);
+    background-color: var(--cb-bg-primary);
+    position: relative;
+}
+
+.cb-composer-input-wrapper {
+    background-color: var(--cb-bg-secondary);
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-lg);
+    padding: var(--cb-space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--cb-space-2);
+    transition: border-color var(--cb-transition-fast);
+}
+
+.cb-composer-input-wrapper:focus-within {
+    border-color: var(--cb-border-focus);
+}
+
+.cb-composer-textarea {
+    background: transparent;
+    border: none;
+    color: var(--cb-text-primary);
+    resize: none;
+    font-family: inherit;
+    font-size: var(--cb-text-base);
+    line-height: 1.5;
+    padding: 8px 4px;
+    outline: none;
+    min-height: 44px;
+    max-height: 180px;
+    width: 100%;
+    box-sizing: border-box;
+    transition: background-color 0.2s;
+}
+
+.cb-composer-textarea::-webkit-scrollbar {
+    width: 6px;
+}
+
+.cb-composer-textarea::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.cb-composer-textarea::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+}
+
+.cb-composer-textarea::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.25);
+}
+
+.cb-composer-textarea::placeholder {
+    color: var(--cb-text-tertiary);
+}
+
+.cb-composer-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: var(--cb-space-2);
+}
+
+.cb-actions-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cb-action-btn {
+    background: transparent;
+    border: none;
+    color: var(--cb-text-secondary);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.cb-action-btn:hover {
+    background-color: var(--cb-bg-tertiary);
+    color: var(--cb-text-primary);
+}
+
+.cb-action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.cb-action-btn.circle {
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    background-color: var(--cb-bg-tertiary);
+    color: var(--cb-text-primary);
+}
+
+.cb-action-btn.circle:hover {
+    background-color: #444;
+}
+
+.cb-action-btn.active-state {
+    background-color: #444;
+}
+
+.cb-action-btn.active-icon {
+    color: var(--cb-accent-primary);
+}
+
+.cb-send-btn {
+    background-color: var(--cb-bg-tertiary);
+    border: none;
+    color: var(--cb-text-tertiary);
+    width: 32px;
+    height: 32px;
+    border-radius: var(--cb-radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: not-allowed;
+    transition: all var(--cb-transition-fast);
+}
+
+.cb-send-btn.active {
+    background-color: #444;
+    color: white;
+    cursor: pointer;
+}
+
+.cb-send-btn.active:hover {
+    background-color: #555;
+}
+
+.cb-composer-footer {
+    text-align: center;
+    margin-top: var(--cb-space-2);
+    font-size: 11px;
+    color: #666;
+}
+
+/* === Attached Files === */
+.cb-attached-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-bottom: 4px;
+}
+
+.cb-attached-file-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px 4px 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--cb-text-secondary);
+    max-width: 220px;
+    animation: cb-chip-in 0.2s ease-out;
+}
+
+@keyframes cb-chip-in {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.cb-chip-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.cb-chip-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+    color: var(--cb-text-primary);
+    font-weight: 500;
+}
+
+.cb-chip-size {
+    font-size: 10px;
+    color: var(--cb-text-tertiary);
+    flex-shrink: 0;
+}
+
+.cb-chip-remove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--cb-text-tertiary);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    transition: all 0.15s;
+}
+
+.cb-chip-remove:hover {
+    background: rgba(255, 80, 80, 0.15);
+    color: #ff6b6b;
+}
+
+/* === Upload Progress === */
+.cb-upload-progress-bar {
+    padding: 4px 0;
+}
+
+.cb-upload-progress-text {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--cb-text-tertiary);
+}
+
+.cb-upload-spinner-inline {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    border-top-color: var(--cb-accent-primary, #7c7cff);
+    border-radius: 50%;
+    animation: cb-spin 0.8s linear infinite;
+}
+
+@keyframes cb-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* === Upload Error === */
+.cb-upload-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 8px;
+    font-size: 12px;
+    color: #ff6b6b;
+    background: rgba(255, 80, 80, 0.08);
+    border-radius: 6px;
+}
+
+.cb-error-dismiss {
+    background: transparent;
+    border: none;
+    color: #ff6b6b;
+    cursor: pointer;
+    padding: 2px 4px;
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.cb-error-dismiss:hover {
+    opacity: 1;
+}
+
+/* === Drag & Drop === */
+.cb-composer-drag-active {
+    position: relative;
+}
+
+.cb-composer-drag-active .cb-composer-input-wrapper {
+    border-color: var(--cb-accent-primary, #7c7cff);
+    border-style: dashed;
+}
+
+.cb-drag-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    border-radius: var(--cb-radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    pointer-events: none;
+}
+
+.cb-drag-overlay-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: var(--cb-accent-primary, #7c7cff);
+    font-size: 14px;
+    font-weight: 500;
+}

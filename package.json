@@ -1,0 +1,20 @@
+{
+    "name": "frontend-workspace",
+    "version": "0.0.0",
+    "private": false,
+    "workspaces": [
+        "apps/*",
+        "packages/*"
+    ],
+    "scripts": {
+        "build": "npm run build --workspaces",
+        "publish:chatbot": "npm publish --workspace=iocloud-chatbot-library",
+        "release:chatbot": "npm run build --workspace=iocloud-chatbot-library && npm publish --workspace=iocloud-chatbot-library",
+        "dev:demo": "npm run dev --workspace=@frontend/demo-app",
+        "dev:demo-p": "npm run dev --workspace=@frontend/demo-p",
+        "dev:client": "npm run dev --workspace=frontend"
+    },
+    "dependencies": {
+        "onnxruntime-web": "1.22.0"
+    }
+}

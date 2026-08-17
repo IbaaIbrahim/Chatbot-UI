@@ -1,0 +1,171 @@
+/* The composer tool menu.
+ *
+ * Deliberately the same visual language as the old ComposerMenu (temp/): an
+ * overlay anchored above the composer, a section header, an icon circle per row,
+ * and a pill toggle on the right. The rows are data-driven here rather than one
+ * hardcoded toggle per tool, but a user should not be able to tell. */
+
+/* Transparent, covers the viewport, sits just under the menu. This is what
+   makes a click anywhere outside dismiss it — the anchored wrapper below is only
+   as wide as the menu, so a handler on that alone would never fire. */
+.cb-menu-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+}
+
+.cb-menu-overlay {
+    position: absolute;
+    bottom: 100%;
+    left: 12px;
+    margin-bottom: 8px;
+    z-index: 1000;
+}
+
+.cb-menu-content {
+    background-color: var(--cb-bg-elevated, #1A1A1A);
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-lg);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    animation: cb-scale-in 0.15s ease-out;
+}
+
+.cb-tools-menu {
+    width: 340px;
+    max-width: min(90vw, 340px);
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.cb-menu-header {
+    padding: 12px 16px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--cb-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.cb-menu-section {
+    padding-bottom: 8px;
+}
+
+.cb-menu-toggle-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    cursor: pointer;
+    color: var(--cb-text-primary);
+    font-size: 13px;
+    transition: background 0.1s;
+}
+
+.cb-menu-toggle-item:hover {
+    background-color: rgba(127, 127, 127, 0.12);
+}
+
+.cb-menu-toggle-item:focus-visible {
+    outline: 2px solid var(--cb-accent-primary);
+    outline-offset: -2px;
+}
+
+.cb-menu-icon-circle {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1px solid var(--cb-border-subtle);
+    background: rgba(127, 127, 127, 0.06);
+    color: var(--cb-text-secondary);
+}
+
+.cb-menu-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.cb-menu-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--cb-text-primary);
+}
+
+.cb-menu-desc {
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--cb-text-secondary);
+}
+
+.cb-toggle {
+    margin-left: auto;
+    flex-shrink: 0;
+    width: 36px;
+    height: 20px;
+    border-radius: 10px;
+    position: relative;
+    transition: background 0.2s;
+}
+
+.cb-toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    width: 16px;
+    height: 16px;
+    background: #fff;
+    border-radius: 50%;
+}
+
+.cb-toggle.on {
+    background-color: #84cc16;
+}
+
+.cb-toggle.on::after {
+    right: 2px;
+}
+
+.cb-toggle.off {
+    background-color: #444;
+}
+
+.cb-toggle.off::after {
+    left: 2px;
+}
+
+/* Count badge on the composer's tools button — how many are on, without having
+   to open the menu. */
+.cb-action-btn-badge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: #84cc16;
+    color: #10230b;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 15px;
+    text-align: center;
+    pointer-events: none;
+}
+
+@keyframes cb-scale-in {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
