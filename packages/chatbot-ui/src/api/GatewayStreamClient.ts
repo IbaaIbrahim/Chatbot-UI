@@ -2,6 +2,7 @@ import { StreamChatClient, StreamEvent } from './StreamClient';
 import { ConversationClient } from './ConversationClient';
 import { ConversationDetail, ConversationListResponse } from './types';
 import { parseToolOutput } from './toolOutput';
+import { createUuid } from '../common/uuid';
 
 export interface GatewayStreamClientConfig {
     gatewayUrl: string;
@@ -272,7 +273,7 @@ export class GatewayStreamClient implements StreamChatClient {
         fileIds?: string[]
     ): Promise<void> {
         if (!this.conversationId) {
-            this.conversationId = crypto.randomUUID();
+            this.conversationId = createUuid();
         }
 
         const body = new FormData();
