@@ -23,10 +23,10 @@
 }
 
 .cb-menu-content {
-    background-color: var(--cb-bg-elevated, #1A1A1A);
+    background-color: var(--cb-bg-elevated);
     border: 1px solid var(--cb-border-subtle);
     border-radius: var(--cb-radius-lg);
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--cb-shadow-lg);
     overflow: hidden;
     animation: cb-scale-in 0.15s ease-out;
 }
@@ -36,6 +36,40 @@
     max-width: min(90vw, 340px);
     max-height: 60vh;
     overflow-y: auto;
+    /* Keep the gesture inside the menu: scrolling past its end otherwise hands
+       the wheel to the transcript behind it. */
+    overscroll-behavior: contain;
+    /* Firefox and anything else that honours the standard properties. */
+    scrollbar-width: thin;
+    scrollbar-color: var(--cb-border-strong) transparent;
+}
+
+/* WebKit's default scrollbar is a wide, opaque, light-grey bar — on a dark
+   floating menu with rounded corners it reads as a seam down the side. Matched
+   to the transcript's own scrollbar so the two look like one product, and inset
+   so it does not sit on the menu's rounded edge. */
+.cb-tools-menu::-webkit-scrollbar {
+    width: 6px;
+    background: transparent;
+}
+
+.cb-tools-menu::-webkit-scrollbar-track {
+    background: transparent;
+    margin: var(--cb-space-2) 0;
+}
+
+.cb-tools-menu::-webkit-scrollbar-thumb {
+    background: var(--cb-border-strong);
+    border-radius: var(--cb-radius-full);
+    /* A transparent border makes the thumb read as narrower than its hit area,
+       which keeps it easy to grab without looking heavy. */
+    border: 1px solid transparent;
+    background-clip: padding-box;
+}
+
+.cb-tools-menu::-webkit-scrollbar-thumb:hover {
+    background: var(--cb-text-tertiary);
+    background-clip: padding-box;
 }
 
 .cb-menu-header {
@@ -63,7 +97,7 @@
 }
 
 .cb-menu-toggle-item:hover {
-    background-color: rgba(127, 127, 127, 0.12);
+    background-color: var(--cb-surface-hover);
 }
 
 .cb-menu-toggle-item:focus-visible {
@@ -80,7 +114,7 @@
     justify-content: center;
     border-radius: 50%;
     border: 1px solid var(--cb-border-subtle);
-    background: rgba(127, 127, 127, 0.06);
+    background: var(--cb-surface-raised);
     color: var(--cb-text-secondary);
 }
 
@@ -119,12 +153,16 @@
     top: 2px;
     width: 16px;
     height: 16px;
+    /* Literal white on purpose, and the one colour here that is not a token:
+       the knob sits on a saturated track in both themes, so it needs to contrast
+       with the track rather than with the page. Tokenising it would make it
+       follow the background and disappear against the "off" track in light mode. */
     background: #fff;
     border-radius: 50%;
 }
 
 .cb-toggle.on {
-    background-color: #84cc16;
+    background-color: var(--cb-status-success);
 }
 
 .cb-toggle.on::after {
@@ -132,7 +170,7 @@
 }
 
 .cb-toggle.off {
-    background-color: #444;
+    background-color: var(--cb-surface-hover);
 }
 
 .cb-toggle.off::after {
@@ -149,8 +187,8 @@
     height: 15px;
     padding: 0 4px;
     border-radius: 8px;
-    background: #84cc16;
-    color: #10230b;
+    background: var(--cb-status-success);
+    color: var(--cb-bg-primary);
     font-size: 10px;
     font-weight: 700;
     line-height: 15px;

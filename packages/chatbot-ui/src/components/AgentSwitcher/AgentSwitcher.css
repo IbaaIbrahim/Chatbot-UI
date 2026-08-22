@@ -17,11 +17,11 @@
     font-size: var(--cb-text-sm);
     font-weight: 600;
     cursor: pointer;
-    transition: all var(--cb-transition-fast);
+    transition: var(--cb-transition-state);
 }
 
 .cb-agent-switcher-trigger:hover {
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: var(--cb-surface-raised);
     border-color: var(--cb-border-subtle);
 }
 
@@ -76,7 +76,7 @@
     color: var(--cb-text-secondary);
     font-size: var(--cb-text-sm);
     cursor: pointer;
-    transition: all var(--cb-transition-fast);
+    transition: var(--cb-transition-state);
 }
 
 .cb-agent-switcher-option:hover {

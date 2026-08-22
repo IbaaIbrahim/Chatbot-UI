@@ -1,9 +1,15 @@
+/* Conversation drawer.
+ *
+ * Every colour is a token. It used to open on `#1a1a2e` — a navy that appears
+ * nowhere else in the widget, against the app's own `#121212` — so the drawer
+ * read as a panel borrowed from a different product.
+ */
 .cb-conversation-drawer {
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: #1a1a2e;
-    color: #e0e0e0;
+    background: var(--cb-bg-secondary);
+    color: var(--cb-text-primary);
 }
 
 .cb-drawer-header {
@@ -11,14 +17,14 @@
     align-items: center;
     justify-content: space-between;
     padding: 12px 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--cb-border-subtle);
 }
 
 .cb-drawer-header h3 {
     margin: 0;
     font-size: 14px;
     font-weight: 600;
-    color: #fff;
+    color: var(--cb-text-primary);
 }
 
 .cb-new-chat-btn {
@@ -27,9 +33,9 @@
     gap: 6px;
     padding: 6px 12px;
     border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    background: rgba(255, 255, 255, 0.06);
-    color: #e0e0e0;
+    border: 1px solid var(--cb-border-strong);
+    background: var(--cb-surface-raised);
+    color: var(--cb-text-primary);
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
@@ -37,7 +43,7 @@
 }
 
 .cb-new-chat-btn:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--cb-surface-hover);
 }
 
 .cb-conversation-list {
@@ -58,17 +64,17 @@
 }
 
 .cb-conversation-item:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--cb-surface-raised);
 }
 
 .cb-conversation-item.active {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--cb-surface-hover);
 }
 
 .cb-conversation-title {
     font-size: 13px;
     font-weight: 500;
-    color: #f0f0f0;
+    color: var(--cb-text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -76,7 +82,7 @@
 
 .cb-conversation-date {
     font-size: 11px;
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--cb-text-tertiary);
 }
 
 .cb-drawer-empty {
@@ -85,7 +91,7 @@
     align-items: center;
     justify-content: center;
     padding: 40px 16px;
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--cb-text-tertiary);
     font-size: 13px;
     text-align: center;
 }
@@ -100,8 +106,8 @@
 .cb-drawer-spinner {
     width: 20px;
     height: 20px;
-    border: 2px solid rgba(255, 255, 255, 0.15);
-    border-top-color: rgba(255, 255, 255, 0.8);
+    border: 2px solid var(--cb-border-strong);
+    border-top-color: var(--cb-status-running);
     border-radius: 50%;
     animation: cb-drawer-spin 0.8s linear infinite;
 }
@@ -121,9 +127,9 @@
     padding: 10px;
     margin-top: 4px;
     border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(255, 255, 255, 0.04);
-    color: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--cb-surface-hover);
+    background: var(--cb-surface-raised);
+    color: var(--cb-text-secondary);
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
@@ -131,7 +137,7 @@
 }
 
 .cb-load-more-btn:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--cb-surface-hover);
 }
 
 .cb-load-more-btn:disabled {

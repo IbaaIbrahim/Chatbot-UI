@@ -2,13 +2,13 @@
     display: flex;
     flex-direction: column;
     background-color: var(--cb-bg-primary);
-    border: 1px solid rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--cb-border-subtle);
     border-top: none;
     /* Often helps with 'leaks' at the top when fixed */
     border-radius: 0;
     /* Sidebar/Fullscreen should be sharp */
     overflow: hidden;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     /* High z-index to stay above host app elements like fixed headers/footers */
     z-index: 2000 !important;
     font-family: var(--cb-font-family);
@@ -100,12 +100,21 @@
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid var(--cb-border-subtle);
-    /* Use fully solid background to eliminate 'white transparency' leaks */
-    background-color: #1a1c23 !important;
+    /* Solid, not translucent: a see-through header let the transcript scroll
+       visibly behind it. A *token* rather than a literal, because the literal
+       stayed dark in light mode and turned the agent switcher's label into dark
+       text on a dark bar — the one place the theme could not reach. */
+    background-color: var(--cb-bg-secondary) !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
-    z-index: 30;
-    /* Above messages and drawer */
+    /* Above the scroll-progress bar (100), which is the point.
+     *
+     * `position: relative` here makes the header a stacking context, so the
+     * agent switcher's menu is trapped inside it: its own `z-index: 70` is
+     * resolved against the header's siblings, not against them, and the progress
+     * bar at 100 painted the blue line straight across the open dropdown.
+     * Raising the *header* is what lifts everything it contains. */
+    z-index: 110;
     position: relative;
 }
 
@@ -130,11 +139,11 @@
     align-items: center;
     justify-content: center;
     border-radius: var(--cb-radius-sm);
-    transition: all var(--cb-transition-fast);
+    transition: var(--cb-transition-state);
 }
 
 .cb-header-btn:hover {
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: var(--cb-surface-raised);
     color: var(--cb-text-primary);
     border-color: var(--cb-border-subtle);
 }
@@ -259,19 +268,19 @@
 }
 
 .cb-scroll-view::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--cb-surface-hover);
     border-radius: 10px;
     transition: background 0.2s;
 }
 
 .cb-scroll-view::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--cb-border-strong);
 }
 
 .cb-scroll-progress-container {
     height: 2px;
     width: 100%;
-    background-color: rgba(255, 255, 255, 0.03);
+    background-color: var(--cb-surface-raised);
     position: absolute;
     top: 0;
     left: 0;
@@ -329,7 +338,7 @@
     box-shadow: var(--cb-shadow-md);
     color: var(--cb-text-secondary);
     z-index: 50;
-    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    transition: background-color 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), border-color 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), color 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     opacity: 0;
     transform: translateX(-50%) translateY(20px);
     pointer-events: none;
@@ -439,4 +448,87 @@
     .cb-embedded.cb-mode-sidebar.cb-open {
         transform: translateX(0) !important;
     }
+}
+/* ============================================================
+   Launcher — the closed state of floating mode
+   ============================================================
+
+   This is what a host application sees when the chat is shut: the only
+   affordance for opening it. It had markup but no rule of any kind, so it
+   painted as an unstyled `<button>` in the host page's flow, wherever the
+   widget happened to be mounted.
+
+   Fixed to the same corner floating mode opens into, and to the same
+   coordinates, so opening reads as the panel growing out of the button rather
+   than as one control being swapped for another. Physical `right`/`bottom`
+   rather than logical properties for exactly that reason — `.cb-mode-floating`
+   is pinned with `right`, and a launcher that flipped to the other side under
+   RTL would open a panel that jumped across the screen.
+
+   `!important` throughout, for the reason `styles.css` gives: a host's reset
+   must not leak in. This button is the most exposed surface the widget has —
+   a bare `<button>` with no widget ancestor to shield it — and an element
+   selector plus one attribute beats a single class, so an ordinary reboot rule
+   like `[dir] button { border-radius: 0 }` wins against every declaration here
+   that does not say otherwise. That is not hypothetical: it is what squared off
+   this button the first time it was styled. */
+.cb-launcher-btn {
+    position: fixed !important;
+    bottom: 24px !important;
+    right: 24px !important;
+    width: 56px !important;
+    height: 56px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: var(--cb-radius-full) !important;
+    background: var(--cb-accent-gradient) !important;
+    color: #ffffff !important;
+    box-shadow: var(--cb-shadow-lg) !important;
+    cursor: pointer !important;
+    /* Below the open container (2000) but above ordinary host chrome, so the
+       button cannot end up behind a sticky footer or a toast. */
+    z-index: 1999 !important;
+    transition: var(--cb-transition-state);
+}
+
+.cb-launcher-btn:hover {
+    background: var(--cb-accent-hover) !important;
+    transform: scale(1.05);
+}
+
+.cb-launcher-btn:active {
+    transform: scale(0.96);
+}
+
+.cb-launcher-btn:focus-visible {
+    outline: 2px solid var(--cb-border-focus) !important;
+    outline-offset: 2px !important;
+}
+
+.cb-launcher-btn svg {
+    /* The host's own `svg { width: 100% }`-style resets are common enough that
+       the icon collapsed or filled the button without this. */
+    width: 24px !important;
+    height: 24px !important;
+    flex-shrink: 0 !important;
+}
+
+@media (max-width: 640px) {
+    .cb-launcher-btn {
+        bottom: 16px !important;
+        right: 16px !important;
+    }
+}
+
+/* The header's own buttons are exposed the same way — a single class each,
+   against a host reset that outranks it. The library's dark header with square
+   grey buttons in an application whose reboot squares every `<button>` is the
+   same defect as above, one surface further in. */
+.cb-header-btn,
+.cb-minimize-btn {
+    border-radius: var(--cb-radius-sm) !important;
 }

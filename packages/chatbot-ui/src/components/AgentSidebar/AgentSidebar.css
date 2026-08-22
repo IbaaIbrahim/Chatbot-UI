@@ -54,7 +54,7 @@
     cursor: pointer;
     color: var(--cb-text-secondary);
     font-size: var(--cb-text-sm);
-    transition: all var(--cb-transition-fast);
+    transition: var(--cb-transition-state);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -114,6 +114,8 @@
     flex: 1;
     background: none;
     border: none;
+    /* Suppressed here and restored on :focus-visible below. Removing the
+       ring outright leaves a keyboard user with no idea where they are. */
     outline: none;
     color: var(--cb-text-primary);
     font-size: var(--cb-text-sm);
@@ -127,4 +129,48 @@
 .cb-agent-chats-section {
     flex: 1;
     overflow-y: auto;
+}
+
+/* --- Rows became <button> ------------------------------------------------- *
+ * They were <div onClick>, which no keyboard could reach. As real buttons they
+ * need the element resets a div gave for free, plus a visible focus ring. */
+.cb-agent-item {
+  width: 100%;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.cb-agent-item:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+
+/* An agent is a mode you switch into; a chat is a document you reopen. Same row
+   geometry, different weight, so the two sections do not read alike. */
+.cb-agent-item--agent .cb-agent-item-label {
+  font-weight: 550;
+}
+
+.cb-agent-item--chat .cb-agent-item-label {
+  font-weight: 400;
+}
+
+/* Status text ("Searching…", "No conversations yet") is prose, not a row. */
+.cb-agent-note {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+/* The search field carries its own focus ring: it has no border of its own, so
+   without this there is nothing at all to show it is focused. */
+.cb-agent-search-input:focus-visible {
+  outline: 2px solid var(--cb-border-focus);
+  outline-offset: 2px;
+  border-radius: var(--cb-radius-sm);
 }

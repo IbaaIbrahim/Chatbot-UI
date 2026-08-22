@@ -4,6 +4,7 @@ import {
     App as ChatApp,
     GatewayStreamClient,
     ChatMode,
+    ChatTheme,
     AgentSidebarItem,
     ExternalToolConfig,
     ToolActionConfig,
@@ -25,6 +26,8 @@ const DEMO_RECORDS: Record<string, { title: string; body: string }> = {
 
 function App() {
     const [mode, setMode] = useState<ChatMode>('sidebar');
+    // 'system' follows the OS; the other two are an explicit choice and beat it.
+    const [theme, setTheme] = useState<ChatTheme>('system');
     const [isOpen, setIsOpen] = useState(true);
     const [isEmbedded, setIsEmbedded] = useState(false);
     const [client, setClient] = useState<GatewayStreamClient | null>(null);
@@ -33,6 +36,13 @@ function App() {
     // Agent list fetched from gateway
     const [agentItems, setAgentItems] = useState<AgentSidebarItem[]>([]);
     const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+    // Whether the agent list has come back at least once. Sending before it
+    // does produces a job with no agent_id — no system prompt, no tool
+    // restrictions, and no error to say so — so the chat composer waits on this.
+    // A latch rather than a per-request flag: fetchAgents re-runs when the
+    // active agent changes, and flipping this back to false would blink the
+    // composer shut every time the user switches agent.
+    const [agentsResolved, setAgentsResolved] = useState(false);
 
     // The app's own "current screen", read by read_page_context and changed by
     // navigate_app_route.
@@ -169,60 +179,60 @@ function App() {
     // WITHOUT one are backend-registered tools whose schema already exists in
     // `quota.tools` and which we are only supplying the local handler for.
     const externalTools = useMemo<Record<string, ExternalToolConfig>>(() => ({
-        get_frontend_context: {
-            definition: {
-                description:
-                    'Ask the user, through a modal in the app UI, for a piece of context ' +
-                    'that only exists on the frontend (a local value, their current ' +
-                    'selection, or any detail the backend cannot see). Returns whatever ' +
-                    'the user types. Use this whenever you need information you can only ' +
-                    'get from the user interactively.',
-                input_schema: {
-                    type: 'object',
-                    properties: {
-                        prompt: {
-                            type: 'string',
-                            description:
-                                'The question or label to show the user in the modal, ' +
-                                'e.g. "What is the name of your current project?"',
-                        },
-                    },
-                    required: ['prompt'],
-                },
-            },
-            callback: requestFrontendContext,
-        },
-        query_customer_api: {
-            definition: {
-                description:
-                    'Look up records in this application\'s own customer API, which the ' +
-                    'platform has no access to. Use when the user asks about their data ' +
-                    'in this app. The user is asked to approve each lookup.',
-                input_schema: {
-                    type: 'object',
-                    properties: {
-                        resource: {
-                            type: 'string',
-                            description:
-                                'Resource path to query, e.g. "customers" or ' +
-                                '"customers/240/invoices".',
-                        },
-                    },
-                    required: ['resource'],
-                },
-                // The app gates its own tool. Backend-registered tools use their
-                // execution profile for this instead (see frontend_bridge).
-                requires_approval: true,
-            },
-            callback: queryCustomerApi,
-        },
+        // get_frontend_context: {
+        //     definition: {
+        //         description:
+        //             'Ask the user, through a modal in the app UI, for a piece of context ' +
+        //             'that only exists on the frontend (a local value, their current ' +
+        //             'selection, or any detail the backend cannot see). Returns whatever ' +
+        //             'the user types. Use this whenever you need information you can only ' +
+        //             'get from the user interactively.',
+        //         input_schema: {
+        //             type: 'object',
+        //             properties: {
+        //                 prompt: {
+        //                     type: 'string',
+        //                     description:
+        //                         'The question or label to show the user in the modal, ' +
+        //                         'e.g. "What is the name of your current project?"',
+        //                 },
+        //             },
+        //             required: ['prompt'],
+        //         },
+        //     },
+        //     callback: requestFrontendContext,
+        // },
+        // query_customer_api: {
+        //     definition: {
+        //         description:
+        //             'Look up records in this application\'s own customer API, which the ' +
+        //             'platform has no access to. Use when the user asks about their data ' +
+        //             'in this app. The user is asked to approve each lookup.',
+        //         input_schema: {
+        //             type: 'object',
+        //             properties: {
+        //                 resource: {
+        //                     type: 'string',
+        //                     description:
+        //                         'Resource path to query, e.g. "customers" or ' +
+        //                         '"customers/240/invoices".',
+        //                 },
+        //             },
+        //             required: ['resource'],
+        //         },
+        //         // The app gates its own tool. Backend-registered tools use their
+        //         // execution profile for this instead (see frontend_bridge).
+        //         requires_approval: true,
+        //     },
+        //     callback: queryCustomerApi,
+        // },
         // Backend-registered — deliberately no `definition`.
         read_page_context: { callback: readPageContext },
         capture_page_screenshot: { callback: capturePageScreenshot },
         navigate_app_route: { callback: navigateAppRoute },
     }), [
-        requestFrontendContext,
-        queryCustomerApi,
+        // requestFrontendContext,
+        // queryCustomerApi,
         readPageContext,
         capturePageScreenshot,
         navigateAppRoute,
@@ -251,12 +261,20 @@ function App() {
         read_page_context: { show: false },
         capture_page_screenshot: { show: false },
         navigate_app_route: { show: false },
-        query_customer_api: { show: false },
+        // query_customer_api: { show: false },
 
         // A custom control instead of the built-in button. `payload` is the
         // checklist itself, so the label can name what it will open rather than
         // saying "Open Result" for everything.
+        //
+        // Hoisted to the end of the turn, and only once the turn is done. Both
+        // halves matter here: the Checklist Assistant delegates this call to a
+        // sub-agent, so the step renders inside a block that is collapsed by
+        // default and a button there would never be found — and a checklist is
+        // only worth opening finished, since the parent agent is still
+        // summarising it when the tool returns.
         generate_checklist: {
+            placement: 'turn-end',
             render: ({ onAction, payload }) => (
                 <button
                     onClick={onAction}
@@ -311,11 +329,26 @@ function App() {
                 }));
             });
 
-            if (raw.length > 0 && !activeAgentId) {
+            // Adopt whatever the client already has — a binding restored from
+            // this tab's previous page load — rather than overriding it. Only
+            // fall back to the first agent when nothing is bound at all.
+            // Auto-selecting unconditionally meant every reload switched agent
+            // *and*, via switchAgent -> reset(), forked the conversation.
+            const restoredAgentId = clientRef.current?.getAgentId?.() ?? null;
+            if (restoredAgentId) {
+                setActiveAgentId(restoredAgentId);
+                setAgentItems(prev =>
+                    prev.map(a => ({ ...a, active: a.id === restoredAgentId }))
+                );
+            } else if (raw.length > 0 && !activeAgentId) {
                 switchAgent(raw[0].uuid);
             }
         } catch (err) {
             console.error('Failed to fetch agents:', err);
+        } finally {
+            // Resolved either way: a failed fetch is still an answer, and
+            // leaving the composer disabled on it would strand the user.
+            setAgentsResolved(true);
         }
     }, [activeAgentId]);
 
@@ -325,6 +358,9 @@ function App() {
 
     // --- Agent switching ------------------------------------------------------
     const switchAgent = useCallback((agentId: string) => {
+        // Re-selecting the agent already in use is a no-op. Falling through
+        // would call reset() and throw away the live conversation for nothing.
+        if (clientRef.current?.getAgentId?.() === agentId) return;
         clientRef.current?.setAgentId(agentId);
         setActiveAgentId(agentId);
         setAgentItems(prev =>
@@ -360,6 +396,20 @@ function App() {
             >
                 {isEmbedded ? 'Embedded' : 'Overlay'}
             </button>
+            <span style={{ fontWeight: 'bold', margin: '0 5px 0 10px' }}>Theme:</span>
+            {(['system', 'light', 'dark'] as ChatTheme[]).map(t => (
+                <button
+                    key={t}
+                    onClick={() => setTheme(t)}
+                    style={{
+                        cursor: 'pointer', padding: '4px 8px',
+                        background: theme === t ? '#4CAF50' : undefined,
+                        color: theme === t ? '#fff' : undefined,
+                    }}
+                >
+                    {t}
+                </button>
+            ))}
         </div>
     );
 
@@ -507,6 +557,8 @@ function App() {
                         accessToken={STATIC_TOKEN || null}
                         agents={agentItems}
                         agentId={activeAgentId}
+                        agentsLoading={Boolean(STATIC_TOKEN) && !agentsResolved}
+                        theme={theme}
                         external_tools={externalTools}
                         result_previewers={resultPreviewers}
                         tool_actions={toolActions}
@@ -528,6 +580,8 @@ function App() {
                         accessToken={STATIC_TOKEN || null}
                         agents={agentItems}
                         agentId={activeAgentId}
+                        agentsLoading={Boolean(STATIC_TOKEN) && !agentsResolved}
+                        theme={theme}
                         external_tools={externalTools}
                         result_previewers={resultPreviewers}
                         tool_actions={toolActions}

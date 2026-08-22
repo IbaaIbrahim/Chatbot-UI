@@ -99,10 +99,10 @@ export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({
                     alignItems: 'center',
                     justifyContent: 'center',
                     minHeight: 60,
-                    background: 'rgba(255, 255, 255, 0.04)',
+                    background: 'var(--cb-surface-raised)',
                 }}
             >
-                <span style={{ fontSize: 11, color: 'rgba(255, 255, 255, 0.5)' }}>
+                <span style={{ fontSize: 11, color: 'var(--cb-text-tertiary)' }}>
                     Loading...
                 </span>
             </div>
@@ -119,10 +119,10 @@ export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({
                     alignItems: 'center',
                     justifyContent: 'center',
                     minHeight: 60,
-                    background: 'rgba(255, 255, 255, 0.04)',
+                    background: 'var(--cb-surface-raised)',
                 }}
             >
-                <span style={{ fontSize: 11, color: 'rgba(255, 255, 255, 0.5)' }}>
+                <span style={{ fontSize: 11, color: 'var(--cb-text-tertiary)' }}>
                     Image unavailable
                 </span>
             </div>

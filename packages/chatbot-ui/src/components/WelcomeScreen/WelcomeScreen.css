@@ -19,7 +19,7 @@
     font-size: 2rem !important;
     font-weight: 600 !important;
     margin-bottom: var(--cb-space-8);
-    background-image: linear-gradient(to right, #fff, #9ca3af) !important;
+    background-image: linear-gradient(to right, #d1d1d1, #9ca3af) !important;
     -webkit-background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
     background-clip: text !important;
@@ -43,8 +43,8 @@
     border-radius: var(--cb-radius-md);
     color: var(--cb-text-secondary);
     cursor: pointer;
-    transition: all var(--cb-transition-fast);
-    text-align: left;
+    transition: var(--cb-transition-state);
+    text-align: start;
 }
 
 .cb-quick-action-card:hover {

@@ -21,10 +21,23 @@ export interface ChatContainerProps {
      * of the default "AI Assistant" brand text (e.g. an agent switcher).
      */
     brand?: React.ReactNode;
+    /**
+     * Which palette to use. Default `'system'`.
+     *
+     * `'light'` and `'dark'` stamp `data-theme` on the container and are an
+     * explicit choice, which beats the OS. `'system'` stamps nothing and lets
+     * `prefers-color-scheme` decide — which is why it must be the absence of the
+     * attribute rather than a third value: the light rules key off
+     * `:not([data-theme='dark'])`, so any value here would suppress them.
+     */
+    theme?: ChatTheme;
 }
+
+export type ChatTheme = 'light' | 'dark' | 'system';
 
 export const ChatContainer: React.FC<ChatContainerProps> = ({
     mode = 'floating',
+    theme = 'system',
     isOpen = true,
     embedded = false,
     onClose,
@@ -131,12 +144,36 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         };
     }, [isAtBottom]);
 
+    // Escape closes the drawer, matching every other overlay in the widget (the
+    // agent switcher, the tools menu and the attachment viewer all do this). It
+    // was the one dismissible surface reachable only by pointer — a keyboard user
+    // who opened it had no way back out.
+    React.useEffect(() => {
+        if (!isDrawerOpen) return;
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setIsDrawerOpen(false);
+        };
+        document.addEventListener('keydown', onKeyDown);
+        return () => document.removeEventListener('keydown', onKeyDown);
+    }, [isDrawerOpen, setIsDrawerOpen]);
+
     if (!mounted) return null;
 
 
     if (!isOpen && mode === 'floating' && !embedded) {
+        // Both classes, and both are load-bearing. `cb-chat-launcher` is the
+        // token scope — `styles.css` defines the palette on it and on
+        // `cb-chat-container`, and nothing else — while `cb-launcher-btn` is
+        // where this button's own layout lives. Rendering only the latter, as
+        // this did, resolved every `var(--cb-*)` to nothing and left a bare
+        // browser button sitting in the host page's normal flow.
         return (
-            <button className="cb-launcher-btn" onClick={() => onOpen?.()}>
+            <button
+                className="cb-chat-launcher cb-launcher-btn"
+                data-theme={theme === 'system' ? undefined : theme}
+                onClick={() => onOpen?.()}
+                aria-label="Open chat"
+            >
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
@@ -152,10 +189,15 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     ].filter(Boolean).join(' ');
 
     return (
-        <div className={containerClasses}>
+        <div className={containerClasses} data-theme={theme === 'system' ? undefined : theme}>
             <div className="cb-chat-header">
                 <div className="cb-header-left">
-                    <button className="cb-header-btn" onClick={() => setIsDrawerOpen(!isDrawerOpen)}>
+                    <button
+                        className="cb-header-btn"
+                        onClick={() => setIsDrawerOpen(!isDrawerOpen)}
+                        aria-label={isDrawerOpen ? 'Close menu' : 'Open menu'}
+                        aria-expanded={isDrawerOpen}
+                    >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <line x1="3" y1="12" x2="21" y2="12"></line>
                             <line x1="3" y1="6" x2="21" y2="6"></line>
@@ -166,7 +208,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                 </div>
                 <div className="cb-actions">
                     {headerActions}
-                    <button className="cb-minimize-btn" onClick={onClose}>
+                    <button className="cb-minimize-btn" onClick={onClose} aria-label="Close chat">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M18 6L6 18M6 6l12 12" />
                         </svg>
@@ -210,6 +252,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                         <button
                             className={`cb-scroll-bottom-btn ${showScrollBtn ? 'visible' : ''}`}
                             onClick={scrollToBottomSmooth}
+                            aria-label="Scroll to latest message"
                         >
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
                         </button>

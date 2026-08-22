@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { GatewayStreamClient } from '../api/GatewayStreamClient';
-import { ConversationDetail, ConversationJob, ConversationStep, ConversationSummary } from '../api/types';
+import { ConversationDetail, ConversationJob, ConversationStep, ConversationSummary, PendingApproval } from '../api/types';
 import { MessageProps, MessageStep } from '../components/MessageBubble/MessageBubble';
+import { describeApprovalRequest } from './useStreamChat';
 
 function extractTextFromContentBlocks(responsePayload: any): string {
     if (!responsePayload || typeof responsePayload !== 'object') return '';
@@ -71,7 +72,17 @@ function mapSteps(steps: ConversationStep[], subAgentJobs: ConversationJob[] = [
                 toolName: step.tool_slug || 'Tool',
                 toolArgs: step.tool_input,
                 toolResult: step.tool_output,
-                toolStatus: step.status === 'completed' ? 'completed' : 'failed',
+                // Three-way, matching the sub-agent branch above. A two-way
+                // completed/failed split was survivable only while the history
+                // read hid unfinished jobs: now that a live turn is returned,
+                // collapsing 'running' into 'failed' would draw every tool call
+                // in flight as a red error on reload.
+                toolStatus:
+                    step.status === 'completed'
+                        ? 'completed'
+                        : step.status === 'running'
+                            ? 'running'
+                            : 'failed',
             });
         } else if (step.step_type === 'llm_call' || step.step_type === 'final_synthesis') {
             const text = extractTextFromContentBlocks(step.response_payload);
@@ -96,6 +107,51 @@ function mapSteps(steps: ConversationStep[], subAgentJobs: ConversationJob[] = [
     return messageSteps;
 }
 
+/**
+ * Render a run's held approvals as the same card a live gate produces.
+ *
+ * The identical shape ``useStreamChat`` builds from an ``approval_request``
+ * event — a ``confirm-request`` step whose ``toolCallId`` is the
+ * ``approval_uuid`` — so the buttons already wired on every message settle it
+ * without knowing where it came from.
+ */
+function approvalSteps(approvals: PendingApproval[] | undefined): MessageStep[] {
+    return (approvals ?? []).map(approval => ({
+        id: approval.approval_uuid,
+        type: 'confirm-request' as const,
+        toolCallId: approval.approval_uuid,
+        toolName: approval.tool_slug,
+        confirmLabel: approval.tool_slug,
+        confirmDescription: describeApprovalRequest(
+            approval.tool_slug, approval.tool_input, approval.dispatch_mode
+        ),
+        confirmStatus: 'pending' as const,
+    }));
+}
+
+/**
+ * Which job each held approval must be answered against.
+ *
+ * The orchestrator binds an approval to the job that opened it and drops a
+ * verdict claiming any other, so a gate opened inside a sub-agent is settled
+ * against the **child** — the same routing rule as a client tool result. A live
+ * gate carries its job on the event; a recovered one has only this.
+ */
+export function collectPendingApprovals(
+    jobs: ConversationJob[]
+): Map<string, string> {
+    const byApproval = new Map<string, string>();
+    for (const job of jobs) {
+        for (const approval of job.pending_approvals ?? []) {
+            byApproval.set(approval.approval_uuid, job.uuid);
+        }
+        for (const [uuid, owner] of collectPendingApprovals(job.sub_agent_jobs ?? [])) {
+            byApproval.set(uuid, owner);
+        }
+    }
+    return byApproval;
+}
+
 export function jobsToMessageProps(
     jobs: ConversationJob[],
     storageApiUrl?: string
@@ -103,11 +159,18 @@ export function jobsToMessageProps(
     const messages: MessageProps[] = [];
 
     for (const job of jobs) {
-        // A handoff child has no user message: the *user* did not write its
+        // An agent-started job has no user message: the *user* did not write its
         // prompt, another agent did. Rendering it would put words in their
         // mouth. Its assistant turn still shows, labelled with the agent that
-        // took over.
-        const isHandoffTurn = Boolean(job.triggered_by_job_uuid) && Boolean(job.handoff);
+        // produced it.
+        //
+        // Any parent counts, not only a handoff. A delegated child normally
+        // renders nested inside its parent's turn and never reaches here — but
+        // the server promotes one to top level when its anchor step is missing,
+        // and that job's prompt is one agent's private instructions to another.
+        // Requiring `handoff` too was what let those surface as the user's own
+        // words.
+        const isAgentStartedTurn = Boolean(job.triggered_by_job_uuid);
 
         // User message
         const attachments = job.attachments.map(att => ({
@@ -121,7 +184,7 @@ export function jobsToMessageProps(
             contentType: att.content_type || undefined,
         }));
 
-        if (!isHandoffTurn) {
+        if (!isAgentStartedTurn) {
             messages.push({
                 id: job.uuid,
                 role: 'user',
@@ -132,6 +195,10 @@ export function jobsToMessageProps(
 
         // Assistant message
         const steps = mapSteps(job.steps, job.sub_agent_jobs ?? []);
+        // Appended after the steps, not woven in by sequence: a held call has no
+        // step row to sort against, and it is by definition the last thing the
+        // run did — everything after it is waiting on the answer.
+        steps.push(...approvalSteps(job.pending_approvals));
         const finalText = extractFinalText(job.steps);
 
         // A handoff *parent* often has nothing to say — it decided to hand over
@@ -150,6 +217,76 @@ export function jobsToMessageProps(
     return messages;
 }
 
+/**
+ * Whether any turn in this thread is waiting on a client tool this page owes.
+ *
+ * A ``tool_call`` step with ``dispatch_mode = 'client'`` that is still
+ * ``running`` means the orchestrator dispatched the call to a browser and no
+ * answer ever came back — the usual cause being that the browser was reloaded
+ * while a questionnaire was open. Walks sub-agent jobs too, because a delegated
+ * child can be the one holding the call.
+ *
+ * Used only to explain an unrecoverable turn. Recovery itself is by stream
+ * replay, which needs no knowledge of which tool or which step: the replayed
+ * ``client_tool_call`` frame goes to the same handler that served it live.
+ */
+export function hasPendingClientToolCall(jobs: ConversationJob[]): boolean {
+    return findPendingClientToolCalls(jobs).length > 0;
+}
+
+/** A client tool call the browser still owes an answer for. */
+export interface PendingClientToolCall {
+    /** The job to POST the answer to. A sub-agent's call belongs to the child. */
+    jobUuid: string;
+    /** The orchestrator's correlation key for the call. */
+    stepUuid: string;
+    toolSlug: string;
+    /** The arguments the agent called it with — for a questionnaire, the questions. */
+    toolInput: any;
+}
+
+/**
+ * Every client tool call in this thread that is still waiting on an answer.
+ *
+ * This is what makes a questionnaire answerable from a browser that did not
+ * start the run. The alternative — replaying the stream — needs the credential
+ * the *originating tab* holds, so it could never work anywhere else. Everything
+ * needed to answer is in the transcript instead: the arguments in `tool_input`,
+ * and the correlation key as the step's own uuid.
+ *
+ * That second part is only true of steps written after the orchestrator began
+ * sending `StepRecord.uuid`. An older row carries an unrelated
+ * `gen_random_uuid()`, and a POST against it is refused by the gateway rather
+ * than silently dropped.
+ *
+ * Recurses into sub-agent jobs and reports the **child's** uuid as `jobUuid`,
+ * because the orchestrator binds a step to the job that dispatched it and drops
+ * an answer claiming any other.
+ */
+export function findPendingClientToolCalls(
+    jobs: ConversationJob[]
+): PendingClientToolCall[] {
+    const found: PendingClientToolCall[] = [];
+    for (const job of jobs) {
+        for (const step of job.steps) {
+            if (
+                step.step_type === 'tool_call'
+                && step.dispatch_mode === 'client'
+                && step.status === 'running'
+            ) {
+                found.push({
+                    jobUuid: job.uuid,
+                    stepUuid: step.uuid,
+                    toolSlug: step.tool_slug ?? '',
+                    toolInput: step.tool_input,
+                });
+            }
+        }
+        found.push(...findPendingClientToolCalls(job.sub_agent_jobs ?? []));
+    }
+    return found;
+}
+
 const PAGE_SIZE = 20;
 
 export interface UseConversationsResult {
@@ -160,7 +297,18 @@ export interface UseConversationsResult {
     activeConversationId: string | null;
     fetchConversations: () => Promise<void>;
     loadMore: () => Promise<void>;
-    selectConversation: (id: string) => Promise<MessageProps[] | null>;
+    /**
+     * Load a thread and make it the active one.
+     *
+     * Returns the raw ``detail`` as well as the rendered messages because the
+     * caller has to decide, in the same tick, whether this thread has a turn to
+     * resume — and React state set inside this callback is not visible to the
+     * closure that awaited it, so handing it back is the only way it arrives in
+     * time.
+     */
+    selectConversation: (
+        id: string
+    ) => Promise<{ messages: MessageProps[]; detail: ConversationDetail } | null>;
     newChat: () => void;
 }
 
@@ -174,6 +322,8 @@ export function useConversations(
     const [offset, setOffset] = useState(0);
     const [total, setTotal] = useState(0);
     const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+    // Which load is the current one. See selectConversation.
+    const requestSeq = useRef(0);
 
     const hasMore = conversations.length < total;
 
@@ -208,19 +358,30 @@ export function useConversations(
         }
     }, [client, isLoadingMore, hasMore, offset]);
 
-    const selectConversation = useCallback(async (id: string): Promise<MessageProps[] | null> => {
+    const selectConversation = useCallback(async (
+        id: string
+    ): Promise<{ messages: MessageProps[]; detail: ConversationDetail } | null> => {
         if (!client) return null;
+        // Two quick clicks in the drawer are two concurrent loads, and without a
+        // guard the slower one wins whatever it finishes last — leaving the
+        // client pointed at one thread while the screen shows another, so the
+        // next message is filed into the wrong conversation.
+        const seq = ++requestSeq.current;
         setIsLoading(true);
         try {
             const detail: ConversationDetail = await client.getConversationDetail(id);
+            if (seq !== requestSeq.current) return null;
             setActiveConversationId(id);
             client.setConversationId(id);
-            return jobsToMessageProps(detail.jobs, storageApiUrl);
+            return {
+                messages: jobsToMessageProps(detail.jobs, storageApiUrl),
+                detail,
+            };
         } catch (e) {
             console.error('[useConversations] failed to load conversation:', e);
             return null;
         } finally {
-            setIsLoading(false);
+            if (seq === requestSeq.current) setIsLoading(false);
         }
     }, [client, storageApiUrl]);
 

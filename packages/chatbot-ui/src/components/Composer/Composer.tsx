@@ -29,6 +29,19 @@ export interface ComposerProps {
     onToolsChange?: (enabledIds: string[]) => void;
     /** Slugs the host app registered a handler for; see {@link ToolToggles}. */
     handledToolSlugs?: string[];
+    /**
+     * Stop the turn in progress. When given, the send button becomes a stop
+     * button for as long as a turn is running.
+     *
+     * In the same place as send on purpose: stopping is what the user wants from
+     * that corner while the agent is working, and a separate control would sit
+     * there disabled and unexplained most of the time.
+     */
+    onStop?: () => void;
+    /** Whether a turn is running, so the button knows which job it has. */
+    isRunning?: boolean;
+    /** Set once stop has been asked for, until the turn actually ends. */
+    isStopping?: boolean;
 }
 
 const ALLOWED_TYPES = [
@@ -59,8 +72,11 @@ const getFileIcon = (contentType?: string | null): string => {
 
 export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     onSend,
+    onStop,
+    isRunning = false,
+    isStopping = false,
     disabled = false,
-    placeholder = 'Type a message...',
+    placeholder = 'Type a message…',
     storageApiUrl,
     accessToken,
     tools = [],
@@ -364,17 +380,32 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                             </button>
                         )}
                     </div>
-                    <button
-                        className={`cb-send-btn ${canSend ? 'active' : ''}`}
-                        onClick={handleSend}
-                        disabled={!canSend}
-                        title={isUploading ? 'Waiting for uploads...' : 'Send message'}
-                    >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="12" y1="19" x2="12" y2="5" />
-                            <polyline points="5 12 12 5 19 12" />
-                        </svg>
-                    </button>
+                    {onStop && isRunning ? (
+                        <button
+                            className="cb-send-btn cb-stop-btn active"
+                            onClick={onStop}
+                            disabled={isStopping}
+                            title={isStopping ? 'Stopping…' : 'Stop generating'}
+                            aria-label={isStopping ? 'Stopping' : 'Stop generating'}
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                                <rect x="6" y="6" width="12" height="12" rx="2" />
+                            </svg>
+                        </button>
+                    ) : (
+                        <button
+                            className={`cb-send-btn ${canSend ? 'active' : ''}`}
+                            onClick={handleSend}
+                            disabled={!canSend}
+                            title={isUploading ? 'Waiting for uploads…' : 'Send message'}
+                            aria-label="Send message"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <line x1="12" y1="19" x2="12" y2="5" />
+                                <polyline points="5 12 12 5 19 12" />
+                            </svg>
+                        </button>
+                    )}
                 </div>
             </div>
             <div className="cb-composer-footer">

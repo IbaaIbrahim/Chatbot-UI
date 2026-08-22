@@ -28,6 +28,8 @@
     font-size: var(--cb-text-base);
     line-height: 1.5;
     padding: 8px 4px;
+    /* Suppressed here and restored on :focus-visible below. Removing the
+       ring outright leaves a keyboard user with no idea where they are. */
     outline: none;
     min-height: 44px;
     max-height: 180px;
@@ -80,7 +82,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s, opacity 0.2s, box-shadow 0.2s, transform 0.2s;
 }
 
 .cb-action-btn:hover {
@@ -124,7 +126,7 @@
     align-items: center;
     justify-content: center;
     cursor: not-allowed;
-    transition: all var(--cb-transition-fast);
+    transition: var(--cb-transition-state);
 }
 
 .cb-send-btn.active {
@@ -210,7 +212,7 @@
     padding: 2px;
     border-radius: 4px;
     flex-shrink: 0;
-    transition: all 0.15s;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 
 .cb-chip-remove:hover {
@@ -305,4 +307,27 @@
     color: var(--cb-accent-primary, #7c7cff);
     font-size: 14px;
     font-weight: 500;
+}
+/* Stop button.
+ *
+ * Occupies the send button's place while a turn is running: that corner is where
+ * the user's attention already is, and the thing they want from it mid-answer is
+ * to stop. Styled as an active control rather than a destructive one — stopping
+ * is a normal way to end a turn, and the work already done is kept and charged.
+ */
+.cb-send-btn.cb-stop-btn:disabled {
+    opacity: 0.6;
+    cursor: progress;
+}
+
+/* The composer's own wrapper shows focus, so the textarea inside it does not
+   need a second ring — but a keyboard user still needs *something*, and
+   :focus-within on the wrapper is what draws it. */
+.cb-composer-input-wrapper:focus-within {
+  border-color: var(--cb-border-focus);
+  box-shadow: 0 0 0 3px var(--cb-border-focus);
+}
+
+.cb-composer-textarea:focus-visible {
+  outline: none;
 }

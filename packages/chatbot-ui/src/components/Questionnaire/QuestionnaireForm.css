@@ -6,11 +6,37 @@
     margin-bottom: var(--cb-space-3);
     box-shadow: var(--cb-shadow-md);
     animation: cb-questionnaire-in var(--cb-transition-normal);
+    margin-left: var(--cb-space-4);
+    margin-right: var(--cb-space-4);
+
+    /* Bounded, because this sits in the footer *above* the composer and the
+       footer does not shrink. Unbounded, a question with six options grew the
+       footer until the composer was pushed off the bottom of the screen — the
+       user could neither finish answering nor type.
+       A flex column so the cap can be spent deliberately: the question and the
+       buttons keep their space and the options give theirs up. */
+    display: flex;
+    flex-direction: column;
+    max-height: 50vh;
+}
+
+/* The question stays put. Scrolling the options while the question scrolled away
+   would leave the user choosing between six labels with nothing to answer. */
+.cb-questionnaire-question,
+.cb-questionnaire-footer {
+    flex: none;
 }
 
 @keyframes cb-questionnaire-in {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .cb-questionnaire-question {
@@ -23,6 +49,39 @@
 
 .cb-questionnaire-body {
     margin-bottom: var(--cb-space-3);
+    /* The only part that scrolls. `min-height: 0` is what lets it: a flex child
+       will not shrink below its content without it, so the cap above would be
+       ignored and the whole form would grow again. */
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--cb-border-strong) transparent;
+    /* Room for the scrollbar so it never sits on top of an option's border. */
+    padding-inline-end: 2px;
+}
+
+/* Matched to the tools menu's scrollbar so the two read as one product. */
+.cb-questionnaire-body::-webkit-scrollbar {
+    width: 6px;
+    background: transparent;
+}
+
+.cb-questionnaire-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.cb-questionnaire-body::-webkit-scrollbar-thumb {
+    background: var(--cb-border-strong);
+    border-radius: var(--cb-radius-full);
+    border: 1px solid transparent;
+    background-clip: padding-box;
+}
+
+.cb-questionnaire-body::-webkit-scrollbar-thumb:hover {
+    background: var(--cb-text-tertiary);
+    background-clip: padding-box;
 }
 
 .cb-questionnaire-options {
@@ -77,6 +136,8 @@
     font-family: inherit;
     font-size: var(--cb-text-sm);
     padding: 10px 12px;
+    /* Suppressed here and restored on :focus-visible below. Removing the
+       ring outright leaves a keyboard user with no idea where they are. */
     outline: none;
     transition: border-color var(--cb-transition-fast);
 }
@@ -152,4 +213,16 @@
 .cb-questionnaire-submit:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* A form the run is suspended on. Every control must be reachable and visibly
+   focusable by keyboard, or a user who cannot use a mouse cannot answer it and
+   the job waits until its TTL expires. */
+.cb-questionnaire-textarea:focus-visible,
+.cb-questionnaire-other-input:focus-visible,
+.cb-questionnaire-option:focus-within,
+.cb-questionnaire-nav:focus-visible,
+.cb-questionnaire-submit:focus-visible {
+    outline: 2px solid var(--cb-border-focus);
+    outline-offset: 2px;
 }

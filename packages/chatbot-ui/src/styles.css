@@ -1,3 +1,15 @@
+/* The design tokens, and the only place a literal colour, space or radius should
+ * appear.
+ *
+ * Scoped to the container rather than `:root` so nothing leaks into the host
+ * application, and `!important` throughout for the opposite reason — a host
+ * app's own reset must not leak *in* and repaint the widget.
+ *
+ * The dark values below are the defaults. Light overrides follow at the bottom;
+ * they redefine tokens only, never component rules, so a component styled from
+ * tokens gets both themes for free and one with a hardcoded colour gets neither.
+ */
+
 /* Base variables scoped to prevent global leakage, but including the launcher */
 .cb-chat-container,
 .cb-chat-launcher {
@@ -20,6 +32,35 @@
   --cb-glass-bg: rgba(30, 30, 30, 0.7) !important;
   --cb-glass-border: rgba(255, 255, 255, 0.1) !important;
   --cb-backdrop-blur: 12px !important;
+
+  /* Surfaces and state.
+   *
+   * These exist because the transcript components were reaching for literal
+   * `rgba(255,255,255,0.x)` values inline — a lift on a dark background, which
+   * on a light one is a wash of white on white. Naming them by *role* rather
+   * than by colour is what lets one definition serve both themes: a raised
+   * surface is a raised surface either way, it is only the direction of the
+   * lift that flips. */
+  /* A popover / menu surface, which must be opaque: it floats over the
+   * transcript, and a translucent one lets text show through the menu. Was
+   * referenced as `var(--cb-bg-elevated, #1A1A1A)` by the tools menu — a token
+   * that was never defined, so the fallback was doing all the work. */
+  --cb-bg-elevated: #1a1a1a !important;
+  --cb-surface-raised: rgba(255, 255, 255, 0.04) !important;
+  --cb-surface-sunken: rgba(0, 0, 0, 0.2) !important;
+  --cb-surface-hover: rgba(255, 255, 255, 0.07) !important;
+  --cb-border-strong: rgba(255, 255, 255, 0.16) !important;
+  /* Opacity steps for text that is deliberately quieter than
+   * --cb-text-secondary, so "slightly dimmer" stops being a magic number. */
+  --cb-dim-strong: 0.9 !important;
+  --cb-dim: 0.7 !important;
+  --cb-dim-soft: 0.5 !important;
+
+  /* Status colours, by meaning rather than by hue, so a tool step and a
+   * confirmation card cannot disagree about what "failed" looks like. */
+  --cb-status-running: #6390f1 !important;
+  --cb-status-success: #4caf50 !important;
+  --cb-status-failed: #ef4444 !important;
 
   /* Spacing */
   --cb-space-1: 4px !important;
@@ -44,6 +85,20 @@
 
   /* Transitions */
   --cb-transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+  /* What a state change may animate, listed explicitly.
+   *
+   * Never `transition: all`, which was the previous form throughout: `all`
+   * includes layout, so a hover that nudges padding or width animates a reflow —
+   * and it animates properties that change for unrelated reasons, producing
+   * transitions nobody asked for. Held as a token so "the standard state
+   * transition" is one declaration rather than six repeated at every call site. */
+  --cb-transition-state:
+    background-color var(--cb-transition-fast),
+    border-color var(--cb-transition-fast),
+    color var(--cb-transition-fast),
+    opacity var(--cb-transition-fast),
+    box-shadow var(--cb-transition-fast),
+    transform var(--cb-transition-fast) !important;
   --cb-transition-normal: 300ms cubic-bezier(0.4, 0, 0.2, 1) !important;
 
   /* Typography */
@@ -52,14 +107,32 @@
   --cb-text-sm: 0.875rem !important;
   --cb-text-base: 1rem !important;
 
-  /* Reset some common leaked styles */
-  text-align: left !important;
+  /* Reset some common leaked styles.
+   *
+   * `start`, not `left`. This declaration is inherited by every descendant and
+   * carries `!important`, so `left` overrode the direction of *content* as well
+   * as of the host page: an Arabic message computed `text-align: left` no matter
+   * what its own `dir` said, and no amount of RTL markup could win against it.
+   * `start` means "the side text begins on", which is left in an LTR context and
+   * right in an RTL one — so the same declaration keeps doing its original job
+   * of resisting a leaked host style while getting out of the way of direction. */
+  text-align: start !important;
   line-height: 1.5 !important;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Light Theme Overrides */
+/* Light theme.
+ *
+ * Two selectors per rule, and both are needed. `[data-theme='light']` is an
+ * explicit choice by the host app; the media query covers `theme="system"`,
+ * where no attribute is set and the OS decides. The `:not([data-theme='dark'])`
+ * guard is what stops the media query overriding an app that asked for dark on a
+ * machine set to light — an explicit choice must win over an inferred one.
+ *
+ * Only the tokens change. No component rule mentions a theme, which is the
+ * whole point: a surface that reads its colour from a token works in both, and
+ * one that hardcodes a colour works in neither. */
 .cb-chat-container[data-theme='light'],
 .cb-chat-launcher[data-theme='light'] {
   --cb-bg-primary: #ffffff !important;
@@ -68,16 +141,129 @@
 
   --cb-text-primary: #111827 !important;
   --cb-text-secondary: #4b5563 !important;
-  --cb-text-tertiary: #9ca3af !important;
+  --cb-text-tertiary: #6b7280 !important;
 
-  --cb-border-subtle: #e5e7eb !important;
+  --cb-border-subtle: rgba(17, 24, 39, 0.1) !important;
+  --cb-border-strong: rgba(17, 24, 39, 0.2) !important;
   --cb-glass-bg: rgba(255, 255, 255, 0.8) !important;
   --cb-glass-border: rgba(0, 0, 0, 0.05) !important;
+
+  /* The lift inverts: on white, "raised" is a tint of the text colour, not of
+   * white. Same role, opposite direction — which is why the components ask for
+   * the role. */
+  --cb-bg-elevated: #ffffff !important;
+  --cb-surface-raised: rgba(17, 24, 39, 0.03) !important;
+  --cb-surface-sunken: rgba(17, 24, 39, 0.06) !important;
+  --cb-surface-hover: rgba(17, 24, 39, 0.06) !important;
+
+  /* Dimming by opacity is much harsher on white than on near-black, so the
+   * steps are pulled back rather than reused. */
+  --cb-dim-strong: 0.95 !important;
+  --cb-dim: 0.75 !important;
+  --cb-dim-soft: 0.6 !important;
+
+  --cb-status-running: #2563eb !important;
+  --cb-status-success: #15803d !important;
+  --cb-status-failed: #b91c1c !important;
+}
+
+@media (prefers-color-scheme: light) {
+
+  .cb-chat-container:not([data-theme='dark']),
+  .cb-chat-launcher:not([data-theme='dark']) {
+    --cb-bg-primary: #ffffff !important;
+    --cb-bg-secondary: #f9fafb !important;
+    --cb-bg-tertiary: #f3f4f6 !important;
+
+    --cb-text-primary: #111827 !important;
+    --cb-text-secondary: #4b5563 !important;
+    --cb-text-tertiary: #6b7280 !important;
+
+    --cb-border-subtle: rgba(17, 24, 39, 0.1) !important;
+    --cb-border-strong: rgba(17, 24, 39, 0.2) !important;
+    --cb-glass-bg: rgba(255, 255, 255, 0.8) !important;
+    --cb-glass-border: rgba(0, 0, 0, 0.05) !important;
+
+    --cb-bg-elevated: #ffffff !important;
+    --cb-surface-raised: rgba(17, 24, 39, 0.03) !important;
+    --cb-surface-sunken: rgba(17, 24, 39, 0.06) !important;
+    --cb-surface-hover: rgba(17, 24, 39, 0.06) !important;
+
+    --cb-dim-strong: 0.95 !important;
+    --cb-dim: 0.75 !important;
+    --cb-dim-soft: 0.6 !important;
+
+    --cb-status-running: #2563eb !important;
+    --cb-status-success: #15803d !important;
+    --cb-status-failed: #b91c1c !important;
+  }
 }
 
 .cb-chat-container *,
 .cb-chat-launcher * {
   box-sizing: border-box !important;
+}
+
+/* --- Platform behaviour --------------------------------------------------- */
+
+.cb-chat-container,
+.cb-chat-launcher {
+  /* Tells the browser this subtree wants no double-tap-to-zoom, which is what
+     causes the ~300ms delay before a tap registers as a click. */
+  touch-action: manipulation;
+  /* Chosen rather than left to the platform: the default grey flash on Android
+     fires on every tap, including on a scrolling message list. The visible
+     :active and :hover states already say a control was pressed. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Which palette the *browser* should use for the things CSS cannot reach —
+   scrollbars, native form controls, spellcheck underlines. Without it a light
+   widget keeps dark scrollbars and vice versa. Set per theme rather than once,
+   for the same reason the tokens are. */
+.cb-chat-container,
+.cb-chat-launcher {
+  color-scheme: dark;
+}
+
+.cb-chat-container[data-theme='light'],
+.cb-chat-launcher[data-theme='light'] {
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: light) {
+
+  .cb-chat-container:not([data-theme='dark']),
+  .cb-chat-launcher:not([data-theme='dark']) {
+    color-scheme: light;
+  }
+}
+
+/* Anything that scrolls inside the widget keeps its scrolling to itself.
+   Without this, reaching the end of the message list or a menu hands the
+   gesture to the host page, which then scrolls behind the chat. */
+.cb-scroll-view,
+.cb-drawer-content,
+.cb-tools-menu,
+.cb-agent-switcher-menu,
+.cb-questionnaire {
+  overscroll-behavior: contain;
+}
+
+/* One place, for the whole widget: a stated preference for less motion is a
+   preference, not a per-component decision. Transitions are cut to near-zero
+   rather than to zero so state changes still settle rather than snap, and
+   indefinite animations are stopped outright — a spinner that never ends is the
+   clearest case of motion somebody may not be able to look at. */
+@media (prefers-reduced-motion: reduce) {
+
+  .cb-chat-container *,
+  .cb-chat-launcher * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Page Reading Indicator */
@@ -107,4 +293,12 @@
   /* Highest possible z-index */
   border-radius: 0;
   /* Cover full screen */
+}
+
+.cb-sub-agent-body .cb-message-content-wrapper {
+  max-width: 100%;
+}
+
+.cb-sub-agent-body .cb-message-content-wrapper .cb-message-bubble.assistant {
+  padding: var(--cb-space-3) var(--cb-space-4) 16px !important;
 }
