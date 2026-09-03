@@ -8,12 +8,8 @@ export interface UseStreamChatOptions {
     client: StreamChatClient | null;
     onEvent?: (event: StreamEvent, assistantMessageId: string, updateMessage: (updater: (prev: string) => string) => void) => void;
     storageApiUrl?: string;
-    /** External tool callbacks forwarded to MessageBubble's onToolCall prop. */
-    onToolCall?: Record<string, (data: any) => Promise<any> | void>;
-    /** Result previewers forwarded to MessageBubble's onToolPreview prop. */
-    onToolPreview?: MessageProps['onToolPreview'];
-    /** Per-tool action presentation, forwarded to MessageBubble. */
-    toolActions?: MessageProps['toolActions'];
+    /** Per-tool handlers and presentation, forwarded to MessageBubble. */
+    tools?: MessageProps['tools'];
 }
 
 /**
@@ -141,7 +137,7 @@ export function describeStreamError(error: Error | undefined): string {
     return permanent ? detail : `${detail}\n\nPlease try again.`;
 }
 
-export const useStreamChat = ({ client, onEvent, storageApiUrl, onToolCall, onToolPreview, toolActions }: UseStreamChatOptions) => {
+export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStreamChatOptions) => {
     const [messages, setMessages] = React.useState<MessageProps[]>([]);
     const [isThinking, setIsThinking] = React.useState(false);
     // Kept apart from isThinking so a resumed turn can show an indicator without
@@ -297,6 +293,20 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, onToolCall, onTo
         const pathFor = (event: any): StepPath =>
             pathByJob.get(event.data?.job_uuid) ?? [];
 
+        // How many thinking blocks each step has already closed. A reasoning
+        // model with tools thinks, calls a tool, and thinks again, so one step
+        // can produce several blocks; keying only by step would merge them and
+        // the second ``reasoning_complete`` would overwrite the first block's
+        // text. Lives in the closure for the same reason ``pathByJob`` does —
+        // two bubbles must not share it.
+        const closedThinkingBlocks = new Map<string, number>();
+        const thinkingStepKey = (event: any): string =>
+            `${event.data?.job_uuid ?? 'self'}-step-${event.data?.step_sequence ?? '0'}`;
+        const thinkingStepId = (event: any): string => {
+            const key = thinkingStepKey(event);
+            return `thinking-${key}-${closedThinkingBlocks.get(key) ?? 0}`;
+        };
+
         // Every step mutation goes through here so routing is applied in one
         // place: a handler that appended directly would be correct until the
         // first sub-agent and then quietly wrong.
@@ -405,7 +415,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, onToolCall, onTo
             // until the resume tool_result flips them to 'completed'.
             if (event.type === 'client_tool_call') {
                 const { step_uuid, tool_slug, tool_input } = event.data?.payload ?? {};
-                console.debug('[useStreamChat] client_tool_call', { step_uuid, tool_slug, tool_input, hasHandler: Boolean(onToolCall?.[tool_slug ?? '']) });
+                console.debug('[useStreamChat] client_tool_call', { step_uuid, tool_slug, tool_input, hasHandler: Boolean(tools?.[tool_slug ?? '']) });
                 if (step_uuid && tool_slug) {
                     const isInteractive = tool_slug === 'ask_user_questions';
                     editSteps(steps => appendStepAt(steps, pathFor(event), {
@@ -479,6 +489,43 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, onToolCall, onTo
                 }
             }
 
+            // A reasoning model's thinking, into its own collapsible block.
+            // Handled before the generic chunk path below because the text is
+            // NOT the answer: appending it to the bubble's content would put
+            // the model's deliberation in its reply.
+            if (event.type === 'reasoning' || event.type === 'reasoning_complete') {
+                const text: string = event.data?.payload?.text ?? '';
+                const path = pathFor(event);
+                const stepId = thinkingStepId(event);
+                if (event.type === 'reasoning') {
+                    if (text) {
+                        editSteps(steps =>
+                            appendTextAt(steps, path, text, stepId, 'thinking')
+                        );
+                    }
+                } else {
+                    const key = thinkingStepKey(event);
+                    editSteps(steps => {
+                        // Create-then-patch so a client that connected
+                        // mid-block — a reconnect, or a second tab — still
+                        // gets the whole block from this one frame, having
+                        // seen none of the deltas.
+                        const withBlock = appendTextAt(
+                            steps, path, '', stepId, 'thinking'
+                        );
+                        return patchStepAt(withBlock, path, stepId, {
+                            content: text,
+                            isFinished: true,
+                        });
+                    });
+                    // The next delta on this step opens a fresh block.
+                    closedThinkingBlocks.set(
+                        key, (closedThinkingBlocks.get(key) ?? 0) + 1
+                    );
+                }
+                return;
+            }
+
             if (onEvent) {
                 onEvent(event, assistantId, (updater) => updateAssistantContent(assistantId, updater, event.data?.step_sequence));
                 return;
@@ -550,7 +597,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, onToolCall, onTo
         };
 
         return { handleEvent, handleError };
-    }, [onEvent, onToolCall, setApprovalStatus, storageApiUrl, updateAssistantContent]);
+    }, [onEvent, tools, setApprovalStatus, storageApiUrl, updateAssistantContent]);
 
     const sendMessage = React.useCallback(async (text: string, attachedFiles?: AttachedFile[]) => {
         if (!client || !text.trim() || isThinking) return;
@@ -574,7 +621,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, onToolCall, onTo
         setMessages(prev => [
             ...prev,
             { id: userId, role: 'user', content: text, attachments },
-            { id: assistantId, role: 'assistant', content: '', onToolCall, onToolPreview, toolActions },
+            { id: assistantId, role: 'assistant', content: '', tools },
         ]);
         setIsThinking(true);
 
@@ -623,7 +670,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, onToolCall, onTo
             assistantIdRef.current = null;
             currentUserMessageIdRef.current = null;
         }
-    }, [client, isThinking, buildStreamHandlers, onToolCall, onToolPreview, toolActions, updateAssistantContent]);
+    }, [client, isThinking, buildStreamHandlers, tools, updateAssistantContent]);
 
     /**
      * Re-attach to a turn that is still running and let the replay rebuild it.
@@ -667,9 +714,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, onToolCall, onTo
                     role: 'assistant' as const,
                     content: '',
                     steps: [],
-                    onToolCall,
-                    onToolPreview,
-                    toolActions,
+                    tools,
                 },
             ]);
 
@@ -727,7 +772,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, onToolCall, onTo
             }
         }
     }, [
-        client, buildStreamHandlers, onToolCall, onToolPreview, toolActions,
+        client, buildStreamHandlers, tools,
         updateAssistantContent,
     ]);
 

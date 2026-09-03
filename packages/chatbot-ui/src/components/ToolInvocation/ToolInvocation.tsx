@@ -1,74 +1,13 @@
 import React from 'react';
 const { useState } = React;
 import { parseToolOutput } from '../../api/toolOutput';
+// Declared in common/toolConfig, where the whole tool contract lives, and
+// imported back here: this component renders a control, it does not own the
+// shape of the configuration that asks for one.
+import type { ToolActionRenderProps } from '../../common/toolConfig';
 import './ToolInvocation.css';
 
 export type ToolStatus = 'running' | 'completed' | 'failed';
-
-/** What a custom action control is handed to render itself. */
-export interface ToolActionRenderProps {
-    /** Fire the registered handler with the payload it expects. */
-    onAction: () => void;
-    /**
-     * The payload `onAction` will pass — the tool's arguments for a client
-     * tool, its result for a result previewer. Given so a custom control can
-     * label itself from the data ("Open 5S Audit Scorecard") rather than only
-     * from the tool slug.
-     */
-    payload: any;
-    toolName: string;
-    /** The resolved label, whether the default or one set on the config. */
-    label: string;
-}
-
-/**
- * How a tool's completed step presents its action, keyed by tool slug.
- *
- * Registering a handler is what makes an action *possible*; this is what decides
- * whether it is *offered*. The two are separate on purpose: a tool like
- * `read_page_context` returns data to the agent and has nothing a user would
- * re-open, while `generate_checklist` produces something they will want to look
- * at again — but both need a handler to work at all.
- */
-export interface ToolActionConfig {
-    /**
-     * Offer the action control on this tool's completed step. Default `true`,
-     * which is the behaviour every registered handler had before this existed.
-     * Set `false` for tools whose result is not worth re-opening.
-     */
-    show?: boolean;
-    /** Override the button text. Ignored when {@link render} is given. */
-    label?: string;
-    /**
-     * Render your own control in place of the built-in button. Return `null` to
-     * render nothing — though `show: false` says that more directly.
-     */
-    render?: (props: ToolActionRenderProps) => React.ReactNode;
-    /**
-     * Where the control appears. Default `'step'`.
-     *
-     * The default puts it on the step, which is right for a tool the user
-     * watched run. It is wrong in two situations, and each has a value here:
-     *
-     * - `'turn'` — the control moves to a row at the end of the assistant's
-     *   message, **outside** any collapsed block it was nested in. A tool called
-     *   by a sub-agent renders inside that sub-agent's block, which is collapsed
-     *   by default; a button in there is a button nobody clicks. Hoisting is not
-     *   a styling preference, it is the difference between reachable and not.
-     * - `'turn-end'` — same place, but it waits until the whole turn has
-     *   finished. For a result that is only meaningful complete: offering "open
-     *   the report" while the agent is still adding to it invites the user to
-     *   look at half of it.
-     *
-     * Declared here, per tool, rather than inferred from context, because only
-     * the host application knows whether a given tool's output is worth
-     * interrupting the reader for.
-     */
-    placement?: ToolActionPlacement;
-}
-
-/** Where a tool's action control is offered. See {@link ToolActionConfig.placement}. */
-export type ToolActionPlacement = 'step' | 'turn' | 'turn-end';
 
 /**
  * The action control itself — a custom render if one was given, the built-in

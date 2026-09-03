@@ -839,7 +839,7 @@
 /* --- Sub-agent block ------------------------------------------------------
    One agent's whole run, nested inside the turn that started it. Collapsed by
    default because it is detail, not the answer — which is also why a tool action
-   inside it can ask to be hoisted out (see ToolActionConfig.placement).
+   inside it can ask to be hoisted out (see ToolPresentation.placement).
    -------------------------------------------------------------------------- */
 
 .cb-step-sub-agent {

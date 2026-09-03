@@ -1,4 +1,5 @@
 import React from 'react';
+import { netFetch, warnIfLocalNetworkUrl } from '../common/localNetwork';
 const { createContext, useContext } = React;
 
 export interface ChatbotContextValue {
@@ -23,7 +24,15 @@ export interface ChatbotProviderProps {
      */
     accessToken?: string | null;
     /**
-     * Base URL for API requests
+     * Base URL for storage-API requests. Relative URLs in message payloads are
+     * resolved against it.
+     *
+     * Left unset, requests go to the page's own origin. It deliberately does
+     * **not** fall back to a ``localhost`` URL: a host application that forgot
+     * to pass this would then have every attachment fetch aimed at the viewer's
+     * own device, which Chromium 142+ gates behind the Local Network Access
+     * permission — a permission prompt, or an outright refusal inside an
+     * iframe, in place of a plain misconfiguration.
      */
     apiBaseUrl?: string;
 }
@@ -35,8 +44,10 @@ export interface ChatbotProviderProps {
 export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     children,
     accessToken,
-    apiBaseUrl = 'http://localhost:8001/api',
+    apiBaseUrl = '',
 }) => {
+    warnIfLocalNetworkUrl('ChatbotProvider apiBaseUrl', apiBaseUrl);
+
     // Cache for blob URLs to avoid refetching
     const blobCacheRef = React.useRef<Map<string, string>>(new Map());
 
@@ -55,7 +66,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
             throw new Error('No access token available for authenticated fetch');
         }
 
-        const response = await fetch(resolvedUrl, {
+        const response = await netFetch(resolvedUrl, {
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
             },
@@ -85,7 +96,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
             : (fileIdOrDownloadUrl.match(/\/files\/([a-f0-9-]+)(?:\/download)?\/?$/i)
                 || fileIdOrDownloadUrl.match(/\/v1\/files\/([a-f0-9-]+)(?:\/download)?\/?$/i))?.[1] ?? fileIdOrDownloadUrl;
         const url = `${base}/v1/files/${fileId}/download-url`;
-        const response = await fetch(url, {
+        const response = await netFetch(url, {
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
             },

@@ -18,6 +18,19 @@ function extractTextFromContentBlocks(responsePayload: any): string {
     return textParts.join('\n\n');
 }
 
+/**
+ * The thinking a step recorded, if any.
+ *
+ * A sibling of ``content_blocks``, never one of them: the orchestrator keeps
+ * reasoning out of the blocks so it is never replayed to the model, which is
+ * exactly why it has to be read separately here.
+ */
+function extractReasoning(responsePayload: any): string {
+    if (!responsePayload || typeof responsePayload !== 'object') return '';
+    const reasoning = responsePayload.reasoning;
+    return typeof reasoning === 'string' ? reasoning : '';
+}
+
 function extractFinalText(steps: ConversationStep[]): string {
     // Walk backwards to find the last llm_call or final_synthesis with text content
     for (let i = steps.length - 1; i >= 0; i--) {
@@ -85,6 +98,19 @@ function mapSteps(steps: ConversationStep[], subAgentJobs: ConversationJob[] = [
                             : 'failed',
             });
         } else if (step.step_type === 'llm_call' || step.step_type === 'final_synthesis') {
+            // Thinking first, in the order it streamed: the model deliberates,
+            // then answers. Its own step so it renders as the same collapsible
+            // block a live turn produces — a reload that dropped it made the
+            // transcript disagree with what the user had just watched.
+            const reasoning = extractReasoning(step.response_payload);
+            if (reasoning) {
+                messageSteps.push({
+                    id: `${step.uuid}-thinking`,
+                    type: 'thinking',
+                    content: reasoning,
+                    isFinished: true,
+                });
+            }
             const text = extractTextFromContentBlocks(step.response_payload);
             if (text) {
                 messageSteps.push({
@@ -92,8 +118,11 @@ function mapSteps(steps: ConversationStep[], subAgentJobs: ConversationJob[] = [
                     type: 'text',
                     content: text,
                 });
-            } else {
-                // No visible text content yet — render as a finished thinking block
+            } else if (!reasoning) {
+                // Neither text nor thinking: the step's visible work is a tool
+                // call, which is its own step. The empty block is what shows a
+                // turn still in flight, so it stays — but only when there is
+                // genuinely nothing else to draw.
                 messageSteps.push({
                     id: step.uuid,
                     type: 'thinking',

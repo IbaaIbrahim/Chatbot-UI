@@ -1,0 +1,3199 @@
+{
+  "checklistId": "6d27bbec-a1ed-488c-a5c2-4285b26a91ba",
+  "createdAt": "2026-08-16T12:28:19.350Z",
+  "updatedAt": "2026-09-02T09:33:27.332Z",
+  "templateTitle": "Reciprocating Air Compressor Preventive Maintenance Checklist",
+  "templateDescription": "This comprehensive preventive maintenance checklist guides technicians through systematic inspection and servicing of reciprocating air compressors. It supports maintenance personnel and safety officers in performing routine daily, weekly, monthly, and annual compressor maintenance procedures to sustain peak performance, prevent unexpected failures, and ensure safe operational standards.",
+  "assetId": 152,
+  "documentId": "KÜ-3",
+  "endDate": null,
+  "score": 0,
+  "points": {
+    "points": 0,
+    "max_points": 26
+  },
+  "responseAt": "2026-09-01T15:10:18.755Z",
+  "data": [
+    {
+      "itemUuid": "a27e9e9f-3831-46b7-971a-c0cfeb8f68c4",
+      "title": "Hidden Page",
+      "type": "hidden_page",
+      "isNew": false,
+      "itemIndex": 0,
+      "response": {
+        "uuid": "fe634659-08ac-4434-9858-845135e3bf3f",
+        "createdAt": "2026-08-16T15:28:19.194",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": null,
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-398d-427f-be28-80a4c609fe24",
+      "title": "Inspection real start date",
+      "type": "inspection_real_start_date",
+      "isNew": false,
+      "itemIndex": 1,
+      "response": {
+        "uuid": "294457b1-e9f4-4d06-8f9c-f3beb8d494a4",
+        "createdAt": "2026-08-16T15:28:19.195",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": true,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.709Z",
+          "updated_at": "2026-08-13T19:08:43.709Z",
+          "value": "13.08.2026 - 19:08",
+          "realValue": "2026-08-13T19:08:43.709Z",
+          "utc_real": "2026-08-13T19:08:43.709Z",
+          "formatType": "DATETIME01",
+          "color": "",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.710Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": false,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-3993-440c-9ab6-2db559307b42",
+      "title": "Inspection real end date",
+      "type": "inspection_real_end_date",
+      "isNew": false,
+      "itemIndex": 2,
+      "response": {
+        "uuid": "d9951357-3bf1-4ab8-9dac-5bfc727e8026",
+        "createdAt": "2026-08-16T15:28:19.195",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.709Z",
+          "updated_at": "2026-08-13T19:08:43.709Z",
+          "value": "",
+          "realValue": null,
+          "utc_real": null,
+          "formatType": "year_month_day_hour_minute",
+          "color": "",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.710Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": false,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "answer": true,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-3996-4668-8118-8261a4685d09",
+      "title": "",
+      "type": "global_start_page",
+      "isNew": false,
+      "itemIndex": 3,
+      "response": {
+        "uuid": "cf85ee47-c291-483b-baf1-082627a696d8",
+        "createdAt": "2026-08-16T12:28:19.237Z",
+        "updatedAt": "2026-08-16T12:28:19.237Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": null,
+        "note": "",
+        "isDeleted": false,
+        "isVisible": false,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-16T12:28:19.237Z",
+          "updated_at": "2026-08-16T12:28:19.237Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": true,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "74ddb184-a8f6-45da-9c02-11c84b551464",
+      "title": "Allgemeine Informationen",
+      "type": "start_page",
+      "isNew": false,
+      "itemIndex": 4,
+      "response": {
+        "uuid": "a6846ae3-bb29-4030-9a6d-bf91e451c04a",
+        "createdAt": "2026-08-16T15:28:19.195",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": null,
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "2091210b-00f0-49c7-ab59-8dc0a730c74b",
+      "title": "Dokumenten-ID",
+      "type": "document_id",
+      "isNew": false,
+      "itemIndex": 5,
+      "response": {
+        "uuid": "dd701ea4-81a4-40c8-900c-2d1150c733b3",
+        "createdAt": "2026-08-16T15:28:19.195",
+        "updatedAt": "2026-09-02T09:33:27.335Z",
+        "userId": 18,
+        "isAnswered": true,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.709Z",
+          "updated_at": "2026-08-13T19:08:44.825Z",
+          "value": "KÜ-3",
+          "edit_by_user": false,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:44.825Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "f1560c4c-7a79-4286-b58f-b28662de2fcf",
+      "title": "Asset",
+      "type": "asset",
+      "isNew": false,
+      "itemIndex": 6,
+      "response": {
+        "uuid": "d9e90bdc-58c4-429a-8f7c-d7fef1119e77",
+        "createdAt": "2026-08-16T15:28:19.195",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": true,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.709Z",
+          "updated_at": "2026-08-13T19:08:43.709Z",
+          "value": 152,
+          "edit_by_user": false,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.710Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "8aa7c69b-4c77-4759-a8db-29247679bfec",
+      "title": "Auftraggeber",
+      "type": "asset_field",
+      "isNew": false,
+      "itemIndex": 7,
+      "response": {
+        "uuid": "700aa18b-78c6-4e25-ac70-02cebfd3eb7e",
+        "createdAt": "2026-08-16T15:28:19.195",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.709Z",
+          "updated_at": "2026-08-13T19:08:43.709Z",
+          "value": null,
+          "field_Key": "f_73",
+          "id": 152,
+          "color": "",
+          "edit_by_user": false,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.710Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "answer": true,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "25a53cdb-4c10-4bdb-8a3d-728243a83935",
+      "title": "Vertrags-Nr. (AG)",
+      "type": "asset_field",
+      "isNew": false,
+      "itemIndex": 8,
+      "response": {
+        "uuid": "662e8376-7dda-4e54-9811-42689700c03e",
+        "createdAt": "2026-08-16T15:28:19.195",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.709Z",
+          "updated_at": "2026-08-13T19:08:43.709Z",
+          "value": null,
+          "field_Key": "f_74",
+          "id": 152,
+          "color": "",
+          "edit_by_user": false,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.710Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "answer": true,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "5e2f2b8b-fedf-4474-b893-493696d523ec",
+      "title": "Auftragnehmer",
+      "type": "asset_field",
+      "isNew": false,
+      "itemIndex": 9,
+      "response": {
+        "uuid": "d6ba38e9-84c0-42c4-be56-fd9bc0db9d39",
+        "createdAt": "2026-08-16T15:28:19.195",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.709Z",
+          "updated_at": "2026-08-13T19:08:43.709Z",
+          "value": null,
+          "field_Key": "f_75",
+          "id": 152,
+          "color": "",
+          "edit_by_user": false,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.710Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "answer": true,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "46adfd5e-f2bb-4bd8-b7f7-a0457df8a5fd",
+      "title": "Projekt-Nr. (AN)",
+      "type": "asset_field",
+      "isNew": false,
+      "itemIndex": 10,
+      "response": {
+        "uuid": "a719cd2b-9735-4162-87b8-d7f8cf8fef48",
+        "createdAt": "2026-08-16T15:28:19.195",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.709Z",
+          "updated_at": "2026-08-13T19:08:43.709Z",
+          "value": null,
+          "field_Key": "f_79",
+          "id": 152,
+          "color": "",
+          "edit_by_user": false,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": true,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "66a0d54c-b2a2-45ac-bb04-a7a3397fb8ac",
+      "title": "Art der Baustelle",
+      "type": "asset_field",
+      "isNew": false,
+      "itemIndex": 11,
+      "response": {
+        "uuid": "19451068-bf61-4108-924f-e20a5c424db0",
+        "createdAt": "2026-08-16T15:28:19.195",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.709Z",
+          "updated_at": "2026-08-13T19:08:43.709Z",
+          "value": null,
+          "field_Key": "f_80",
+          "id": 152,
+          "color": "",
+          "edit_by_user": false,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": true,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "f80b022c-8250-43ef-afff-236fa498b2b2",
+      "title": "Straße",
+      "type": "asset_field",
+      "isNew": false,
+      "itemIndex": 12,
+      "response": {
+        "uuid": "018b14f6-4578-4dc2-aa41-5d593589bf88",
+        "createdAt": "2026-08-16T15:28:19.196",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.709Z",
+          "updated_at": "2026-08-13T19:08:43.709Z",
+          "value": null,
+          "field_Key": "f_69",
+          "id": 152,
+          "color": "",
+          "edit_by_user": false,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": true,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "2ec1c4a4-e7ab-4898-af60-52d5a80e9443",
+      "title": "PLZ",
+      "type": "asset_field",
+      "isNew": false,
+      "itemIndex": 13,
+      "response": {
+        "uuid": "89d9ac2c-3d22-4084-a733-0b4a4f81a5e6",
+        "createdAt": "2026-08-16T15:28:19.196",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.709Z",
+          "updated_at": "2026-08-13T19:08:43.709Z",
+          "value": null,
+          "field_Key": "f_76",
+          "id": 152,
+          "color": "",
+          "edit_by_user": false,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": true,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a0f0f026-32a5-46ab-89aa-8684dffdc505",
+      "title": "Stadt",
+      "type": "asset_field",
+      "isNew": false,
+      "itemIndex": 14,
+      "response": {
+        "uuid": "cb6ec063-ff71-4c96-a637-2242db737f9c",
+        "createdAt": "2026-08-16T15:28:19.196",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.709Z",
+          "updated_at": "2026-08-13T19:08:43.709Z",
+          "value": null,
+          "field_Key": "f_77",
+          "id": 152,
+          "color": "",
+          "edit_by_user": false,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": true,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "4cc1120b-16c3-4c1d-a8c3-6ed3a0358853",
+      "title": "Bundesland",
+      "type": "asset_field",
+      "isNew": false,
+      "itemIndex": 15,
+      "response": {
+        "uuid": "a180de70-0e27-4f10-89f9-86105525ffd1",
+        "createdAt": "2026-08-16T15:28:19.196",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": null,
+          "field_Key": "f_78",
+          "id": 152,
+          "color": "",
+          "edit_by_user": false,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": true,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "942f882b-58b4-4d9c-96be-1f70d86ce3ec",
+      "title": "Land",
+      "type": "asset_field",
+      "isNew": false,
+      "itemIndex": 16,
+      "response": {
+        "uuid": "8096dfd0-68b1-40c9-8b96-bc73ee4a83c9",
+        "createdAt": "2026-08-16T15:28:19.196",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": null,
+          "field_Key": "f_68",
+          "id": 152,
+          "color": "",
+          "edit_by_user": false,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": true,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "4ad988c3-2d33-47fe-90ff-495fb0c31665",
+      "title": "Gestartet",
+      "type": "inspection_start_date",
+      "isNew": false,
+      "itemIndex": 17,
+      "response": {
+        "uuid": "809a964b-9bb4-4586-9b55-2a923a1f1f18",
+        "createdAt": "2026-08-16T15:28:19.196",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": "",
+          "realValue": null,
+          "utc_real": null,
+          "formatType": "hour_minute",
+          "color": "",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": true,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "e06cf06a-b6ce-4467-97d8-1422e3aebc24",
+      "title": "Durchgeführt von",
+      "type": "person",
+      "isNew": false,
+      "itemIndex": 18,
+      "response": {
+        "uuid": "f29a7076-4c02-4e3f-99ef-c776ddbbd24c",
+        "createdAt": "2026-08-16T15:28:19.196",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": true,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": "James Martin",
+          "color": "",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": true,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "2c51529b-8a21-4371-89ef-05cf78889c88",
+      "title": "Ort",
+      "type": "inspection_location",
+      "isNew": false,
+      "itemIndex": 19,
+      "response": {
+        "uuid": "22ea4fcf-6959-4bdd-b6ad-964616ace9ac",
+        "createdAt": "2026-08-16T15:28:19.196",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "latitude": 0,
+          "longitude": 0,
+          "address": "",
+          "color": "",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a350f737-ac78-4928-9d7d-a4e1fddad357",
+      "title": "Übersicht",
+      "type": "photo",
+      "isNew": false,
+      "itemIndex": 20,
+      "response": {
+        "uuid": "302b47b9-1da6-4045-836d-3db2d21b3cef",
+        "createdAt": "2026-08-16T15:28:19.196",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "multi": false,
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "d953bd33-652d-42e4-9eed-1e1d29c67160",
+      "title": "#00# Berichtsnummer",
+      "type": "section",
+      "isNew": false,
+      "itemIndex": 21,
+      "response": {
+        "uuid": "6d2d9ed1-cd7c-4e68-916b-8b9cf0315f37",
+        "createdAt": "2026-08-16T15:28:19.196",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": null,
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "9fa9e3c6-4f98-4960-9da9-bce721d6dab4",
+      "title": "Auftragnehmer",
+      "type": "asset_field",
+      "isNew": false,
+      "itemIndex": 22,
+      "response": {
+        "uuid": "eea5be12-50c7-41ff-bfe1-e3ad5e1663c7",
+        "createdAt": "2026-08-16T15:28:19.197",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": null,
+          "field_Key": "f_75",
+          "id": 152,
+          "color": "",
+          "edit_by_user": false,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "6a5749a4-b367-4a0c-84c0-595469110f76",
+      "title": "Vetrags.-Nr.:",
+      "type": "asset_field",
+      "isNew": false,
+      "itemIndex": 23,
+      "response": {
+        "uuid": "80cd531a-36cf-445a-b4d5-0127f797dc52",
+        "createdAt": "2026-08-16T15:28:19.197",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": null,
+          "field_Key": "f_74",
+          "id": 152,
+          "color": "",
+          "edit_by_user": false,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "5ad1761b-9d73-4585-917f-85fb5661ee60",
+      "title": "#02# Berichtsnummer",
+      "type": "number",
+      "isNew": false,
+      "itemIndex": 24,
+      "response": {
+        "uuid": "41b00c63-9f79-4ab7-8b47-01c4acf3d169",
+        "createdAt": "2026-08-16T15:28:19.197",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": "",
+          "realValue": null,
+          "color": "",
+          "unit": "",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-3998-4bee-9a82-f86f6c8767d1",
+      "title": "Reciprocating Compressor Maintenance",
+      "type": "page",
+      "isNew": false,
+      "itemIndex": 25,
+      "response": {
+        "uuid": "e32a6cfd-4fe4-40e7-88fc-736a567944dd",
+        "createdAt": "2026-08-16T15:28:19.197",
+        "updatedAt": "2026-08-16T12:28:37.341Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": null,
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 26
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-399a-4a91-ab42-b1f6e9e0d5db",
+      "title": "General Mechanical Inspection",
+      "type": "section",
+      "isNew": false,
+      "itemIndex": 26,
+      "response": {
+        "uuid": "e2cc4af9-b298-40a3-a0f4-7ad7a2e595bb",
+        "createdAt": "2026-08-16T15:28:19.197",
+        "updatedAt": "2026-08-16T12:28:37.341Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": null,
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 23
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-399c-4bae-8ce7-d92cd466f528",
+      "title": "Air inlet filter location and accessibility",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 27,
+      "response": {
+        "uuid": "a79cd62a-5563-413c-ae0a-251a1ac9ecfc",
+        "createdAt": "2026-08-16T15:28:19.197",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.712Z",
+          "updated_at": "2026-08-13T19:08:43.712Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.712Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.712Z",
+          "updated_at": "2026-08-13T19:08:43.712Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-399e-44ac-b802-5c79d5d6e3eb",
+      "title": "Compressor housing structural integrity",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 28,
+      "response": {
+        "uuid": "b78be221-e640-4b13-89fd-6baf9722fc2d",
+        "createdAt": "2026-08-16T15:28:19.197",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.714Z",
+          "updated_at": "2026-08-13T19:08:43.714Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.714Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.714Z",
+          "updated_at": "2026-08-13T19:08:43.714Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39a0-4b83-bf15-390aff919e7f",
+      "title": "Inlet filter element cleanliness and condition",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 29,
+      "response": {
+        "uuid": "63e43018-1255-477e-81c8-8dcd7e875f65",
+        "createdAt": "2026-08-16T15:28:19.198",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.714Z",
+          "updated_at": "2026-08-13T19:08:43.714Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.714Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.714Z",
+          "updated_at": "2026-08-13T19:08:43.714Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39a2-496a-b299-ef01763d3df4",
+      "title": "Date of last inlet filter replacement",
+      "type": "datetime",
+      "isNew": false,
+      "itemIndex": 30,
+      "response": {
+        "uuid": "ebaafc3b-d20a-46af-bcec-d6754cfaef67",
+        "createdAt": "2026-08-16T15:28:19.198",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": "",
+          "realValue": null,
+          "utc_real": null,
+          "formatType": "year_month_day",
+          "color": "",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39a3-4739-9ef3-1beeda043c04",
+      "title": "Package discharge pressure status",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 31,
+      "response": {
+        "uuid": "bc84efae-63ec-41ec-87c0-e3fcd9edc9fa",
+        "createdAt": "2026-08-16T15:28:19.198",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.714Z",
+          "updated_at": "2026-08-13T19:08:43.714Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.714Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.714Z",
+          "updated_at": "2026-08-13T19:08:43.714Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39a8-4423-a807-d1b2916dc84a",
+      "title": "Full-load pump discharge air temperature",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 32,
+      "response": {
+        "uuid": "69356c5c-78dc-4273-ac9f-37dd0556a81b",
+        "createdAt": "2026-08-16T15:28:19.198",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.715Z",
+          "updated_at": "2026-08-13T19:08:43.715Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.715Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.715Z",
+          "updated_at": "2026-08-13T19:08:43.715Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39aa-4341-8dc9-ce7cae6050bf",
+      "title": "Ambient temperature conditions",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 33,
+      "response": {
+        "uuid": "bbdd9f03-c1a2-4f05-9381-7026243b1986",
+        "createdAt": "2026-08-16T15:28:19.198",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.715Z",
+          "updated_at": "2026-08-13T19:08:43.715Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.715Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.715Z",
+          "updated_at": "2026-08-13T19:08:43.715Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39ac-4df8-9af3-e6b704fddaab",
+      "title": "Room temperature",
+      "type": "number",
+      "isNew": false,
+      "itemIndex": 34,
+      "response": {
+        "uuid": "5c2f10d8-5dcc-41c4-8b32-c0cd3def13dd",
+        "createdAt": "2026-08-16T15:28:19.198",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": "",
+          "realValue": null,
+          "color": "",
+          "unit": "°F",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39ad-41b4-9f4b-75b64e50f0cc",
+      "title": "Intake air temperature",
+      "type": "number",
+      "isNew": false,
+      "itemIndex": 35,
+      "response": {
+        "uuid": "ad35be92-349d-4e7e-a577-764aedf71ba9",
+        "createdAt": "2026-08-16T15:28:19.198",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": "",
+          "realValue": null,
+          "color": "",
+          "unit": "°F",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39af-4aae-9b8a-2255c1d0a8c1",
+      "title": "Compressor oil level verification",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 36,
+      "response": {
+        "uuid": "ce304114-20f2-44be-b912-b11df4396c16",
+        "createdAt": "2026-08-16T15:28:19.199",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.715Z",
+          "updated_at": "2026-08-13T19:08:43.715Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.715Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.715Z",
+          "updated_at": "2026-08-13T19:08:43.715Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39b1-4394-983d-8a7f4fc05ced",
+      "title": "Motor lubrication (grease) status",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 37,
+      "response": {
+        "uuid": "0b5444df-50c3-4b1f-b8b9-dfcbdc3a0521",
+        "createdAt": "2026-08-16T15:28:19.199",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.716Z",
+          "updated_at": "2026-08-13T19:08:43.716Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.716Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.716Z",
+          "updated_at": "2026-08-13T19:08:43.716Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39b2-453e-a2fb-585778555c5a",
+      "title": "Grease type and specification used",
+      "type": "textAnswer",
+      "isNew": false,
+      "itemIndex": 38,
+      "response": {
+        "uuid": "6a308858-fac2-444e-afd0-f76befa6b349",
+        "createdAt": "2026-08-16T15:28:19.199",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": "",
+          "color": "",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39b5-458c-b826-7cb48f194a57",
+      "title": "Oil leak detection at all seals and fittings",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 39,
+      "response": {
+        "uuid": "bff7a4c5-c21e-464b-9e03-e05ed5977f59",
+        "createdAt": "2026-08-16T15:28:19.199",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.716Z",
+          "updated_at": "2026-08-13T19:08:43.716Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.716Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.716Z",
+          "updated_at": "2026-08-13T19:08:43.716Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39b6-4acc-81ac-ce6484e0a2d5",
+      "title": "Vibration level assessment",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 40,
+      "response": {
+        "uuid": "59647ce2-5481-474f-9157-8e797ddd7ac4",
+        "createdAt": "2026-08-16T15:28:19.199",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.716Z",
+          "updated_at": "2026-08-13T19:08:43.716Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.716Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.716Z",
+          "updated_at": "2026-08-13T19:08:43.716Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39b8-4cc5-9e45-438f7c1d16b1",
+      "title": "Drive belt tension and alignment",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 41,
+      "response": {
+        "uuid": "66234f12-b571-43d5-a31c-7e79b1111966",
+        "createdAt": "2026-08-16T15:28:19.199",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.717Z",
+          "updated_at": "2026-08-13T19:08:43.717Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.717Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.717Z",
+          "updated_at": "2026-08-13T19:08:43.717Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39b9-43d8-b6d7-690260f21850",
+      "title": "Drive belt condition details",
+      "type": "textAnswer",
+      "isNew": false,
+      "itemIndex": 42,
+      "response": {
+        "uuid": "918628ae-c96e-4d49-bc36-93aa0ed4fcf8",
+        "createdAt": "2026-08-16T15:28:19.199",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": "",
+          "color": "",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39bb-4ec5-83b3-250bcc2e1705",
+      "title": "Safety valve operational verification",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 43,
+      "response": {
+        "uuid": "ed4a77b6-005d-4a5d-b097-651fae30f2af",
+        "createdAt": "2026-08-16T15:28:19.199",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.717Z",
+          "updated_at": "2026-08-13T19:08:43.717Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.717Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.717Z",
+          "updated_at": "2026-08-13T19:08:43.717Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39bd-45a7-af9e-7fc42cdd6431",
+      "title": "Safety valve pressure setting",
+      "type": "number",
+      "isNew": false,
+      "itemIndex": 44,
+      "response": {
+        "uuid": "a924ef51-3e9a-471e-9810-93891cfaa7d7",
+        "createdAt": "2026-08-16T15:28:19.199",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": "",
+          "realValue": null,
+          "color": "",
+          "unit": "PSI",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39be-4b62-8ebb-7eef6024fa52",
+      "title": "Safety valve flow capacity",
+      "type": "number",
+      "isNew": false,
+      "itemIndex": 45,
+      "response": {
+        "uuid": "eac347d3-04b0-4976-ae0c-b6773c235488",
+        "createdAt": "2026-08-16T15:28:19.200",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": "",
+          "realValue": null,
+          "color": "",
+          "unit": "CFM",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39c0-4d2f-be61-be28a4a65b0b",
+      "title": "Pressure regulation system status",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 46,
+      "response": {
+        "uuid": "d6d27e90-bc05-41de-bb31-e656af2de4d4",
+        "createdAt": "2026-08-16T15:28:19.200",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.717Z",
+          "updated_at": "2026-08-13T19:08:43.717Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.717Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.717Z",
+          "updated_at": "2026-08-13T19:08:43.717Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39c2-4b1e-a317-bf9ba4669c1a",
+      "title": "Regulator filter element condition",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 47,
+      "response": {
+        "uuid": "87d697ac-7796-49af-aa6d-c9cb9ac7b189",
+        "createdAt": "2026-08-16T15:28:19.200",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.717Z",
+          "updated_at": "2026-08-13T19:08:43.717Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.717Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.717Z",
+          "updated_at": "2026-08-13T19:08:43.717Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39c3-4895-9fd4-ef70d827d958",
+      "title": "Coolant type specification",
+      "type": "textAnswer",
+      "isNew": false,
+      "itemIndex": 48,
+      "response": {
+        "uuid": "3f37a6ec-2017-4d60-a11a-8d7c4e5ec93c",
+        "createdAt": "2026-08-16T15:28:19.200",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": "",
+          "color": "",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39c5-49e8-9ccb-84fcc0c971a6",
+      "title": "Coolant replacement performed",
+      "type": "yesno",
+      "isNew": false,
+      "itemIndex": 49,
+      "response": {
+        "uuid": "4044e1dd-6d42-4112-a9ec-77d663a3375e",
+        "createdAt": "2026-08-16T15:28:19.200",
+        "updatedAt": "2026-09-01T13:03:00.705Z",
+        "userId": 18,
+        "isAnswered": true,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.718Z",
+          "updated_at": "2026-09-01T13:03:00.389Z",
+          "value": {
+            "id": "9df04faa-15da-46f6-8553-37ee22667861",
+            "created_at": "2026-08-16T12:28:19.233Z",
+            "updated_at": "2026-08-16T12:28:19.233Z",
+            "uuid": "8eb07b80-c2a9-4c18-a250-f7d08964225e",
+            "label": "No",
+            "score": 0,
+            "color": "198,0,34",
+            "enable_score": false,
+            "failed": false,
+            "rate": null,
+            "global_option_id": null
+          },
+          "answered_by": "18",
+          "answered_at": "2026-09-01T13:03:00.389Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 0
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.718Z",
+          "updated_at": "2026-08-13T19:08:43.718Z",
+          "answer": true,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39c7-4f1c-bc67-f6377f8d8e8d",
+      "title": "Intercooler and aftercooler cleaning completed",
+      "type": "yesno",
+      "isNew": false,
+      "itemIndex": 50,
+      "response": {
+        "uuid": "a6d88904-84a2-4e84-ac6d-d13eb83fdd7b",
+        "createdAt": "2026-08-16T15:28:19.200",
+        "updatedAt": "2026-09-02T09:33:27.335Z",
+        "userId": 18,
+        "isAnswered": true,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.718Z",
+          "updated_at": "2026-09-02T09:33:27.029Z",
+          "value": {
+            "id": "9c184a6f-81ce-4934-87af-da15357e9f42",
+            "created_at": "2026-08-16T12:28:19.233Z",
+            "updated_at": "2026-08-16T12:28:19.233Z",
+            "uuid": "145b06ea-75cc-4910-b657-68f0374a6384",
+            "label": "Yes",
+            "score": 0,
+            "color": "19,133,95",
+            "enable_score": false,
+            "failed": false,
+            "rate": null,
+            "global_option_id": null
+          },
+          "answered_by": "18",
+          "answered_at": "2026-09-02T09:33:27.029Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 0
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.718Z",
+          "updated_at": "2026-08-13T19:08:43.718Z",
+          "answer": true,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39c8-4170-88d2-32042ae05145",
+      "title": "Online/offline pressure switch calibration",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 51,
+      "response": {
+        "uuid": "34a67b60-417a-4477-bed1-ec1012106e1a",
+        "createdAt": "2026-08-16T15:28:19.200",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.718Z",
+          "updated_at": "2026-08-13T19:08:43.718Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.718Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.718Z",
+          "updated_at": "2026-08-13T19:08:43.718Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39ca-4bc8-995d-85e6cbdf1507",
+      "title": "Compressed air line filters inspection",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 52,
+      "response": {
+        "uuid": "4f9623ba-7084-446c-a77f-1a82dbd04d50",
+        "createdAt": "2026-08-16T15:28:19.200",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.719Z",
+          "updated_at": "2026-08-13T19:08:43.719Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.719Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.719Z",
+          "updated_at": "2026-08-13T19:08:43.719Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39cb-4f94-ad39-832f8cc8bf12",
+      "title": "System-wide air leak detection",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 53,
+      "response": {
+        "uuid": "9aa2cf43-8fbb-412d-a4d4-bef703992038",
+        "createdAt": "2026-08-16T15:28:19.200",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.719Z",
+          "updated_at": "2026-08-13T19:08:43.719Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.719Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.719Z",
+          "updated_at": "2026-08-13T19:08:43.719Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39cd-49d4-8275-8cc63eaa19c3",
+      "title": "Air dryer blow-out maintenance",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 54,
+      "response": {
+        "uuid": "a0189759-031b-43e5-a514-1156854b24e6",
+        "createdAt": "2026-08-16T15:28:19.200",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.719Z",
+          "updated_at": "2026-08-13T19:08:43.719Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.719Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.719Z",
+          "updated_at": "2026-08-13T19:08:43.719Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39cf-40fc-935b-1b180e47e97f",
+      "title": "Belt guard security and integrity",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 55,
+      "response": {
+        "uuid": "9f6a7d4c-5e9d-4978-8afd-f60269203b1a",
+        "createdAt": "2026-08-16T15:28:19.200",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.720Z",
+          "updated_at": "2026-08-13T19:08:43.720Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.720Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.720Z",
+          "updated_at": "2026-08-13T19:08:43.720Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39d0-4a14-869b-676d544826f4",
+      "title": "Pressure switch functionality test",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 56,
+      "response": {
+        "uuid": "2a9525a5-3075-4f0f-890e-aff9f34ffc2c",
+        "createdAt": "2026-08-16T15:28:19.201",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.720Z",
+          "updated_at": "2026-08-13T19:08:43.720Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.720Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.720Z",
+          "updated_at": "2026-08-13T19:08:43.720Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39d2-4017-a86f-af50b32eac45",
+      "title": "Condensate drain valve inspection",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 57,
+      "response": {
+        "uuid": "8e5ded69-8d7b-469c-8a88-c5940b3577de",
+        "createdAt": "2026-08-16T15:28:19.201",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.721Z",
+          "updated_at": "2026-08-13T19:08:43.721Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.721Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.721Z",
+          "updated_at": "2026-08-13T19:08:43.721Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39d3-4a4f-ba4c-d0f00c87c84c",
+      "title": "Oil/water separator element condition",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 58,
+      "response": {
+        "uuid": "bf233df6-deb1-45ee-9f53-2ce1d58ad37e",
+        "createdAt": "2026-08-16T15:28:19.201",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.721Z",
+          "updated_at": "2026-08-13T19:08:43.721Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.721Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.721Z",
+          "updated_at": "2026-08-13T19:08:43.721Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39d5-4193-b4bc-75ce64c49357",
+      "title": "Compressor unit exterior cleaning",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 59,
+      "response": {
+        "uuid": "a0569bc2-188d-40c1-9df9-e46aaf7047ca",
+        "createdAt": "2026-08-16T15:28:19.201",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.721Z",
+          "updated_at": "2026-08-13T19:08:43.721Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.721Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.721Z",
+          "updated_at": "2026-08-13T19:08:43.721Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39d6-42b8-a852-13c1aa170abf",
+      "title": "Overall compressor mechanical condition rating",
+      "type": "slider",
+      "isNew": false,
+      "itemIndex": 60,
+      "response": {
+        "uuid": "f7c992e9-cf33-46af-a781-8d434b8463e2",
+        "createdAt": "2026-08-16T15:28:19.201",
+        "updatedAt": "2026-08-16T12:28:37.797Z",
+        "userId": 18,
+        "isAnswered": true,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-16T12:28:37.490Z",
+          "value": "9",
+          "realValue": 9,
+          "color": "",
+          "unit": "",
+          "answered_by": "18",
+          "answered_at": "2026-08-16T12:28:37.490Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39d8-4582-99e2-e52e882b672b",
+      "title": "Electrical System Inspection",
+      "type": "section",
+      "isNew": false,
+      "itemIndex": 61,
+      "response": {
+        "uuid": "0f295dd1-b777-4491-a2db-8a0447e037b6",
+        "createdAt": "2026-08-16T15:28:19.201",
+        "updatedAt": "2026-08-16T13:21:50.561Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": null,
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 3
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39d9-48a0-824b-d9d0d877a2e6",
+      "title": "Operating voltage",
+      "type": "number",
+      "isNew": false,
+      "itemIndex": 62,
+      "response": {
+        "uuid": "a8c0a885-166a-472f-91ce-ba8ae0623411",
+        "createdAt": "2026-08-16T15:28:19.201",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": "",
+          "realValue": null,
+          "color": "",
+          "unit": "V",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39dc-403a-87dc-65df9dcbdbf8",
+      "title": "Amperage draw",
+      "type": "number",
+      "isNew": false,
+      "itemIndex": 63,
+      "response": {
+        "uuid": "c61f31d3-59f9-4530-bdc4-bd745f06d167",
+        "createdAt": "2026-08-16T15:28:19.201",
+        "updatedAt": "2026-08-16T13:21:51.003Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-16T13:21:50.698Z",
+          "value": "",
+          "realValue": null,
+          "color": "",
+          "unit": "A",
+          "answered_by": "18",
+          "answered_at": "2026-08-16T13:21:50.698Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39de-45c4-8aa4-66fecbe2cb16",
+      "title": "Voltage drop measurement",
+      "type": "number",
+      "isNew": false,
+      "itemIndex": 64,
+      "response": {
+        "uuid": "4bb3e0e9-674f-4908-a9b6-89d57f047489",
+        "createdAt": "2026-08-16T15:28:19.201",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": "",
+          "realValue": null,
+          "color": "",
+          "unit": "V",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39df-41e6-b578-a55db808d886",
+      "title": "Total package amps at full load",
+      "type": "number",
+      "isNew": false,
+      "itemIndex": 65,
+      "response": {
+        "uuid": "587a58ba-36d3-40dc-9a81-54188e1005a7",
+        "createdAt": "2026-08-16T15:28:19.201",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": "",
+          "realValue": null,
+          "color": "",
+          "unit": "A",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39e1-4676-95f7-d5ae880c3a14",
+      "title": "Electrical contactors inspection",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 66,
+      "response": {
+        "uuid": "50906c8e-5fa6-419c-b7d3-f001ef749399",
+        "createdAt": "2026-08-16T15:28:19.202",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.721Z",
+          "updated_at": "2026-08-13T19:08:43.721Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.721Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.721Z",
+          "updated_at": "2026-08-13T19:08:43.721Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39e3-45b1-8542-eb58e8f6f0ba",
+      "title": "Electrical connections and wiring integrity",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 67,
+      "response": {
+        "uuid": "87d8c522-b6f1-4c59-b72d-816c6dbee821",
+        "createdAt": "2026-08-16T15:28:19.202",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.721Z",
+          "updated_at": "2026-08-13T19:08:43.721Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.721Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.721Z",
+          "updated_at": "2026-08-13T19:08:43.721Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39e4-4008-bc9f-39eba3085770",
+      "title": "Duty cycle performance test",
+      "type": "list",
+      "isNew": false,
+      "itemIndex": 68,
+      "response": {
+        "uuid": "6749793e-00aa-42a2-b5e6-4088fda12bcd",
+        "createdAt": "2026-08-16T15:28:19.202",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.722Z",
+          "updated_at": "2026-08-13T19:08:43.722Z",
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.722Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": 0,
+        "points": {
+          "points": 0,
+          "max_points": 1
+        },
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.722Z",
+          "updated_at": "2026-08-13T19:08:43.722Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39e6-4213-8cc4-7a3780b6f88d",
+      "title": "Additional maintenance observations and corrective actions",
+      "type": "longText",
+      "isNew": false,
+      "itemIndex": 69,
+      "response": {
+        "uuid": "e43ec12b-2af6-4adb-8ce1-66aa5b554023",
+        "createdAt": "2026-08-16T15:28:19.202",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": "",
+          "color": "",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39e8-452d-8232-6b9aa086085d",
+      "title": "End Page",
+      "type": "end_page",
+      "isNew": false,
+      "itemIndex": 70,
+      "response": {
+        "uuid": "420886c2-3790-4055-a4e1-eb9753cf5d7a",
+        "createdAt": "2026-08-16T15:28:19.202",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": null,
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39e9-4168-bc36-117fecb8e1ee",
+      "title": "Signature",
+      "type": "signature",
+      "isNew": false,
+      "itemIndex": 71,
+      "response": {
+        "uuid": "39567659-7108-434f-97d2-ad6c1d10cf72",
+        "createdAt": "2026-08-16T15:28:19.202",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "multi": false,
+          "value": null,
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    },
+    {
+      "itemUuid": "a27e9e9f-39eb-436c-b0d0-65f87af8fe2c",
+      "title": "Finished At",
+      "type": "inspection_end_date",
+      "isNew": false,
+      "itemIndex": 72,
+      "response": {
+        "uuid": "edaca830-231d-482a-b13d-b331d1b5fd92",
+        "createdAt": "2026-08-16T15:28:19.202",
+        "updatedAt": "2026-08-13T19:08:43.000Z",
+        "userId": 18,
+        "isAnswered": false,
+        "answer": {
+          "created_at": "2026-08-13T19:08:43.710Z",
+          "updated_at": "2026-08-13T19:08:43.710Z",
+          "value": "",
+          "realValue": null,
+          "utc_real": null,
+          "formatType": "year_month_day_hour_minute",
+          "color": "",
+          "answered_by": "auto",
+          "answered_at": "2026-08-13T19:08:43.711Z"
+        },
+        "note": "",
+        "isDeleted": false,
+        "isVisible": true,
+        "isDisabled": false,
+        "score": null,
+        "points": null,
+        "isFailed": false,
+        "requirement": {
+          "created_at": "2026-08-13T19:08:43.711Z",
+          "updated_at": "2026-08-13T19:08:43.711Z",
+          "answer": false,
+          "note": false,
+          "media": false,
+          "actions": []
+        },
+        "numbering": "",
+        "issues": [],
+        "excludeReport": false,
+        "deleteReason": "",
+        "ratingId": null
+      }
+    }
+  ],
+  "_display": {
+    "kind": "checklist_context",
+    "title": "Reciprocating Air Compressor Preventive Maintenance Checklist",
+    "summary": {
+      "itemCount": 73,
+      "score": 0,
+      "responseAt": "2026-09-01T15:10:18.755Z"
+    }
+  }
+}

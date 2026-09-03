@@ -2,6 +2,7 @@ import React from 'react';
 const { useState, useRef, useEffect, useCallback, useImperativeHandle } = React;
 import './Composer.css';
 import { AttachedFile } from '../../api/types';
+import { netFetch } from '../../common/localNetwork';
 import { EnablableTool } from '../../api/GatewayStreamClient';
 import { ToolToggles, hasRunnableTools } from '../ToolToggles/ToolToggles';
 
@@ -140,7 +141,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
             const formData = new FormData();
             formData.append('file', file);
 
-            const response = await fetch(`${storageApiUrl}/api/v1/attachments/upload`, {
+            const response = await netFetch(`${storageApiUrl}/api/v1/attachments/upload`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${accessToken}` },
                 body: formData,

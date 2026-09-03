@@ -1,4 +1,5 @@
 import { ConversationDetail, ConversationListResponse } from './types';
+import { netFetch } from '../common/localNetwork';
 
 interface ApiResponse<T> {
     code: string;
@@ -20,7 +21,7 @@ export class ConversationClient {
     }
 
     private async _fetch<T>(path: string): Promise<T> {
-        const resp = await fetch(`${this.gatewayUrl}${path}`, {
+        const resp = await netFetch(`${this.gatewayUrl}${path}`, {
             headers: {
                 'Authorization': `Bearer ${this.token ?? ''}`,
                 'Content-Type': 'application/json',

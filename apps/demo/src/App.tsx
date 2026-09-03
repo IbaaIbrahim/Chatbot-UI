@@ -6,14 +6,20 @@ import {
     ChatMode,
     ChatTheme,
     AgentSidebarItem,
-    ExternalToolConfig,
-    ToolActionConfig,
+    ToolConfig,
 } from '@chatbot-ui/core'
+import data from './data.json'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
 const STORAGE_API_BASE_URL = import.meta.env.VITE_STORAGE_API_BASE_URL || 'http://localhost:8003';
 const STATIC_TOKEN = import.meta.env.VITE_ACCESS_TOKEN || '';
 const MODEL_ID = import.meta.env.VITE_MODEL_ID || 'gpt-5-mini';
+// Opt in to reaching a loopback / private-network API (the localhost defaults
+// above). Chromium 142+ gates that behind the Local Network Access permission —
+// on Android, "Access other apps and services on this device". Read here in the
+// host app rather than inside the library: the library ships pre-bundled, so a
+// VITE_ variable there would freeze at library-publish time.
+const ALLOW_LOCAL_NETWORK_ACCESS = import.meta.env.VITE_ALLOW_LOCAL_NETWORK_ACCESS === 'true';
 
 // Stands in for whatever the host application's routes and records actually are.
 // `read_page_context` reports the current one and `navigate_app_route` moves
@@ -47,7 +53,7 @@ function App() {
     // The app's own "current screen", read by read_page_context and changed by
     // navigate_app_route.
     const [demoRoute, setDemoRoute] = useState('/dashboard');
-    // Last checklist a result previewer handed us. See `resultPreviewers` below.
+    // Last checklist the `generate_checklist` preview handed us. See `tools` below.
     const [checklistPreview, setChecklistPreview] = useState<any>(null);
 
     // --- Client tool: get_frontend_context -----------------------------------
@@ -174,11 +180,28 @@ function App() {
         };
     }, []);
 
-    // Client-side tools passed to the chat app. Entries WITH a `definition` are
-    // advertised to the agent via the `client_tools` channel on each job; entries
-    // WITHOUT one are backend-registered tools whose schema already exists in
-    // `quota.tools` and which we are only supplying the local handler for.
-    const externalTools = useMemo<Record<string, ExternalToolConfig>>(() => ({
+    // Everything this app contributes to a tool, keyed by slug. One entry per
+    // tool: its handler, its schema if it has no backend row, and how its
+    // completed step presents an action.
+    //
+    // The handler field says which end of the call the entry takes, and an entry
+    // may carry only one of them:
+    //
+    //  - `run`     — a `client`-dispatch tool. Fires with the agent's
+    //                `tool_input`; what it returns resumes the suspended job.
+    //  - `preview` — a `kafka`/`inline` tool. Fires with the worker's output.
+    //
+    // `generate_checklist` below is the case that used to be easy to get wrong:
+    // it runs in a worker, so it never emits `client_tool_call` and a `run`
+    // registered for it would never fire — it would be handed the arguments the
+    // model invented instead of the checklist it produced. That is now a type
+    // error rather than a silent no-op.
+    //
+    // Entries WITH a `definition` are advertised to the agent via the
+    // `client_tools` channel on each job; entries WITHOUT one are
+    // backend-registered tools whose schema already exists in `quota.tools` and
+    // which we are only supplying the local handler for.
+    const tools = useMemo<Record<string, ToolConfig>>(() => ({
         // get_frontend_context: {
         //     definition: {
         //         description:
@@ -200,7 +223,7 @@ function App() {
         //             required: ['prompt'],
         //         },
         //     },
-        //     callback: requestFrontendContext,
+        //     run: requestFrontendContext,
         // },
         // query_customer_api: {
         //     definition: {
@@ -224,56 +247,52 @@ function App() {
         //         // execution profile for this instead (see frontend_bridge).
         //         requires_approval: true,
         //     },
-        //     callback: queryCustomerApi,
+        //     run: queryCustomerApi,
+        //     show: false,
         // },
-        // Backend-registered — deliberately no `definition`.
-        read_page_context: { callback: readPageContext },
-        capture_page_screenshot: { callback: capturePageScreenshot },
-        navigate_app_route: { callback: navigateAppRoute },
-    }), [
-        // requestFrontendContext,
-        // queryCustomerApi,
-        readPageContext,
-        capturePageScreenshot,
-        navigateAppRoute,
-    ]);
 
-    // --- Result previewers: server tool OUTPUT ------------------------------
-    // Not the same channel as `external_tools`, and not interchangeable with it.
-    // `generate_checklist` is a `kafka` tool: it runs in a worker, so it never
-    // emits `client_tool_call` and can never reach an external-tool callback.
-    // Its result arrives on `tool_result`, which is what a previewer subscribes
-    // to — registering it above would hand us the arguments the model invented
-    // instead of the checklist it produced.
-    const resultPreviewers = useMemo(() => ({
-        generate_checklist: (checklist: any) => setChecklistPreview(checklist),
-    }), []);
+        // Silent data tools, backend-registered (deliberately no `definition`):
+        // they hand a value to the agent and that is the whole interaction. A
+        // button would invite the user to re-run something with no visible
+        // effect, which is what `show: false` says.
+        read_page_context: { run: readPageContext, show: false },
+        capture_page_screenshot: { run: capturePageScreenshot, show: false },
+        navigate_app_route: { run: navigateAppRoute, show: false },
 
-    // --- Action presentation, per tool -------------------------------------
-    // Registering a handler is what makes a tool *work*; this is what decides
-    // whether its completed step offers a button. The two are separate because
-    // they answer different questions — the three bridge tools below all need
-    // handlers, and none of them has anything a user would re-open.
-    const toolActions = useMemo<Record<string, ToolActionConfig>>(() => ({
-        // Silent data tools: they hand a value to the agent and that is the whole
-        // interaction. A button here would invite the user to re-run something
-        // with no visible effect.
-        read_page_context: { show: false },
-        capture_page_screenshot: { show: false },
-        navigate_app_route: { show: false },
-        // query_customer_api: { show: false },
-
+        // `preview`, not `run`: a `kafka` tool runs in a worker and we only ever
+        // see its output, which arrives on `tool_result`.
+        //
+        // `autoRun: false` keeps it from opening itself the moment the result
+        // lands. A checklist is only worth looking at finished and the parent
+        // agent is still summarising it when the tool returns; without this the
+        // preview panel opens mid-turn, and re-opening a finished conversation
+        // opens it again, because the once-per-step guard cannot survive a page
+        // load.
+        //
+        // Hoisted to the end of the turn, and only once the turn is done. Both
+        // halves matter: the Checklist Assistant delegates this call to a
+        // sub-agent, so the step renders inside a block that is collapsed by
+        // default and a button in there would never be found.
+        //
         // A custom control instead of the built-in button. `payload` is the
         // checklist itself, so the label can name what it will open rather than
         // saying "Open Result" for everything.
-        //
-        // Hoisted to the end of the turn, and only once the turn is done. Both
-        // halves matter here: the Checklist Assistant delegates this call to a
-        // sub-agent, so the step renders inside a block that is collapsed by
-        // default and a button there would never be found — and a checklist is
-        // only worth opening finished, since the parent agent is still
-        // summarising it when the tool returns.
+        get_checklist_context: {
+            run: () => {
+                return data;
+            },
+            definition: {
+                description: "Returns the full current checklist state including all items, their types, answers, and metadata. Always call this first to understand what items exist.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                },
+                requires_approval: false
+            }
+        },
         generate_checklist: {
+            preview: (checklist: any) => setChecklistPreview(checklist),
+            autoRun: false,
             placement: 'turn-end',
             render: ({ onAction, payload }) => (
                 <button
@@ -294,7 +313,13 @@ function App() {
                 </button>
             ),
         },
-    }), []);
+    }), [
+        // requestFrontendContext,
+        // queryCustomerApi,
+        readPageContext,
+        capturePageScreenshot,
+        navigateAppRoute,
+    ]);
 
     const buildClient = useCallback((token: string) => {
         const c = new GatewayStreamClient({ gatewayUrl: API_BASE_URL, token: token || undefined, modelId: MODEL_ID });
@@ -554,14 +579,13 @@ function App() {
                         onOpen={() => setIsOpen(true)}
                         userName="Ibaa"
                         storageApiUrl={STORAGE_API_BASE_URL}
+                        allowLocalNetworkAccess={ALLOW_LOCAL_NETWORK_ACCESS}
                         accessToken={STATIC_TOKEN || null}
                         agents={agentItems}
                         agentId={activeAgentId}
                         agentsLoading={Boolean(STATIC_TOKEN) && !agentsResolved}
                         theme={theme}
-                        external_tools={externalTools}
-                        result_previewers={resultPreviewers}
-                        tool_actions={toolActions}
+                        tools={tools}
                     />
                 </>
             ) : (
@@ -577,14 +601,13 @@ function App() {
                         onOpen={() => setIsOpen(true)}
                         userName="Ibaa"
                         storageApiUrl={STORAGE_API_BASE_URL}
+                        allowLocalNetworkAccess={ALLOW_LOCAL_NETWORK_ACCESS}
                         accessToken={STATIC_TOKEN || null}
                         agents={agentItems}
                         agentId={activeAgentId}
                         agentsLoading={Boolean(STATIC_TOKEN) && !agentsResolved}
                         theme={theme}
-                        external_tools={externalTools}
-                        result_previewers={resultPreviewers}
-                        tool_actions={toolActions}
+                        tools={tools}
                     />
                 </div>
             )}

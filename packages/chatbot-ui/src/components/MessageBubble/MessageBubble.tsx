@@ -3,12 +3,9 @@ import ReactDOM from 'react-dom';
 const { useState, useEffect, useRef, useCallback } = React;
 import './MessageBubble.css';
 import { parseToolOutput } from '../../api/toolOutput';
-import {
-    ToolInvocation,
-    ToolActionConfig,
-    ToolActionControl,
-    ToolActionPlacement,
-} from '../ToolInvocation/ToolInvocation';
+import { netFetch } from '../../common/localNetwork';
+import { ToolInvocation, ToolActionControl } from '../ToolInvocation/ToolInvocation';
+import type { ToolActionPlacement, ToolConfig, ToolPresentation } from '../../common/toolConfig';
 import { ConfirmButtons, ConfirmStatus } from '../ConfirmButtons/ConfirmButtons';
 import { AuthenticatedImage } from '../AuthenticatedImage/AuthenticatedImage';
 import { BlinkingIndicator } from '../BlinkingIndicator/BlinkingIndicator';
@@ -110,29 +107,19 @@ export interface MessageProps {
      */
     senderName?: string;
     /**
-     * Client-tool handlers, keyed by tool slug. A matching ``tool-call`` step
-     * renders an action button that re-fires the handler with the step's
-     * **arguments** — what a ``dispatch_mode='client'`` tool acts on.
-     */
-    onToolCall?: Record<string, (data: any) => Promise<any> | void>;
-    /**
-     * Server-tool output handlers, keyed by tool slug. A matching ``tool-call``
-     * step renders an action button that re-fires the handler with the step's
-     * **result** — what a ``kafka``/``inline`` tool produced. Kept separate from
-     * {@link onToolCall} because the payload differs, not just the timing.
-     */
-    onToolPreview?: Record<
-        string,
-        (output: any, context: { step_uuid: string }) => Promise<void> | void
-    >;
-    /**
-     * How each tool's completed step presents its action, keyed by slug.
+     * Per-tool handlers and presentation, keyed by tool slug.
      *
-     * Applies to both handler channels above: having a handler is what makes an
-     * action possible, this is what decides whether it is offered and what it
-     * looks like. A slug with no entry keeps the default button.
+     * A matching ``tool-call`` step renders an action control that re-fires the
+     * entry's handler. Which handler the entry carries decides the payload: a
+     * ``run`` entry is replayed with the step's **arguments**, what a
+     * ``dispatch_mode='client'`` tool acts on; a ``preview`` entry with the
+     * step's **result**, what a ``kafka``/``inline`` tool produced.
+     *
+     * Having a handler is what makes an action possible; the entry's
+     * presentation fields decide whether it is offered and what it looks like.
+     * A slug with no entry gets no control.
      */
-    toolActions?: Record<string, ToolActionConfig>;
+    tools?: Record<string, ToolConfig>;
     /** Re-send the turn that failed before producing anything. */
     onRetry?: () => void;
     /** Pick up a turn that produced output and then stopped. */
@@ -234,7 +221,7 @@ const AttachmentViewerModal: React.FC<{
 
                 const ct = attachment.contentType ?? '';
                 if (ct.startsWith('text/') || ct === 'text/csv') {
-                    const text = await fetch(url).then(r => r.text());
+                    const text = await netFetch(url).then(r => r.text());
                     if (cancelled) return;
                     setTextContent(text);
                 }
@@ -620,11 +607,11 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                                 }
 
                                 if (step.type === 'tool-call') {
-                                    // Which registry a slug is in decides the payload:
-                                    // a client tool is replayed with its input, a
-                                    // previewed server tool with its result. Resolved
-                                    // by the same function the hoisted row uses, so the
-                                    // two can never disagree about that.
+                                    // Which handler the entry carries decides the
+                                    // payload: a `run` tool is replayed with its
+                                    // input, a `preview` tool with its result.
+                                    // Resolved by the same function the hoisted row
+                                    // uses, so the two can never disagree about that.
                                     const resolved = resolveStepAction(step, props);
                                     // A control placed at turn level is deliberately
                                     // absent here — hoisting means moving it, not
@@ -784,7 +771,7 @@ interface ResolvedStepAction {
     onAction: (data: any) => void;
     payload: any;
     label: string;
-    render?: ToolActionConfig['render'];
+    render?: ToolPresentation['render'];
     placement: ToolActionPlacement;
 }
 
@@ -799,25 +786,36 @@ interface ResolvedStepAction {
  */
 function resolveStepAction(
     step: MessageStep,
-    handlers: Pick<MessageProps, 'onToolCall' | 'onToolPreview' | 'toolActions'>,
+    handlers: Pick<MessageProps, 'tools'>,
 ): ResolvedStepAction | null {
     if (step.type !== 'tool-call' || !step.toolName) return null;
 
-    const config = handlers.toolActions?.[step.toolName];
-    if (config?.show === false) return null;
+    const config = handlers.tools?.[step.toolName];
+    if (!config || config.show === false) return null;
 
-    const previewHandler = handlers.onToolPreview?.[step.toolName];
-    const clientHandler = handlers.onToolCall?.[step.toolName];
-
+    // Which half of the union the entry is decides the payload, and an entry can
+    // only be one of them — so unlike the three maps this replaced, there is no
+    // precedence rule here for a slug to fall on the wrong side of.
+    //
+    // Tested by truthiness rather than `'preview' in config`: the opposite
+    // variant declares the key as `?: never`, so `in` narrows nothing. See
+    // isClientTool in common/toolConfig.
+    const toolName = step.toolName;
     let onAction: ((data: any) => void) | undefined;
     let rawPayload: any;
     let label = 'Open Result';
-    if (previewHandler) {
-        onAction = (data) => { void previewHandler(data, { step_uuid: step.id }); };
+    if (config.preview) {
+        const preview = config.preview;
+        onAction = (data) => {
+            void preview(data, { tool_slug: toolName, step_uuid: step.id, status: 'completed' });
+        };
         rawPayload = step.toolResult;
         label = 'Open Preview';
-    } else if (clientHandler) {
-        onAction = (data) => { void clientHandler(data); };
+    } else if (config.run) {
+        const run = config.run;
+        onAction = (data) => {
+            void run(data, { tool_slug: toolName, step_uuid: step.id });
+        };
         rawPayload = step.toolArgs;
     }
     if (!onAction) return null;
@@ -835,9 +833,9 @@ function resolveStepAction(
         step,
         onAction,
         payload,
-        label: config?.label ?? label,
-        render: config?.render,
-        placement: config?.placement ?? 'step',
+        label: config.label ?? label,
+        render: config.render,
+        placement: config.placement ?? 'step',
     };
 }
 
@@ -852,7 +850,7 @@ function resolveStepAction(
  */
 function collectHoistedActions(
     steps: MessageStep[],
-    handlers: Pick<MessageProps, 'onToolCall' | 'onToolPreview' | 'toolActions'>,
+    handlers: Pick<MessageProps, 'tools'>,
     isTurnComplete: boolean,
 ): ResolvedStepAction[] {
     const found: ResolvedStepAction[] = [];
@@ -874,7 +872,7 @@ const SubAgentBlock = ({
     handlers,
 }: {
     step: MessageStep;
-    handlers: Pick<MessageProps, 'onToolCall' | 'onToolPreview' | 'toolActions'>;
+    handlers: Pick<MessageProps, 'tools'>;
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const isRunning = step.toolStatus === 'running';
@@ -950,11 +948,9 @@ const SubAgentBlock = ({
                         shouldAnimate={false}
                         embedded
                         // Forwarded so a nested step can render its own control
-                        // when its placement is `'step'`. Without these a tool a
+                        // when its placement is `'step'`. Without this a tool a
                         // sub-agent called had no button at all, at any depth.
-                        onToolCall={handlers.onToolCall}
-                        onToolPreview={handlers.onToolPreview}
-                        toolActions={handlers.toolActions}
+                        tools={handlers.tools}
                     />
 
                     {step.content && (

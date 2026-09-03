@@ -1,3 +1,5 @@
+import { netFetch } from '../common/localNetwork';
+
 export interface StreamEvent {
     type: string;
     data: any;
@@ -110,7 +112,7 @@ export class StreamClient {
     ): Promise<void> {
         let response: Response;
         try {
-            response = await fetch(this.config.baseUrl, {
+            response = await netFetch(this.config.baseUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

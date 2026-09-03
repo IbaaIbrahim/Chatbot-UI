@@ -7,6 +7,8 @@
  * assumes a particular auth mechanism.
  */
 
+import { netFetch } from '../common/localNetwork';
+
 const DEFAULT_BROKER_URL = import.meta.env.VITE_AUTH_BROKER_URL || "";
 
 /** A user session as returned by register / login / refresh. */
@@ -56,7 +58,7 @@ export class AuthClient {
     }
 
     private static async post<T>(path: string, body: unknown): Promise<T> {
-        const response = await fetch(`${this.brokerUrl}/api/v1${path}`, {
+        const response = await netFetch(`${this.brokerUrl}/api/v1${path}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
@@ -94,7 +96,7 @@ export class AuthClient {
 
     /** Fetch the persona onboarding survey. */
     static async getPersonaQuestions(): Promise<PersonaQuestion[]> {
-        const response = await fetch(`${this.brokerUrl}/api/v1/persona/questions`);
+        const response = await netFetch(`${this.brokerUrl}/api/v1/persona/questions`);
         if (!response.ok) {
             throw new Error(`Failed to load persona questions: ${response.status}`);
         }

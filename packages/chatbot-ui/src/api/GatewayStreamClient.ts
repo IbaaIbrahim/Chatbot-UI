@@ -3,6 +3,14 @@ import { ConversationClient } from './ConversationClient';
 import { ConversationDetail, ConversationListResponse } from './types';
 import { parseToolOutput } from './toolOutput';
 import { createUuid } from '../common/uuid';
+import { netFetch } from '../common/localNetwork';
+import { isClientTool, isServerTool } from '../common/toolConfig';
+import type { ClientToolConfig, ToolConfig } from '../common/toolConfig';
+
+// The tool contract moved to ../common/toolConfig so that one module owns it
+// end to end; these two are re-exported here because they were part of this
+// module's public surface and nothing else about their meaning changed.
+export type { ClientToolDefinition, ResultPreviewContext } from '../common/toolConfig';
 
 export interface GatewayStreamClientConfig {
     gatewayUrl: string;
@@ -11,59 +19,6 @@ export interface GatewayStreamClientConfig {
     conversationId?: string | null;
     /** Optional chat agent UUID. When set, jobs run under this agent's persona. */
     agentId?: string | null;
-}
-
-/**
- * A dynamic ("bring-your-own") client tool definition sent to the gateway on
- * job creation. The agent sees these like any other tool; there is no backend
- * registration. The registration key (slug) becomes the tool ``name``.
- */
-export interface ClientToolDefinition {
-    /** What the tool does — shown to the model to decide when to call it. */
-    description: string;
-    /** JSON Schema for the tool arguments. Must be ``{ "type": "object", ... }``. */
-    input_schema: Record<string, any>;
-    /**
-     * Ask the user to approve each call before the callback runs (ADR-006).
-     *
-     * The orchestrator holds the call, emits an ``approval_request`` event, and
-     * only dispatches it once the user has agreed — so the callback below never
-     * sees a call the user refused, and needs no confirmation of its own.
-     *
-     * This is how an app gates a tool it declared itself. A **backend-registered**
-     * tool is gated by its execution profile instead, per tenant, in the Admin
-     * Dashboard; setting it here would have nothing to resolve against, because
-     * an app-supplied tool has no ``quota.tools`` row and no policy.
-     *
-     * Turn it on for anything that spends money, reaches a system outside the
-     * platform, or changes what the user is looking at.
-     */
-    requires_approval?: boolean;
-}
-
-/** Callback configuration for a client-side external tool. */
-export interface ExternalToolConfig {
-    /**
-     * Called when the agent invokes this tool.  The ``data`` argument is the
-     * raw ``tool_input`` object from the ``client_tool_call`` SSE event.
-     *
-     * The client awaits the return value before acking the suspended job:
-     *  - Return ``undefined`` (or nothing) for a fire-and-forget side effect
-     *    (e.g. opening a preview modal). The job is acked immediately with a
-     *    ``{ status: 'previewed' }`` placeholder.
-     *  - Return a value — or a Promise that resolves once the user has acted
-     *    (e.g. submitted a form) — to send that value back to the agent as the
-     *    tool result.
-     */
-    callback: (data: any) => any | Promise<any>;
-    /**
-     * Optional inline tool definition. When present it is sent to the gateway
-     * as a dynamic ``client_tools`` entry on each job, so no backend tool row
-     * is required — the agent can call it purely on the strength of this
-     * schema. Omit it for tools already registered in the backend (the
-     * callback still fires on ``client_tool_call``).
-     */
-    definition?: ClientToolDefinition;
 }
 
 /**
@@ -89,43 +44,6 @@ export interface EnablableTool {
      */
     dispatch_mode: string;
 }
-
-/** Where a result previewer's payload came from, for handlers that care. */
-export interface ResultPreviewContext {
-    /** The slug of the tool that produced the output. */
-    tool_slug: string;
-    /** The step this result belongs to — stable across a reload. */
-    step_uuid: string;
-    /** Always ``'completed'`` today; failures are not previewed. */
-    status: string;
-}
-
-/**
- * Handler for the **output** of a server-side (``kafka``/``inline``) tool.
- *
- * This is the counterpart to {@link ExternalToolConfig}, and the two are not
- * interchangeable — they sit on opposite ends of a tool call:
- *
- * | | {@link ExternalToolConfig} | {@link ResultPreviewer} |
- * |---|---|---|
- * | `quota.tools.dispatch_mode` | `client` | `kafka` / `inline` |
- * | SSE event | `client_tool_call` | `tool_result` |
- * | Receives | the agent's ``tool_input`` | the worker's ``tool_output`` |
- * | Return value | posted back to resume the suspended job | ignored |
- *
- * A previewer is read-only: the job never suspends for it, so nothing is
- * waiting on what it returns. Register a server tool in ``external_tools``
- * and its callback is handed the *arguments* the model invented, never the
- * generated result.
- *
- * A JSON-string ``tool_output`` (what a ``BaseTool.execute`` returns) is
- * parsed before the handler sees it; anything unparseable is passed through
- * verbatim.
- */
-export type ResultPreviewer = (
-    output: any,
-    context: ResultPreviewContext,
-) => void | Promise<void>;
 
 /**
  * Where the active conversation + agent are parked so they outlive the client
@@ -334,10 +252,12 @@ export class GatewayStreamClient implements StreamChatClient {
     private agentId: string | null;
     private conversationClient: ConversationClient;
 
-    /** External tool handlers registered by the application. */
-    private externalTools: Record<string, ExternalToolConfig> = {};
-    /** Server-tool output handlers registered by the application. */
-    private resultPreviewers: Record<string, ResultPreviewer> = {};
+    /**
+     * Per-tool handlers and presentation registered by the application, keyed
+     * by tool slug. One map, because one tool has one entry: whether it carries
+     * ``run`` or ``preview`` is what says which end of the call it handles.
+     */
+    private tools: Record<string, ToolConfig> = {};
     /** UUIDs of user-enabled tools switched on for this caller's jobs. */
     private enabledToolIds: string[] = [];
 
@@ -451,7 +371,7 @@ export class GatewayStreamClient implements StreamChatClient {
      */
     async listEnablableTools(agentId?: string | null): Promise<EnablableTool[]> {
         const query = agentId ? `?agent_id=${encodeURIComponent(agentId)}` : '';
-        const response = await fetch(
+        const response = await netFetch(
             `${this.gatewayUrl}/v1/user/tools/enablable${query}`,
             { headers: { 'Authorization': `Bearer ${this.token ?? ''}` } }
         );
@@ -488,41 +408,32 @@ export class GatewayStreamClient implements StreamChatClient {
     }
 
     /**
-     * Register client-side tool handlers.
+     * Register the application's tool handlers, keyed by tool slug.
      *
-     * When the agent calls a ``client``-dispatched tool the orchestrator
-     * emits a ``client_tool_call`` SSE event.  This client looks up the
-     * matching entry here, fires the callback (e.g. opens a modal), and
-     * immediately POSTs an ack to the gateway so the suspended job resumes.
+     * An entry's handler field says which end of the call it takes, because a
+     * host application can only sit on one of them:
      *
-     * Usage:
-     * ```ts
-     * client.setExternalTools({
-     *   preview_property_agent_result: { callback: (data) => openPreview(data) }
-     * });
-     * ```
-     */
-    setExternalTools(tools: Record<string, ExternalToolConfig>) {
-        this.externalTools = tools;
-    }
-
-    /**
-     * Register handlers for the **output** of server-side tools.
+     *  - ``run`` — a ``client``-dispatched tool. The orchestrator emits a
+     *    ``client_tool_call`` SSE event and suspends the job; this client fires
+     *    ``run`` with the agent's ``tool_input`` and POSTs whatever it returns
+     *    so the job resumes.
+     *  - ``preview`` — a ``kafka``/``inline`` tool. It runs in a worker and
+     *    never emits ``client_tool_call``, so its result arrives on
+     *    ``tool_result`` and ``preview`` is fired with that output.
      *
-     * A tool whose ``dispatch_mode`` is ``kafka`` or ``inline`` runs in a
-     * worker and never emits ``client_tool_call``, so it can never reach an
-     * {@link ExternalToolConfig}. Its result arrives on ``tool_result``, and
-     * the handler registered here is fired with that output.
+     * Replaces the whole map rather than merging into it, so unregistering is
+     * possible.
      *
      * Usage:
      * ```ts
-     * client.setResultPreviewers({
-     *   generate_checklist: (checklist) => openChecklistPreview(checklist)
+     * client.setTools({
+     *   preview_property_agent_result: { run: (input) => openPreview(input) },
+     *   generate_checklist: { preview: (checklist) => openChecklist(checklist) },
      * });
      * ```
      */
-    setResultPreviewers(previewers: Record<string, ResultPreviewer>) {
-        this.resultPreviewers = previewers;
+    setTools(tools: Record<string, ToolConfig>) {
+        this.tools = tools;
     }
 
     reset() {
@@ -763,7 +674,7 @@ export class GatewayStreamClient implements StreamChatClient {
 
         let jobResponse: Response;
         try {
-            jobResponse = await fetch(`${this.gatewayUrl}/v1/user/jobs`, {
+            jobResponse = await netFetch(`${this.gatewayUrl}/v1/user/jobs`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${this.token ?? ''}` },
                 body,
@@ -791,7 +702,7 @@ export class GatewayStreamClient implements StreamChatClient {
                 },
             });
             await this._delay(waitSeconds * 1000);
-            jobResponse = await fetch(`${this.gatewayUrl}/v1/user/jobs`, {
+            jobResponse = await netFetch(`${this.gatewayUrl}/v1/user/jobs`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${this.token ?? ''}` },
                 body,
@@ -902,7 +813,7 @@ export class GatewayStreamClient implements StreamChatClient {
 
             let streamResponse: Response;
             try {
-                streamResponse = await fetch(session.streamUrl, {
+                streamResponse = await netFetch(session.streamUrl, {
                     signal: abort.signal,
                     headers: session.lastEventId
                         ? { 'Last-Event-ID': session.lastEventId }
@@ -1187,7 +1098,7 @@ export class GatewayStreamClient implements StreamChatClient {
     }
 
     /**
-     * Build the ``client_tools`` payload from registered external tools that
+     * Build the ``client_tools`` payload from registered client tools that
      * carry an inline ``definition``. Shape matches the gateway contract:
      * ``{ name, description, input_schema, requires_approval }`` per tool.
      *
@@ -1202,22 +1113,30 @@ export class GatewayStreamClient implements StreamChatClient {
         input_schema: Record<string, any>;
         requires_approval: boolean;
     }> {
-        return Object.entries(this.externalTools)
-            .filter(([, config]) => config.definition)
-            .map(([slug, config]) => ({
-                name: slug,
-                description: config.definition!.description,
-                input_schema: config.definition!.input_schema,
-                // Always sent explicitly rather than left to the server default,
-                // so a spec read in isolation states its own gate.
-                requires_approval: config.definition!.requires_approval ?? false,
-            }));
+        const advertised: Array<[string, ClientToolConfig]> = [];
+        for (const [slug, config] of Object.entries(this.tools)) {
+            if (isClientTool(config) && config.definition) {
+                advertised.push([slug, config]);
+            }
+        }
+        return advertised.map(([slug, config]) => ({
+            name: slug,
+            description: config.definition!.description,
+            input_schema: config.definition!.input_schema,
+            // Always sent explicitly rather than left to the server default,
+            // so a spec read in isolation states its own gate.
+            requires_approval: config.definition!.requires_approval ?? false,
+        }));
     }
 
     /**
-     * Fire the registered previewer for a completed server-side tool.
+     * Fire the registered ``preview`` handler for a completed server-side tool.
      *
-     * Failed steps are skipped: a previewer exists to display a result, and
+     * Skipped entirely when the entry sets ``autoRun: false`` — the handler is
+     * then reachable only from the step's action control, which is how a host
+     * app keeps a preview from opening itself mid-turn or on a reload.
+     *
+     * Failed steps are skipped: a preview exists to display a result, and
      * the error body of a failed tool is not one. Errors thrown by the handler
      * are logged and swallowed — a broken preview must not kill the stream
      * reader, which is still delivering the rest of the run.
@@ -1229,8 +1148,13 @@ export class GatewayStreamClient implements StreamChatClient {
         const { step_uuid, tool_slug, tool_output, status } = payload ?? {};
         if (!tool_slug || status !== 'completed') return;
 
-        const previewer = this.resultPreviewers[tool_slug];
-        if (!previewer) return;
+        const config = this.tools[tool_slug];
+        if (!config || !isServerTool(config)) return;
+
+        // Checked before the once-per-step set below, not after: marking a step
+        // previewed that was never previewed would poison it for a later
+        // ``setTools`` that turns ``autoRun`` back on.
+        if (config.autoRun === false) return;
 
         // Once per step, per session. A resume replays every ``tool_result`` the
         // turn produced, and a previewer is a side effect on the host app's UI —
@@ -1241,7 +1165,7 @@ export class GatewayStreamClient implements StreamChatClient {
             session.previewedStepUuids.add(step_uuid);
         }
 
-        await previewer(parseToolOutput(tool_output), {
+        await config.preview(parseToolOutput(tool_output), {
             tool_slug,
             step_uuid: step_uuid ?? '',
             status,
@@ -1326,18 +1250,25 @@ export class GatewayStreamClient implements StreamChatClient {
         // Default ack for side-effect-only tools that return nothing.
         let toolOutput: any = { status: 'previewed' };
 
-        const config = this.externalTools[tool_slug];
-        if (config) {
+        const config = this.tools[tool_slug];
+        if (config && isClientTool(config)) {
             try {
-                const result = await config.callback(tool_input ?? {});
+                const result = await config.run(tool_input ?? {}, {
+                    tool_slug,
+                    step_uuid: step_uuid ?? '',
+                    job_uuid: event?.job_uuid ?? session.jobId ?? undefined,
+                });
                 if (result !== undefined) {
                     toolOutput = result;
                 }
             } catch (err) {
-                console.error(`[GatewayStreamClient] external tool '${tool_slug}' callback error`, err);
+                console.error(`[GatewayStreamClient] client tool '${tool_slug}' run error`, err);
             }
         } else {
-            console.warn(`[GatewayStreamClient] no handler for client tool '${tool_slug}'`);
+            // Acked with the placeholder above rather than left hanging: an
+            // unregistered slug — or one registered as a server tool by mistake
+            // — must still resume the job.
+            console.warn(`[GatewayStreamClient] no 'run' handler for client tool '${tool_slug}'`);
         }
 
         // The job that made this call, not whichever job opened the stream.
@@ -1378,7 +1309,7 @@ export class GatewayStreamClient implements StreamChatClient {
         const jobId = target ? this.sessions.get(target)?.jobId : null;
         if (!jobId) return;
 
-        const response = await fetch(
+        const response = await netFetch(
             `${this.gatewayUrl}/v1/user/jobs/${jobId}/cancel`,
             {
                 method: 'POST',
@@ -1480,7 +1411,7 @@ export class GatewayStreamClient implements StreamChatClient {
      */
     private async _refreshStreamUrl(session: StreamSession): Promise<boolean> {
         try {
-            const response = await fetch(
+            const response = await netFetch(
                 `${this.gatewayUrl}/v1/user/jobs/${session.jobId}/stream-token`,
                 {
                     method: 'POST',
@@ -1503,7 +1434,7 @@ export class GatewayStreamClient implements StreamChatClient {
         path: string,
         body: Record<string, any>,
     ): Promise<void> {
-        const response = await fetch(
+        const response = await netFetch(
             `${this.gatewayUrl}/v1/user/tools/jobs/${jobId}/${path}`,
             {
                 method: 'POST',

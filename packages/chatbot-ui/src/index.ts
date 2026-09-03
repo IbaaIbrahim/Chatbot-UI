@@ -14,11 +14,6 @@ export * from './components/WelcomeScreen/WelcomeScreen';
 
 // Supporting display components (kept for MessageBubble compatibility)
 export * from './components/ToolInvocation/ToolInvocation';
-export type {
-    ToolActionConfig,
-    ToolActionPlacement,
-    ToolActionRenderProps,
-} from './components/ToolInvocation/ToolInvocation';
 export { ToolActionControl } from './components/ToolInvocation/ToolInvocation';
 export * from './components/ConfirmButtons/ConfirmButtons';
 export { ToolToggles, hasRunnableTools } from './components/ToolToggles/ToolToggles';
@@ -34,6 +29,16 @@ export * from './components/AuthenticatedImage/AuthenticatedImage';
 // Context
 export * from './context/ChatbotContext';
 
+// Local Network Access (Chromium 142+) — see src/common/localNetwork.ts
+export {
+    configureLocalNetworkAccess,
+    isLocalNetworkAccessEnabled,
+    isLocalNetworkUrl,
+    addressSpaceOf,
+} from './common/localNetwork';
+export type { TargetAddressSpace } from './common/localNetwork';
+
+
 // Agent sidebar
 export { AgentSidebar } from './components/AgentSidebar/AgentSidebar';
 export type { AgentSidebarProps, AgentSidebarItem } from './components/AgentSidebar/AgentSidebar';
@@ -46,14 +51,23 @@ export type { AgentSwitcherProps } from './components/AgentSwitcher/AgentSwitche
 export { StreamClient } from './api/StreamClient';
 export type { StreamClientConfig, StreamEvent, StreamChatClient, StreamOutcome } from './api/StreamClient';
 export { GatewayStreamClient } from './api/GatewayStreamClient';
+export type { GatewayStreamClientConfig, EnablableTool } from './api/GatewayStreamClient';
+
+// The tool contract: what a host application declares per tool in ChatApp's
+// `tools` prop. One entry per tool; `run` handles a client-dispatched call,
+// `preview` a server-dispatched tool's output.
+export { isClientTool, isServerTool } from './common/toolConfig';
 export type {
-    GatewayStreamClientConfig,
-    ExternalToolConfig,
-    ClientToolDefinition,
-    EnablableTool,
-    ResultPreviewer,
+    ToolConfig,
+    ClientToolConfig,
+    ServerToolConfig,
+    ToolPresentation,
+    ToolActionPlacement,
+    ToolActionRenderProps,
+    ToolCallContext,
     ResultPreviewContext,
-} from './api/GatewayStreamClient';
+    ClientToolDefinition,
+} from './common/toolConfig';
 export { parseToolOutput } from './api/toolOutput';
 export { AuthClient } from './api/AuthClient';
 export type { TokenResponse, Session, PersonaQuestion, RegisterPayload, LoginPayload } from './api/AuthClient';

@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { configureLocalNetworkAccess, warnIfLocalNetworkUrl } from '../../common/localNetwork';
 import { ChatContainer, ChatMode, ChatTheme } from '../ChatContainer/ChatContainer';
 import { MessageBubble } from '../MessageBubble/MessageBubble';
 import { Composer, ComposerHandle } from '../Composer/Composer';
@@ -9,12 +10,7 @@ import { AgentSwitcher } from '../AgentSwitcher/AgentSwitcher';
 import { ChatbotProvider } from '../../context/ChatbotContext';
 import { QuestionnaireForm, QuestionSpec } from '../Questionnaire/QuestionnaireForm';
 import { StreamClient, StreamChatClient } from '../../api/StreamClient';
-import {
-    GatewayStreamClient,
-    EnablableTool,
-    ExternalToolConfig,
-    ResultPreviewer,
-} from '../../api/GatewayStreamClient';
+import { GatewayStreamClient, EnablableTool } from '../../api/GatewayStreamClient';
 import { useStreamChat, UseStreamChatOptions } from '../../hooks/useStreamChat';
 import {
     collectPendingApprovals,
@@ -22,7 +18,8 @@ import {
     useConversations,
 } from '../../hooks/useConversations';
 import { ConversationDrawer } from '../ConversationDrawer/ConversationDrawer';
-import { ToolActionConfig } from '../ToolInvocation/ToolInvocation';
+import { isClientTool } from '../../common/toolConfig';
+import type { ToolConfig } from '../../common/toolConfig';
 import { AttachedFile, ConversationDetail } from '../../api/types';
 
 /**
@@ -76,59 +73,64 @@ export interface AppProps {
     storageApiUrl?: string;
     accessToken?: string | null;
     /**
+     * Opt in to reaching a loopback or private-network address (``localhost``,
+     * ``10.*``, ``192.168.*``, ``*.local``) with ``streamUrl`` /
+     * ``storageApiUrl`` / the client's gateway URL.
+     *
+     * Chromium 142+ calls that Local Network Access and gates it behind a user
+     * permission — on Android, *"Access other apps and services on this
+     * device"*. Setting this annotates those requests with
+     * ``targetAddressSpace`` so an ``https:`` page can reach the prompt instead
+     * of being stopped earlier by the mixed-content check.
+     *
+     * It does not grant the permission. When this UI runs in an iframe, every
+     * parent frame must also delegate it:
+     * ``allow="local-network-access; loopback-network; local-network"``.
+     * Prefer public, same-scheme URLs and leave this off.
+     */
+    allowLocalNetworkAccess?: boolean;
+    /**
      * Agent list to show in the sidebar. When provided the drawer shows an
      * agent-switcher section above the conversation history. Each item's
      * ``onClick`` is responsible for switching the active agent on the client.
      */
     agents?: AgentSidebarItem[];
     /**
-     * Handlers for **client-side** tools — those with
-     * ``quota.tools.dispatch_mode = 'client'``, or defined inline here via
-     * ``definition``. The agent's call suspends the job; the callback receives
-     * the agent's ``tool_input`` and whatever it returns resumes the job as the
-     * tool result.
+     * Everything this application contributes to a tool, keyed by tool slug:
+     * its handler, its schema if it has no backend row, and how its completed
+     * step presents an action.
      *
-     * Example:
-     * ```ts
-     * external_tools={{ preview_property_agent_result: { callback: openPreview } }}
-     * ```
+     * One entry per tool, and the handler field says which end of the call the
+     * entry takes — because a host application can only sit on one of them:
      *
-     * Registering a **server-side** tool here does not work and never fired:
-     * a ``kafka``/``inline`` tool emits no ``client_tool_call``, so the callback
-     * would only ever be reachable from the action button — and with the
-     * arguments the model invented, not the result. Use
-     * {@link AppProps.result_previewers} for those.
-     */
-    external_tools?: Record<string, ExternalToolConfig>;
-    /**
-     * Handlers for the **output of server-side** tools, keyed by tool slug.
-     * Fired when the tool's ``tool_result`` event arrives, and again whenever
-     * the user clicks "Open Preview" on the completed step (including after a
-     * conversation reload). The handler receives the tool's parsed output; its
-     * return value is ignored, because no job is suspended waiting on it.
+     * - **`run`** — a **client-side** tool (`quota.tools.dispatch_mode =
+     *   'client'`, or defined inline here via `definition`). The agent's call
+     *   suspends the job; `run` receives the agent's `tool_input` and whatever
+     *   it returns resumes the job as the tool result.
+     * - **`preview`** — a **server-side** (`kafka`/`inline`) tool. It runs in a
+     *   worker, so its result arrives on `tool_result` and `preview` receives
+     *   the parsed output. Its return value is ignored, because no job is
+     *   suspended waiting on it.
      *
-     * Example:
-     * ```ts
-     * result_previewers={{ generate_checklist: (checklist) => openPreview(checklist) }}
-     * ```
-     */
-    result_previewers?: Record<string, ResultPreviewer>;
-    /**
-     * How each tool's completed step presents its action, keyed by tool slug.
+     * Getting that pair the wrong way round used to compile and then fail
+     * silently — a `kafka` tool emits no `client_tool_call`, so its handler
+     * simply never fired. An entry now carries one or the other, never both, so
+     * the mistake is a type error.
      *
-     * Registering a handler in `external_tools` or `result_previewers` is what
-     * makes an action possible; this is what decides whether it is *offered*.
-     * They are separate because they answer different questions — a tool like
-     * `read_page_context` needs a handler to work at all but has nothing a user
-     * would want to re-open, so its button is noise.
-     *
-     * A slug with no entry keeps the default button, which is what every
-     * registered handler had before this existed.
+     * Presentation lives in the same entry (`show`, `label`, `render`,
+     * `placement`), and `autoRun: false` on a `preview` entry keeps it from
+     * opening itself the moment the result lands.
      *
      * ```tsx
-     * tool_actions={{
-     *   read_page_context: { show: false },
+     * tools={{
+     *   read_page_context: {
+     *     run: ({ scope }) => collectContext(scope),
+     *     show: false,                  // nothing here a user would re-open
+     *   },
      *   generate_checklist: {
+     *     preview: (checklist) => openChecklist(checklist),
+     *     autoRun: false,
+     *     placement: 'turn-end',
      *     label: 'View checklist',
      *     render: ({ onAction, payload }) => (
      *       <MyButton onClick={onAction}>{payload.title}</MyButton>
@@ -137,7 +139,7 @@ export interface AppProps {
      * }}
      * ```
      */
-    tool_actions?: Record<string, ToolActionConfig>;
+    tools?: Record<string, ToolConfig>;
     /**
      * The agent the client is currently pointed at, if any.
      *
@@ -214,10 +216,9 @@ export const App: React.FC<AppProps> = ({
     onEvent,
     storageApiUrl,
     accessToken,
+    allowLocalNetworkAccess = false,
     agents,
-    external_tools,
-    result_previewers,
-    tool_actions,
+    tools,
     agentId,
     agentsLoading = false,
     theme = 'system',
@@ -225,6 +226,12 @@ export const App: React.FC<AppProps> = ({
     headerActions,
     brand,
 }) => {
+    // Before any client is constructed: the flag has to be in place by the time
+    // the first request goes out, and `netFetch` reads it at call time.
+    configureLocalNetworkAccess({ enabled: allowLocalNetworkAccess });
+    warnIfLocalNetworkUrl('App streamUrl', streamUrl);
+    warnIfLocalNetworkUrl('App storageApiUrl', storageApiUrl);
+
     const internalClient = React.useMemo(
         () => streamUrl ? new StreamClient({ baseUrl: streamUrl, headers: streamHeaders }) : null,
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -256,16 +263,25 @@ export const App: React.FC<AppProps> = ({
         });
     }, []);
 
-    // Register the built-in questionnaire handler alongside any app-provided
-    // external tools (the app may override it by passing its own entry).
+    // The built-in questionnaire handler alongside any app-provided tools (the
+    // app may override it by passing its own entry). Everything downstream —
+    // the client, the hook, the message tree — derives from this one map, which
+    // is what keeps them from disagreeing about a slug.
+    //
+    // ``show: false`` is load-bearing, not cosmetic. This map is also what
+    // decides which completed steps offer an action control, and a button on a
+    // finished ``ask_user_questions`` step would re-open a historical form,
+    // disable the composer, and resolve a promise nothing is awaiting.
+    const registeredTools = React.useMemo<Record<string, ToolConfig>>(() => ({
+        ask_user_questions: { run: handleAskUserQuestions, show: false },
+        ...tools,
+    }), [tools, handleAskUserQuestions]);
+
     React.useEffect(() => {
-        if (activeClient && 'setExternalTools' in activeClient) {
-            (activeClient as GatewayStreamClient).setExternalTools({
-                ask_user_questions: { callback: handleAskUserQuestions },
-                ...external_tools,
-            });
+        if (activeClient && 'setTools' in activeClient) {
+            (activeClient as GatewayStreamClient).setTools(registeredTools);
         }
-    }, [activeClient, external_tools, handleAskUserQuestions]);
+    }, [activeClient, registeredTools]);
 
     // --- User-enabled tools -------------------------------------------------
     // A `user_enabled_*` tool is left out of a job's tool snapshot entirely
@@ -277,9 +293,15 @@ export const App: React.FC<AppProps> = ({
 
     // Slugs the host app can actually execute. A `client`-dispatch tool with no
     // handler must not be offered — see ToolToggles.
+    // Only ``run`` entries count. A ``preview`` entry for a slug the backend
+    // classifies ``client`` cannot execute the call, so offering that tool in
+    // the menu would get it dispatched to a browser with no handler and acked
+    // with a placeholder — the agent gets nothing back and nothing says so.
     const handledSlugs = React.useMemo(
-        () => Object.keys(external_tools ?? {}),
-        [external_tools]
+        () => Object.entries(registeredTools)
+            .filter(([, config]) => isClientTool(config))
+            .map(([slug]) => slug),
+        [registeredTools]
     );
 
     React.useEffect(() => {
@@ -322,45 +344,6 @@ export const App: React.FC<AppProps> = ({
         writeStoredToolIds(agentId, next);
     }, [agentId]);
 
-    // Register the server-tool output handlers on the client, which fires them
-    // when each ``tool_result`` event arrives.
-    React.useEffect(() => {
-        if (activeClient && 'setResultPreviewers' in activeClient) {
-            (activeClient as GatewayStreamClient).setResultPreviewers(result_previewers ?? {});
-        }
-    }, [activeClient, result_previewers]);
-
-    // Surface external tool callbacks as per-message ``onToolCall`` handlers so
-    // that a completed client-tool step renders an "Open Result" button the
-    // user can click to re-trigger the side effect (e.g. re-open the preview).
-    // The same callbacks are already fired once automatically by the
-    // GatewayStreamClient on arrival; exposing them here adds the button.
-    const externalToolHandlers = React.useMemo<Record<string, (data: any) => void>>(() => {
-        const map: Record<string, (data: any) => void> = {};
-        if (external_tools) {
-            for (const [slug, config] of Object.entries(external_tools)) {
-                map[slug] = config.callback;
-            }
-        }
-        return map;
-    }, [external_tools]);
-
-    // The same for result previewers, kept as a separate map: MessageBubble
-    // uses which map a slug is in to decide whether the button replays the
-    // step's arguments or its result.
-    type PreviewHandler = (output: any, context: { step_uuid: string }) => void;
-    const resultPreviewHandlers = React.useMemo<Record<string, PreviewHandler>>(() => {
-        const map: Record<string, PreviewHandler> = {};
-        if (result_previewers) {
-            for (const [slug, previewer] of Object.entries(result_previewers)) {
-                map[slug] = (output, { step_uuid }) => {
-                    void previewer(output, { tool_slug: slug, step_uuid, status: 'completed' });
-                };
-            }
-        }
-        return map;
-    }, [result_previewers]);
-
     const {
         messages,
         isThinking,
@@ -379,9 +362,7 @@ export const App: React.FC<AppProps> = ({
         client: activeClient,
         onEvent,
         storageApiUrl,
-        onToolCall: externalToolHandlers,
-        onToolPreview: resultPreviewHandlers,
-        toolActions: tool_actions,
+        tools: registeredTools,
     });
 
     const {
@@ -470,16 +451,25 @@ export const App: React.FC<AppProps> = ({
         toolInput: any;
     }) => {
         const gateway = activeClient as GatewayStreamClient | null;
-        const handler = external_tools?.[call.toolSlug]?.callback
-            ?? (call.toolSlug === 'ask_user_questions' ? handleAskUserQuestions : null);
-        if (!gateway?.submitClientToolResult || !handler) {
+        // The `run` handler specifically, not whichever handler the entry
+        // happens to carry. A pending call is always a `client` step, so a
+        // `preview` registered for that slug is the wrong end of it: handed the
+        // arguments the model invented, it would return nothing, and the
+        // placeholder below would be POSTed as the answer to a suspended run.
+        const config = registeredTools[call.toolSlug];
+        const run = config && isClientTool(config) ? config.run : null;
+        if (!gateway?.submitClientToolResult || !run) {
             // Nothing here can execute it, so say so rather than leaving the
             // user looking at a finished-looking thread.
             setStaleClientCall(true);
             return;
         }
         try {
-            const answer = await handler(call.toolInput ?? {});
+            const answer = await run(call.toolInput ?? {}, {
+                tool_slug: call.toolSlug,
+                step_uuid: call.stepUuid,
+                job_uuid: call.jobUuid,
+            });
             await gateway.submitClientToolResult(
                 call.jobUuid,
                 call.stepUuid,
@@ -493,7 +483,7 @@ export const App: React.FC<AppProps> = ({
             if (status === 409) setStaleClientCall(true);
             else console.error('[ChatApp] answering the pending call failed', error);
         }
-    }, [activeClient, external_tools, handleAskUserQuestions]);
+    }, [activeClient, registeredTools]);
 
     /**
      * Decide what a freshly loaded thread should do about a turn in flight.
@@ -752,19 +742,17 @@ export const App: React.FC<AppProps> = ({
                             // ``preview_property_agent_result``) and a
                             // previewed server tool (e.g.
                             // ``generate_checklist``) both keep their button.
-                            const hasHandlers = Object.keys(externalToolHandlers).length > 0
-                                || Object.keys(resultPreviewHandlers).length > 0;
                             const withTools = msg.role === 'assistant'
                                 ? {
                                     ...msg,
-                                    ...(hasHandlers ? {
-                                        onToolCall: { ...externalToolHandlers, ...(msg.onToolCall ?? {}) },
-                                        onToolPreview: { ...resultPreviewHandlers, ...(msg.onToolPreview ?? {}) },
-                                    } : {}),
-                                    // Presentation config travels with the handlers so
-                                    // it applies on a history reload too, where the
-                                    // message came from the DB and carries neither.
-                                    toolActions: { ...tool_actions, ...(msg.toolActions ?? {}) },
+                                    // Attached here rather than only at message
+                                    // creation so it applies on a history reload
+                                    // too, where the message came from the DB and
+                                    // carries nothing. Per-key: a per-message entry
+                                    // replaces the app-level one for that slug,
+                                    // handler and presentation together, because
+                                    // half an entry is not a valid entry.
+                                    tools: { ...registeredTools, ...(msg.tools ?? {}) },
                                     // Approval handling is built in, not opt-in: a
                                     // gated tool suspends the run, so a host app that
                                     // forgot to wire these would leave the user

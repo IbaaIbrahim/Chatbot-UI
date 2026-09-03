@@ -1,4 +1,4 @@
-import { MessageStep } from '../components/MessageBubble/MessageBubble';
+import { MessageStep, MessageStepType } from '../components/MessageBubble/MessageBubble';
 
 /**
  * Where a live event belongs in a turn.
@@ -76,19 +76,25 @@ export function patchStepAt(
 }
 
 /**
- * Append streamed text to the block at `path`, extending the trailing text step
- * rather than starting a new one per token.
+ * Append streamed text to the block at `path`, extending the step with
+ * `stepId` rather than starting a new one per token.
+ *
+ * `type` is what the step is created as when it does not exist yet, so the
+ * same accumulator serves answer text and a reasoning model's thinking — the
+ * two differ only in which block they land in and how they are rendered, not
+ * in how they arrive.
  */
 export function appendTextAt(
     steps: MessageStep[],
     path: StepPath,
     chunk: string,
-    stepId: string
+    stepId: string,
+    type: MessageStepType = 'text'
 ): MessageStep[] {
     return atPath(steps, path, current => {
         const index = current.findIndex(step => step.id === stepId);
         if (index === -1) {
-            return [...current, { id: stepId, type: 'text', content: chunk }];
+            return [...current, { id: stepId, type, content: chunk }];
         }
         const next = [...current];
         next[index] = {
