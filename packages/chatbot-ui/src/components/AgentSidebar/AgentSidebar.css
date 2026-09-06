@@ -32,17 +32,99 @@
     color: var(--cb-text-primary);
 }
 
+/* Everything below the New chat button scrolls as one region. Giving each
+   section its own scrollbar divides a fixed-height column between them, and a
+   long agent list then takes all of it — which is how the chats ended up a few
+   pixels tall with their conversations out of reach. */
+.cb-agent-sidebar-scroll {
+    flex: 1;
+    /* A flex item defaults to `min-height: auto`, which lets its content push
+       the column past the drawer instead of scrolling inside it. */
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: var(--cb-space-2);
+    /* Firefox and anything else that honours the standard properties. */
+    scrollbar-width: thin;
+    scrollbar-color: var(--cb-surface-hover) transparent;
+}
+
+/* Matched to the transcript's scrollbar rather than left to the platform: the
+   default control is a wide light-grey bar with stepper arrows, which reads as
+   a seam down the side of a dark drawer. */
+.cb-agent-sidebar-scroll::-webkit-scrollbar {
+    width: 5px;
+    background: transparent;
+}
+
+.cb-agent-sidebar-scroll::-webkit-scrollbar-thumb {
+    background: var(--cb-surface-hover);
+    border-radius: var(--cb-radius-full);
+    transition: background var(--cb-transition-fast);
+}
+
+.cb-agent-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--cb-border-strong);
+}
+
 .cb-agent-section {
     margin-bottom: var(--cb-space-6);
 }
 
+/* Sticky so the control that collapses a section is reachable from anywhere
+   inside it — scrolling deep into a long list must not strand you with no way
+   to fold it away. Opaque for the same reason: rows pass underneath it. */
 .cb-agent-section-title {
-    padding: 0 var(--cb-space-3);
-    margin-bottom: var(--cb-space-1);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    margin: 0 0 var(--cb-space-1);
+    padding: 0;
+    background-color: var(--cb-bg-primary);
+}
+
+.cb-agent-section-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--cb-space-2);
+    padding: var(--cb-space-2) var(--cb-space-3);
+    border: none;
+    background: none;
+    border-radius: var(--cb-radius-md);
+    cursor: pointer;
+    /* `font: inherit` first, so the h3's own heading size does not leak through
+       the button, then the label's real type. */
+    font: inherit;
     font-size: var(--cb-text-xs);
     font-weight: 600;
     color: var(--cb-text-tertiary);
     text-transform: uppercase;
+    transition: color var(--cb-transition-fast), background var(--cb-transition-fast);
+}
+
+.cb-agent-section-toggle:hover {
+    background-color: var(--cb-bg-tertiary);
+    color: var(--cb-text-secondary);
+}
+
+.cb-agent-section-toggle:focus-visible {
+    outline: 2px solid var(--cb-border-focus);
+    outline-offset: -2px;
+}
+
+.cb-agent-section-chevron {
+    flex-shrink: 0;
+    transition: transform var(--cb-transition-fast);
+}
+
+.cb-agent-section-chevron.collapsed {
+    transform: rotate(-90deg);
+}
+
+/* `hidden` has to win here: the attribute's own `display: none` is a
+   user-agent style and loses to any rule that sets `display` on the body. */
+.cb-agent-section-body[hidden] {
+    display: none;
 }
 
 .cb-agent-item {
@@ -124,11 +206,6 @@
 
 .cb-agent-search-input::placeholder {
     color: var(--cb-text-tertiary);
-}
-
-.cb-agent-chats-section {
-    flex: 1;
-    overflow-y: auto;
 }
 
 /* --- Rows became <button> ------------------------------------------------- *

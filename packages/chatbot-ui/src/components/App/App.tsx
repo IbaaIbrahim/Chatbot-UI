@@ -21,6 +21,7 @@ import { ConversationDrawer } from '../ConversationDrawer/ConversationDrawer';
 import { isClientTool } from '../../common/toolConfig';
 import type { ToolConfig } from '../../common/toolConfig';
 import { AttachedFile, ConversationDetail } from '../../api/types';
+import { summarizeUsage } from '../../common/usageSummary';
 
 /**
  * Where a user's tool selection is remembered, per agent.
@@ -364,6 +365,13 @@ export const App: React.FC<AppProps> = ({
         storageApiUrl,
         tools: registeredTools,
     });
+
+    // One reading of the conversation's consumption for the composer's
+    // indicator; the messages already hold what the usage events reported.
+    const usageSummary = React.useMemo(
+        () => summarizeUsage(messages, isThinking || isResuming),
+        [messages, isThinking, isResuming]
+    );
 
     const {
         conversations,
@@ -716,6 +724,7 @@ export const App: React.FC<AppProps> = ({
                             }
                             isRunning={isThinking || isResuming}
                             isStopping={isStopping}
+                            usage={usageSummary}
                         />
                     </>
                 }

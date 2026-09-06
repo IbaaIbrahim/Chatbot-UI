@@ -244,6 +244,7 @@
    gesture to the host page, which then scrolls behind the chat. */
 .cb-scroll-view,
 .cb-drawer-content,
+.cb-agent-sidebar-scroll,
 .cb-tools-menu,
 .cb-agent-switcher-menu,
 .cb-questionnaire {

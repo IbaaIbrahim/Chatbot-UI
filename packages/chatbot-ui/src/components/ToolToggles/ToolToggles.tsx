@@ -76,6 +76,32 @@ const FALLBACK_ICON = (
     <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
 );
 
+/** Breathing room between the top of the menu and the edge that clips it. */
+const MENU_EDGE_GAP_PX = 8;
+
+/**
+ * Floor for the measurement below, for a widget too short to hold a real menu.
+ * Some clipping is unavoidable at that size; a couple of visible rows beat a
+ * menu collapsed to nothing.
+ */
+const MENU_MIN_HEIGHT_PX = 120;
+
+/**
+ * The nearest ancestor that hides its overflow — the box the menu is trapped in.
+ *
+ * In practice `.cb-chat-content`, the widget body below the header, but resolved
+ * by looking rather than by class name: the menu opens in all three chat modes
+ * and embedded in a host layout, and which box does the clipping differs.
+ */
+function findClippingAncestor(element: HTMLElement): HTMLElement | null {
+    let current = element.parentElement;
+    while (current && current !== document.body) {
+        if (window.getComputedStyle(current).overflowY !== 'visible') return current;
+        current = current.parentElement;
+    }
+    return null;
+}
+
 /**
  * The tool menu that opens from the composer.
  *
@@ -105,6 +131,52 @@ export const ToolToggles: React.FC<ToolTogglesProps> = ({
         );
     };
 
+    const menuRef = React.useRef<HTMLDivElement>(null);
+
+    // Cap the menu at the room the widget actually has above the composer.
+    //
+    // A viewport-relative ceiling is the wrong ceiling here. `60vh` of a tall
+    // window is more height than a 600px floating panel owns, and the excess is
+    // *clipped* by the body's `overflow: hidden` rather than scrolled: the menu
+    // scrolls inside a box whose own top edge is off-panel, so the header and
+    // the first rows sit in dead space that no gesture can reach. Measuring the
+    // real gap turns that overflow back into scrollable content.
+    React.useLayoutEffect(() => {
+        const menu = menuRef.current;
+        // The wrapper is anchored to the composer by its bottom edge, so its
+        // bottom is fixed by layout and does not move with the height we set on
+        // the menu inside it — measuring it cannot feed back into itself.
+        const anchor = menu?.parentElement;
+        if (!menu || !anchor) return undefined;
+
+        const clip = findClippingAncestor(anchor);
+
+        const applyAvailableHeight = () => {
+            const ceiling = clip ? clip.getBoundingClientRect().top : 0;
+            const available =
+                anchor.getBoundingClientRect().bottom - ceiling - MENU_EDGE_GAP_PX;
+            menu.style.setProperty(
+                '--cb-menu-available-height',
+                `${Math.max(available, MENU_MIN_HEIGHT_PX)}px`
+            );
+        };
+
+        applyAvailableHeight();
+
+        // The gap moves without this component re-rendering: the panel is
+        // resized or switched between floating, sidebar and fullscreen, or the
+        // composer grows a row of attachment chips under an open menu.
+        const observer = new ResizeObserver(applyAvailableHeight);
+        if (clip) observer.observe(clip);
+        if (anchor.parentElement) observer.observe(anchor.parentElement);
+        window.addEventListener('resize', applyAvailableHeight);
+
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('resize', applyAvailableHeight);
+        };
+    }, []);
+
     // Escape closes, as any menu should. Without it the only way out is the
     // trigger button, which leaves the menu unclosable if that button is ever
     // obscured — and a panel a user cannot dismiss reads as the app being stuck.
@@ -124,6 +196,7 @@ export const ToolToggles: React.FC<ToolTogglesProps> = ({
             <div className="cb-menu-scrim" onClick={onClose} />
             <div className="cb-menu-overlay">
             <div
+                ref={menuRef}
                 className="cb-menu-content cb-tools-menu"
                 role="group"
                 aria-label="Tools"

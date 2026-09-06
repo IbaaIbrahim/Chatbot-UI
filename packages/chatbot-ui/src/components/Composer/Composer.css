@@ -139,11 +139,25 @@
     background-color: #555;
 }
 
+/* Three columns so the note stays centred whether or not the consumption
+   indicator occupies the end column. */
 .cb-composer-footer {
-    text-align: center;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
     margin-top: var(--cb-space-2);
     font-size: 11px;
     color: #666;
+}
+
+.cb-composer-footer-note {
+    grid-column: 2;
+    text-align: center;
+}
+
+.cb-composer-footer .cb-usage-indicator {
+    grid-column: 3;
+    justify-self: end;
 }
 
 /* === Attached Files === */

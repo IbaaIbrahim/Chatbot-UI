@@ -5,6 +5,8 @@ import { AttachedFile } from '../../api/types';
 import { netFetch } from '../../common/localNetwork';
 import { EnablableTool } from '../../api/GatewayStreamClient';
 import { ToolToggles, hasRunnableTools } from '../ToolToggles/ToolToggles';
+import { UsageIndicator } from '../UsageIndicator/UsageIndicator';
+import type { TurnUsageSummary } from '../../common/usageSummary';
 
 export interface ComposerHandle {
     focus: () => void;
@@ -43,6 +45,13 @@ export interface ComposerProps {
     isRunning?: boolean;
     /** Set once stop has been asked for, until the turn actually ends. */
     isStopping?: boolean;
+    /**
+     * The conversation's consumption so far — credits, tokens, the context
+     * window — shown as a small ring at the end of the footer with the details
+     * on hover. Omitted (or null) until a turn has reported usage, so a fresh
+     * conversation shows nothing rather than zeros.
+     */
+    usage?: TurnUsageSummary | null;
 }
 
 const ALLOWED_TYPES = [
@@ -84,6 +93,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     enabledToolIds = [],
     onToolsChange,
     handledToolSlugs = [],
+    usage = null,
 }, ref) => {
     const [toolMenuOpen, setToolMenuOpen] = useState(false);
     const showToolsButton =
@@ -410,7 +420,8 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                 </div>
             </div>
             <div className="cb-composer-footer">
-                <span>Uses AI. Verify results.</span>
+                <span className="cb-composer-footer-note">Uses AI. Verify results.</span>
+                {usage && <UsageIndicator summary={usage} />}
             </div>
         </div>
     );

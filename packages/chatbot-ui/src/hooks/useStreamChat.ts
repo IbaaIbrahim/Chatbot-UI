@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { StreamChatClient, StreamEvent } from '../api/StreamClient';
 import { MessageProps, MessageStep } from '../components/MessageBubble/MessageBubble';
-import { AttachedFile } from '../api/types';
+import { AttachedFile, ContextFigures, RunUsage, UsageFigures, UsagePayload } from '../api/types';
+import { turnUsage } from '../common/usageSummary';
 import { StepPath, appendStepAt, appendTextAt, patchStepAt } from './subAgentSteps';
 
 export interface UseStreamChatOptions {
@@ -292,6 +293,12 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
         const pathByJob = new Map<string, StepPath>();
         const pathFor = (event: any): StepPath =>
             pathByJob.get(event.data?.job_uuid) ?? [];
+        // Whether an event comes from a sub-agent this turn started — a
+        // delegated child *or* a handoff child. Not ``pathFor(event).length``:
+        // a handoff child shares its parent's path, but its run is still its
+        // own and its cost is still part of the turn.
+        const isSubAgentJob = (event: any): boolean =>
+            pathByJob.has(event.data?.job_uuid);
 
         // How many thinking blocks each step has already closed. A reasoning
         // model with tools thinks, calls a tool, and thinks again, so one step
@@ -318,6 +325,55 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                     m.id === assistantId ? { ...m, steps: edit(m.steps ?? []) } : m
                 )
             );
+        };
+
+        // Fields on the turn's bubble itself (the usage footer, the pressure
+        // flag) rather than on a step. Same routing rule as ``editSteps``: the
+        // turn is one message, whichever job in the tree the event came from.
+        const patchTurn = (
+            patch: Partial<MessageProps> | ((message: MessageProps) => Partial<MessageProps>)
+        ) => {
+            setMessages(prev =>
+                prev.map(m => {
+                    if (m.id !== assistantId) return m;
+                    return { ...m, ...(typeof patch === 'function' ? patch(m) : patch) };
+                })
+            );
+        };
+
+        // Record one sub-agent run's latest meter on the turn, keeping the name
+        // ``sub_agent_started`` gave it. Replace, never add: snapshots.
+        const recordSubAgentRun = (
+            jobUuid: string,
+            figures: UsageFigures,
+            agentName?: string,
+            context?: ContextFigures | null,
+        ) => {
+            patchTurn(m => {
+                const previous = m.subAgentRuns?.[jobUuid];
+                const run: RunUsage = {
+                    agentName: agentName ?? previous?.agentName ?? null,
+                    figures,
+                    // A terminal event carries no context; keep the last prompt's.
+                    context: context ?? previous?.context ?? null,
+                };
+                return { subAgentRuns: { ...m.subAgentRuns, [jobUuid]: run } };
+            });
+        };
+        const NO_USAGE: UsageFigures = {
+            steps: 0, input_tokens: 0, output_tokens: 0, credits_charged: 0, credits_waived: 0,
+        };
+
+        // A check-in is answered through the same endpoint as an approval, so
+        // it is rendered as the same card; this is what the card says.
+        const describeCheckIn = (elapsedSeconds: number, credits?: number): string => {
+            const minutes = Math.floor(elapsedSeconds / 60);
+            const seconds = elapsedSeconds % 60;
+            const worked = minutes > 0 ? `${minutes} min ${seconds} s` : `${seconds} s`;
+            const spent = credits !== undefined && credits > 0
+                ? ` and used ${credits} ${credits === 1 ? 'credit' : 'credits'}`
+                : '';
+            return `The agent has been working for ${worked}${spent}. Continue?`;
         };
 
         const handleEvent = (event: StreamEvent) => {
@@ -368,6 +424,9 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                         child_job_uuid,
                         handoff ? parentPath : [...parentPath, step_uuid]
                     );
+                    // The child's meter starts at zero under its name, so the
+                    // consumption card can count it before its first step settles.
+                    recordSubAgentRun(child_job_uuid, NO_USAGE, agent_name || 'Sub-agent');
                     if (!handoff) {
                         editSteps(steps => appendStepAt(steps, parentPath, {
                             id: step_uuid,
@@ -487,6 +546,113 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                         decision === 'approved' ? 'confirmed' : 'rejected'
                     );
                 }
+            }
+
+            // What the step that just settled cost, and where the run stands.
+            // Cumulative figures are replaced, never summed: the orchestrator
+            // sends snapshots so a replayed event is idempotent. A sub-agent's
+            // event updates only the shared tree figure on the turn's bubble —
+            // its own steps and credits are its own run's, already counted in
+            // the tree the parent shows.
+            if (event.type === 'usage') {
+                const payload = event.data?.payload as UsagePayload | undefined;
+                if (payload?.run) {
+                    if (isSubAgentJob(event)) {
+                        // A sub-agent's run: its own meter under its own key,
+                        // and the tree counter it carries — the turn's
+                        // authoritative credit total, root and children alike.
+                        recordSubAgentRun(
+                            String(event.data?.job_uuid), payload.run, undefined, payload.context
+                        );
+                        if (payload.tree) patchTurn({ tree: payload.tree });
+                    } else {
+                        patchTurn({
+                            usage: payload.run,
+                            context: payload.context,
+                            tree: payload.tree,
+                        });
+                    }
+                }
+                return;
+            }
+
+            // The run's final totals ride on the terminal events, so a client
+            // that missed a usage frame still ends with the right number.
+            if (event.type === 'end' || event.type === 'error') {
+                const usage = event.data?.payload?.usage as UsageFigures | undefined;
+                if (usage) {
+                    if (isSubAgentJob(event)) {
+                        recordSubAgentRun(String(event.data?.job_uuid), usage);
+                    } else {
+                        patchTurn({ usage });
+                    }
+                }
+            }
+
+            // The orchestrator paused between steps to ask whether the run
+            // should continue (ADR-010's check-in). Answered through the same
+            // endpoint as an approval, with the check-in uuid as the approval
+            // uuid, so it is rendered as the same card and routed the same way.
+            if (event.type === 'check_in_request') {
+                const { check_in_uuid, elapsed_seconds } = event.data?.payload ?? {};
+                if (check_in_uuid) {
+                    const owningJob = event.data?.job_uuid;
+                    if (owningJob) {
+                        approvalJobRef.current.set(check_in_uuid, String(owningJob));
+                    }
+                    setMessages(prev => prev.map(m => {
+                        if (m.id !== assistantId) return m;
+                        const step: MessageStep = {
+                            id: check_in_uuid,
+                            type: 'confirm-request',
+                            toolCallId: check_in_uuid,
+                            toolName: 'continue_working',
+                            confirmLabel: 'Continue working?',
+                            confirmDescription: describeCheckIn(
+                                Number(elapsed_seconds ?? 0),
+                                turnUsage(m).turn.credits_charged,
+                            ),
+                            confirmStatus: 'pending',
+                        };
+                        return { ...m, steps: appendStepAt(m.steps ?? [], pathFor(event), step) };
+                    }));
+                }
+                return;
+            }
+
+            if (event.type === 'check_in_resolved') {
+                const { check_in_uuid, decision } = event.data?.payload ?? {};
+                if (check_in_uuid) {
+                    setApprovalStatus(
+                        assistantId,
+                        check_in_uuid,
+                        decision === 'approved' ? 'confirmed' : 'rejected'
+                    );
+                }
+                return;
+            }
+
+            // The last prompt reached 90% of the model's window. Not an error
+            // and not a wait: the run goes on, and the footer turns amber.
+            if (event.type === 'context_pressure') {
+                if (pathFor(event).length === 0) {
+                    patchTurn({ contextPressure: true });
+                }
+                return;
+            }
+
+            // The tree spent its credit ceiling: no run in it may start another
+            // agent from here on. The user is told once; the model is not.
+            if (event.type === 'tree_ceiling_reached') {
+                const { credits_spent, max_tree_credits } = event.data?.payload ?? {};
+                patchTurn({
+                    tree: {
+                        credits_spent: Number(credits_spent ?? 0),
+                        max_tree_credits: max_tree_credits ?? null,
+                        ceiling_reached: true,
+                    },
+                });
+                return;
             }
 
             // A reasoning model's thinking, into its own collapsible block.

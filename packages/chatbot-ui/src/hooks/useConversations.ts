@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GatewayStreamClient } from '../api/GatewayStreamClient';
-import { ConversationDetail, ConversationJob, ConversationStep, ConversationSummary, PendingApproval } from '../api/types';
+import { ConversationDetail, ConversationJob, ConversationStep, ConversationSummary, PendingApproval, UsageFigures, ContextFigures, RunUsage, TreeFigures } from '../api/types';
 import { MessageProps, MessageStep } from '../components/MessageBubble/MessageBubble';
 import { describeApprovalRequest } from './useStreamChat';
 
@@ -144,18 +144,114 @@ function mapSteps(steps: ConversationStep[], subAgentJobs: ConversationJob[] = [
  * ``approval_uuid`` — so the buttons already wired on every message settle it
  * without knowing where it came from.
  */
+/** The history record a paused run leaves for its "continue?" question (ADR-010). */
+const CHECK_IN_TOOL_SLUG = 'continue_working';
+
+function describeRecordedCheckIn(toolInput: any): string {
+    const elapsed = Number(toolInput?.elapsed_seconds ?? 0);
+    const minutes = Math.floor(elapsed / 60);
+    const seconds = elapsed % 60;
+    const worked = minutes > 0 ? `${minutes} min ${seconds} s` : `${seconds} s`;
+    return `The agent had been working for ${worked} and paused to ask whether to continue.`;
+}
+
 function approvalSteps(approvals: PendingApproval[] | undefined): MessageStep[] {
-    return (approvals ?? []).map(approval => ({
-        id: approval.approval_uuid,
-        type: 'confirm-request' as const,
-        toolCallId: approval.approval_uuid,
-        toolName: approval.tool_slug,
-        confirmLabel: approval.tool_slug,
-        confirmDescription: describeApprovalRequest(
-            approval.tool_slug, approval.tool_input, approval.dispatch_mode
-        ),
-        confirmStatus: 'pending' as const,
-    }));
+    return (approvals ?? []).map(approval => {
+        // A check-in is recorded where a held tool call is, and answered the
+        // same way; only its wording differs — nobody is approving a tool.
+        const isCheckIn = approval.tool_slug === CHECK_IN_TOOL_SLUG;
+        return {
+            id: approval.approval_uuid,
+            type: 'confirm-request' as const,
+            toolCallId: approval.approval_uuid,
+            toolName: approval.tool_slug,
+            confirmLabel: isCheckIn ? 'Continue working?' : approval.tool_slug,
+            confirmDescription: isCheckIn
+                ? describeRecordedCheckIn(approval.tool_input)
+                : describeApprovalRequest(
+                    approval.tool_slug, approval.tool_input, approval.dispatch_mode
+                ),
+            confirmStatus: 'pending' as const,
+        };
+    });
+}
+
+/**
+ * The usage footer of a turn loaded from history.
+ *
+ * Built from the job's persisted totals, which the Archiver stamps at
+ * completion (and recomputes if a step lands late). ``credits_waived`` is not
+ * totalled on the row, so a reloaded footer shows no waived badge — the live
+ * ``usage`` event carries it while the run is in flight. Absent when the row
+ * has no totals yet (a run still in progress at load time).
+ */
+function figuresOf(job: ConversationJob): UsageFigures {
+    return {
+        steps: job.total_steps ?? job.steps.length,
+        input_tokens: job.total_input_tokens ?? 0,
+        output_tokens: job.total_output_tokens ?? 0,
+        credits_charged: job.total_credits_charged ?? 0,
+        credits_waived: 0,
+    };
+}
+
+/**
+ * Every sub-agent under a job, recursively, each with its own totals. A turn's
+ * cost is the root job plus all of these — the nested ``sub_agent_jobs`` are
+ * what the Archiver stamped for the runs this turn started.
+ */
+function collectSubAgentRuns(jobs: ConversationJob[], into: Record<string, RunUsage>): void {
+    for (const child of jobs) {
+        into[child.uuid] = {
+            agentName: child.agent?.name ?? null,
+            figures: figuresOf(child),
+            context: contextOf(child),
+        };
+        collectSubAgentRuns(child.sub_agent_jobs ?? [], into);
+    }
+}
+
+/**
+ * Where a run's last prompt sat against its model's window: the last LLM
+ * step's input tokens over the job's ``context_window`` (null when the model's
+ * limit is not seeded, so no ratio and no bar).
+ */
+function contextOf(job: ConversationJob): ContextFigures {
+    const lastLlmStep = [...job.steps].reverse().find(step => step.step_type === 'llm_call');
+    const inputTokens = lastLlmStep?.input_tokens ?? 0;
+    const window = job.context_window ?? null;
+    return {
+        input_tokens: inputTokens,
+        max_input_tokens: window,
+        ratio: window ? Math.round((inputTokens / window) * 10000) / 10000 : null,
+        max_output_tokens: null,
+    };
+}
+
+function usageFromJob(job: ConversationJob): {
+    usage: UsageFigures | null;
+    context: ContextFigures | null;
+    subAgentRuns: Record<string, RunUsage> | undefined;
+    tree: TreeFigures | null;
+} {
+    if (job.total_credits_charged === null && job.total_input_tokens === null) {
+        return { usage: null, context: null, subAgentRuns: undefined, tree: null };
+    }
+    const usage = figuresOf(job);
+    const subAgentRuns: Record<string, RunUsage> = {};
+    collectSubAgentRuns(job.sub_agent_jobs ?? [], subAgentRuns);
+    const children = Object.values(subAgentRuns);
+    // No Redis counter to read after the fact; the tree's spend is the sum of
+    // what the Archiver stamped on every run in it.
+    const tree: TreeFigures | null = children.length > 0
+        ? {
+            credits_spent: children.reduce((sum, run) => sum + run.figures.credits_charged, usage.credits_charged),
+            max_tree_credits: null,
+        }
+        : null;
+    // The last LLM step's prompt is the most recent measure of the window.
+    const context = contextOf(job);
+    return { usage, context, subAgentRuns: children.length > 0 ? subAgentRuns : undefined, tree };
 }
 
 /**
@@ -234,12 +330,17 @@ export function jobsToMessageProps(
         // and stopped. An empty bubble is worse than none.
         if (!finalText && steps.length === 0) continue;
 
+        const { usage, context, subAgentRuns, tree } = usageFromJob(job);
         messages.push({
             id: `${job.uuid}-assistant`,
             role: 'assistant',
             content: finalText,
             steps,
             senderName: job.agent?.name,
+            usage,
+            context,
+            subAgentRuns,
+            tree,
         });
     }
 

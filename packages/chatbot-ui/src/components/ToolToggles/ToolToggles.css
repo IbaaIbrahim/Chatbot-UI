@@ -34,7 +34,14 @@
 .cb-tools-menu {
     width: 340px;
     max-width: min(90vw, 340px);
-    max-height: 60vh;
+    /* Two ceilings, the smaller one wins. `60vh` keeps the menu from swallowing
+       a tall widget. `--cb-menu-available-height` is the room actually left
+       between the composer and the top of the widget body, measured by
+       ToolToggles — without it the menu is taller than a floating panel and the
+       overflow is *clipped* by the body's `overflow: hidden`, which scrolling
+       cannot undo: the box that scrolls is itself partly off-panel, so its first
+       rows are unreachable. The fallback keeps the pre-measurement paint sane. */
+    max-height: min(60vh, var(--cb-menu-available-height, 60vh));
     overflow-y: auto;
     /* Keep the gesture inside the menu: scrolling past its end otherwise hands
        the wheel to the transcript behind it. */

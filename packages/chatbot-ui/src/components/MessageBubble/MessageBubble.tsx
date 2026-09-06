@@ -7,6 +7,7 @@ import { netFetch } from '../../common/localNetwork';
 import { ToolInvocation, ToolActionControl } from '../ToolInvocation/ToolInvocation';
 import type { ToolActionPlacement, ToolConfig, ToolPresentation } from '../../common/toolConfig';
 import { ConfirmButtons, ConfirmStatus } from '../ConfirmButtons/ConfirmButtons';
+import type { ContextFigures, RunUsage, TreeFigures, UsageFigures } from '../../api/types';
 import { AuthenticatedImage } from '../AuthenticatedImage/AuthenticatedImage';
 import { BlinkingIndicator } from '../BlinkingIndicator/BlinkingIndicator';
 import { MessageActions } from '../MessageActions/MessageActions';
@@ -132,6 +133,26 @@ export interface MessageProps {
      * not, and the chat app passes `false` for it while the run is in flight.
      */
     isTurnComplete?: boolean;
+    /**
+     * What this turn has cost so far and where its prompt sits against the
+     * model's window. Set from the ``usage`` stream event while the run is live
+     * and from the job's totals when a thread is loaded from history. Not
+     * rendered on the bubble: the composer's consumption indicator reads it
+     * off the messages (``common/usageSummary.ts``). Absent on user messages.
+     */
+    usage?: UsageFigures | null;
+    context?: ContextFigures | null;
+    tree?: TreeFigures | null;
+    /**
+     * The sub-agents this turn started, keyed by their job uuid, each with its
+     * own run meter. A turn that delegated costs the root run *plus* these:
+     * showing the root run alone read "3 credits" on a turn whose tree had
+     * spent 22 (2026-09-05). Filled by the sub-agents' own ``usage`` events
+     * live, and from the nested ``sub_agent_jobs`` on a history load.
+     */
+    subAgentRuns?: Record<string, RunUsage>;
+    /** The orchestrator reported the prompt at 90% or more of the window. */
+    contextPressure?: boolean;
     isWaitingForDeltas?: boolean; // Show blinking indicator when waiting for deltas
     // Message actions
     onReply?: (message: MessageProps, selectedText?: string) => void;

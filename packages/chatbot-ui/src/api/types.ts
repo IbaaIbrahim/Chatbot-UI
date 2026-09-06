@@ -86,6 +86,70 @@ export interface PendingApproval {
     dispatch_mode: string;
 }
 
+/**
+ * The run's meter — every settled step so far — as the orchestrator reports it
+ * on the ``usage`` stream event (``run``) and on ``end`` / ``error``
+ * (``usage``). Cumulative snapshots, never deltas: replace what is held, never
+ * sum, so a replayed event is idempotent.
+ */
+export interface UsageFigures {
+    steps: number;
+    input_tokens: number;
+    output_tokens: number;
+    credits_charged: number;
+    credits_waived: number;
+}
+
+/** Where the turn's last prompt sat against the model's window (migration 080). */
+export interface ContextFigures {
+    input_tokens: number;
+    /** Null when the model's limit is not seeded — draw no bar rather than a wrong one. */
+    max_input_tokens: number | null;
+    ratio: number | null;
+    max_output_tokens: number | null;
+}
+
+/** The sub-agent tree's spend against the policy's ceiling; null for a plain run. */
+export interface TreeFigures {
+    credits_spent: number;
+    max_tree_credits: number | null;
+    /** Set client-side when ``tree_ceiling_reached`` arrives: no more sub-agents this turn. */
+    ceiling_reached?: boolean;
+}
+
+/** What one settled step cost — the ``step`` block of a ``usage`` event. */
+export interface StepCost {
+    step_sequence: number;
+    step_type: string;
+    tool_slug: string | null;
+    model: { model_id: number | null; provider: string | null; model: string | null };
+    input_tokens: number;
+    output_tokens: number;
+    credits_charged: number;
+    credits_waived: number;
+    charge_outcome: string | null;
+}
+
+/**
+ * One run's meter inside a turn — a sub-agent's, keyed by its job uuid on the
+ * turn's message — with the agent's name when it is known. Replaced whole on
+ * every event from that run (snapshots, never deltas); a turn's cost is the
+ * root run plus every one of these.
+ */
+export interface RunUsage {
+    agentName?: string | null;
+    figures: UsageFigures;
+    /** That run's own last prompt against its model's window; a sub-agent's context ends with it. */
+    context?: ContextFigures | null;
+}
+
+export interface UsagePayload {
+    step: StepCost;
+    run: UsageFigures;
+    tree: TreeFigures | null;
+    context: ContextFigures;
+}
+
 export interface ConversationJob {
     uuid: string;
     user_prompt: string;
@@ -94,6 +158,12 @@ export interface ConversationJob {
     total_input_tokens: number | null;
     total_output_tokens: number | null;
     total_credits_charged: number | null;
+    /**
+     * The context window of the model this job ran on, so the usage footer can
+     * be drawn from history as well as from the live ``usage`` event. Null when
+     * the model's limit is not seeded or the job ran no model.
+     */
+    context_window?: number | null;
     created_at: string;
     updated_at: string;
     attachments: ConversationAttachment[];
