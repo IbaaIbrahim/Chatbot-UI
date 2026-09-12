@@ -27,7 +27,7 @@
     color: var(--cb-text-primary);
 }
 
-.cb-new-chat-btn {
+:root .cb-new-chat-btn {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -118,7 +118,7 @@
     }
 }
 
-.cb-load-more-btn {
+:root .cb-load-more-btn {
     display: flex;
     align-items: center;
     justify-content: center;

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import './AgentSidebar.css';
+import { useStableId } from '../../common/useStableId';
 
 export interface AgentSidebarItem {
     id: string;
@@ -56,7 +57,7 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
     className,
     children,
 }) => {
-    const bodyId = React.useId();
+    const bodyId = useStableId('cb-agent-section');
 
     return (
         <section className={`cb-agent-section${className ? ` ${className}` : ''}`}>

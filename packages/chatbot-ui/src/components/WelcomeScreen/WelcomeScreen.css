@@ -33,7 +33,7 @@
     max-width: 400px;
 }
 
-.cb-quick-action-card {
+:root .cb-quick-action-card {
     display: flex;
     align-items: center;
     gap: var(--cb-space-3);

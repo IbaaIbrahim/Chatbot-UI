@@ -1,12 +1,13 @@
 import React from 'react';
 import type { TurnUsageSummary } from '../../common/usageSummary';
 import type { UsageFigures } from '../../api/types';
+import { useStableId } from '../../common/useStableId';
 import './UsageIndicator.css';
 
 /** Where the orchestrator itself starts warning about the window. */
 const NEAR_WINDOW_RATIO = 0.9;
 
-const { useId, useState } = React;
+const { useEffect, useRef, useState } = React;
 
 export function formatTokens(count: number): string {
     if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
@@ -105,8 +106,9 @@ const MeterRow: React.FC<MeterRowProps> = ({ label, value, ratio, warn, note, su
  * The consumption indicator under the composer.
  *
  * At rest: a ring for the context window and the percentage beside it (or the
- * turn's credits when the model's window is not known). On hover, focus or tap:
- * a card with the context window against the model's limit, this turn's and
+ * turn's credits when the model's window is not known). On click — and closed
+ * only by a second click on the trigger, a click outside, or Escape — a card
+ * with the context window against the model's limit, this turn's and
  * this conversation's credits, the tokens, any waived free calls, and the
  * sub-agent tree against its ceiling when one is set.
  *
@@ -117,7 +119,31 @@ const MeterRow: React.FC<MeterRowProps> = ({ label, value, ratio, warn, note, su
  */
 export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary }) => {
     const [open, setOpen] = useState(false);
-    const popoverId = useId();
+    const containerRef = useRef<HTMLDivElement>(null);
+    const popoverId = useStableId('cb-usage');
+
+    // The card opens on a click on the trigger and closes only on a second
+    // click on it, a click outside the indicator, or Escape — never because
+    // the pointer left, so the figures stay readable while the turn updates.
+    useEffect(() => {
+        if (!open) return;
+
+        const handlePointerDown = (event: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+                setOpen(false);
+            }
+        };
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setOpen(false);
+        };
+
+        document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [open]);
     const {
         turn, ownRun, subAgents, subAgentContext, conversationCredits, turns, context, tree, contextPressure, live,
     } = summary;
@@ -138,16 +164,7 @@ export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary }) => {
         : `${plural(turn.credits_charged, 'credit')} this turn; ${plural(conversationCredits, 'credit')} this conversation.`;
 
     return (
-        <div
-            className="cb-usage-indicator"
-            onMouseEnter={() => setOpen(true)}
-            onMouseLeave={() => setOpen(false)}
-            onFocus={() => setOpen(true)}
-            onBlur={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
-            }}
-            onKeyDown={(event) => { if (event.key === 'Escape') setOpen(false); }}
-        >
+        <div className="cb-usage-indicator" ref={containerRef}>
             <button
                 type="button"
                 className={`cb-usage-trigger${pressured ? ' cb-usage-trigger--warn' : ''}`}

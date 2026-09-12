@@ -307,11 +307,46 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
         // text. Lives in the closure for the same reason ``pathByJob`` does —
         // two bubbles must not share it.
         const closedThinkingBlocks = new Map<string, number>();
+        /**
+         * The text of every thinking block already closed for a step.
+         *
+         * ``closedThinkingBlocks`` above is a *counter*, so the id it produces
+         * changes every time a block closes — which is exactly what a second
+         * ``reasoning_complete`` for the same block must not do. The orchestrator
+         * can deliver that frame twice (a replay re-delivers the turn's frames
+         * verbatim, and this file's other handlers are idempotent precisely
+         * because of it), and the counter cannot tell a repeat from a genuine
+         * second block: it minted a fresh id and the same deliberation rendered
+         * twice, above one answer. A reload then showed one block, because
+         * history is rebuilt from the single step the backend actually stored.
+         *
+         * Keyed by text because that is the only thing the duplicate frames
+         * share — the frame carries no block identity of its own. A model that
+         * genuinely thinks the same thing twice in one step therefore shows one
+         * block, which is the better of the two wrong answers available here.
+         */
+        const closedThinkingTexts = new Map<string, Set<string>>();
         const thinkingStepKey = (event: any): string =>
             `${event.data?.job_uuid ?? 'self'}-step-${event.data?.step_sequence ?? '0'}`;
         const thinkingStepId = (event: any): string => {
             const key = thinkingStepKey(event);
             return `thinking-${key}-${closedThinkingBlocks.get(key) ?? 0}`;
+        };
+        /**
+         * The id of the text step this reasoning produced, so a block that
+         * arrives late can be put in front of it rather than below it.
+         *
+         * Mirrors the ids the two text paths mint for the same
+         * ``step_sequence`` — ``updateAssistantContent`` for the turn's own
+         * answer, ``appendTextAt`` for a sub-agent's. When the sequence is
+         * absent the answer's id is generated and unpredictable, and this
+         * simply will not match, leaving the append-at-the-end default.
+         */
+        const answerStepIdFor = (event: any): string => {
+            const seq = event.data?.step_sequence ?? '0';
+            return pathFor(event).length > 0
+                ? `sub-${event.data?.job_uuid}-step-${seq}`
+                : `step-${seq}`;
         };
 
         // Every step mutation goes through here so routing is applied in one
@@ -663,27 +698,39 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                 const text: string = event.data?.payload?.text ?? '';
                 const path = pathFor(event);
                 const stepId = thinkingStepId(event);
+                const answerStepId = answerStepIdFor(event);
                 if (event.type === 'reasoning') {
                     if (text) {
                         editSteps(steps =>
-                            appendTextAt(steps, path, text, stepId, 'thinking')
+                            appendTextAt(steps, path, text, stepId, 'thinking', answerStepId)
                         );
                     }
                 } else {
                     const key = thinkingStepKey(event);
+                    let closed = closedThinkingTexts.get(key);
+                    if (!closed) {
+                        closed = new Set<string>();
+                        closedThinkingTexts.set(key, closed);
+                    }
+                    // Only non-empty text is deduplicated: an empty
+                    // ``reasoning_complete`` is the frame that closes a block
+                    // built from deltas, and it has to be allowed through to
+                    // mark it finished.
+                    if (text && closed.has(text)) return;
                     editSteps(steps => {
                         // Create-then-patch so a client that connected
                         // mid-block — a reconnect, or a second tab — still
                         // gets the whole block from this one frame, having
                         // seen none of the deltas.
                         const withBlock = appendTextAt(
-                            steps, path, '', stepId, 'thinking'
+                            steps, path, '', stepId, 'thinking', answerStepId
                         );
                         return patchStepAt(withBlock, path, stepId, {
                             content: text,
                             isFinished: true,
                         });
                     });
+                    if (text) closed.add(text);
                     // The next delta on this step opens a fresh block.
                     closedThinkingBlocks.set(
                         key, (closedThinkingBlocks.get(key) ?? 0) + 1

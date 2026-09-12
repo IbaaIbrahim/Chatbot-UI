@@ -121,15 +121,27 @@
 .cb-actions {
     display: flex;
     flex-direction: row;
+    align-items: center;
+    /* Never the thing that gives way. The brand beside it holds a name of
+       unknown length, and letting these compress to make room for it trades a
+       readable label for unreachable controls. */
+    flex-shrink: 0;
 }
 
 .cb-header-left {
     display: flex;
     align-items: center;
     gap: var(--cb-space-3);
+    /* Absorbs the whole shrink, and `min-width: 0` is what lets it.
+       A flex item defaults to `min-width: auto`, which refuses to shrink below
+       its own min-content — so a long agent name held this block at its full
+       width and pushed the action buttons past the header's right padding
+       instead of ellipsising. */
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
-.cb-header-btn {
+:root .cb-header-btn {
     background: transparent;
     border: 1px solid transparent;
     color: var(--cb-text-secondary);
@@ -140,6 +152,13 @@
     justify-content: center;
     border-radius: var(--cb-radius-sm);
     transition: var(--cb-transition-state);
+    /* `box-sizing` is the load-bearing half: without it the 1px transparent
+       border above sits outside the box and this control alone is 2px wider
+       than every other one in the row. */
+    box-sizing: border-box;
+    width: var(--cb-control-sm);
+    height: var(--cb-control-sm);
+    flex-shrink: 0;
 }
 
 .cb-header-btn:hover {
@@ -153,7 +172,7 @@
     font-size: var(--cb-text-base);
 }
 
-.cb-minimize-btn {
+:root .cb-minimize-btn {
     background: transparent;
     border: none;
     color: var(--cb-text-secondary);
@@ -163,6 +182,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    /* Sized rather than left to its icon, which is not square and made this
+       button 28x32 next to a 30.2px square one. */
+    box-sizing: border-box;
+    width: var(--cb-control-sm);
+    height: var(--cb-control-sm);
+    flex-shrink: 0;
 }
 
 .cb-minimize-btn:hover {
@@ -321,7 +346,7 @@
     opacity: 1;
 }
 
-.cb-scroll-bottom-btn {
+:root .cb-scroll-bottom-btn {
     position: absolute;
     bottom: 20px;
     left: 50%;
@@ -337,7 +362,7 @@
     cursor: pointer;
     box-shadow: var(--cb-shadow-md);
     color: var(--cb-text-secondary);
-    z-index: 50;
+    z-index: 10;
     transition: background-color 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), border-color 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), color 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     opacity: 0;
     transform: translateX(-50%) translateY(20px);
@@ -449,6 +474,7 @@
         transform: translateX(0) !important;
     }
 }
+
 /* ============================================================
    Launcher — the closed state of floating mode
    ============================================================
@@ -524,11 +550,6 @@
     }
 }
 
-/* The header's own buttons are exposed the same way — a single class each,
-   against a host reset that outranks it. The library's dark header with square
-   grey buttons in an application whose reboot squares every `<button>` is the
-   same defect as above, one surface further in. */
-.cb-header-btn,
-.cb-minimize-btn {
-    border-radius: var(--cb-radius-sm) !important;
-}
+/* Superseded: both controls' own rules above now carry the `:root` prefix, so
+   they outrank a host's `[dir] button` reset on specificity alone. See the note
+   at the top of styles.css. */

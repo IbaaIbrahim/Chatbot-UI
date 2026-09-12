@@ -1,13 +1,21 @@
 .cb-agent-switcher {
     position: relative;
     display: inline-flex;
+    /* See `.cb-header-left`: the shrink has to be allowed the whole way down
+       the chain, or the innermost text still pins the row open. */
+    min-width: 0;
 }
 
-.cb-agent-switcher-trigger {
+:root .cb-agent-switcher-trigger {
     display: flex;
     align-items: center;
     gap: var(--cb-space-2);
-    max-width: 220px;
+    /* Fluid, not a fixed 220px. The cap has to answer to the space actually
+       left over after the menu button and the host's own header actions,
+       which a literal cannot: at 220px the trigger kept asking for more room
+       than the header had and the overflow landed on the buttons. */
+    max-width: 100%;
+    min-width: 0;
     padding: var(--cb-space-1) var(--cb-space-2);
     background: transparent;
     border: 1px solid transparent;

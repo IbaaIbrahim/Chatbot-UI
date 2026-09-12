@@ -29,6 +29,21 @@ export interface GatewayStreamClientConfig {
  * their UUID is named in ``enabled_tool_ids``. Always-on tools are not listed:
  * they are in every snapshot regardless, so a switch for one would do nothing.
  */
+/**
+ * A chat agent this caller may bind a job to.
+ *
+ * Returned by ``GET /v1/user/agents``. Binding one is not cosmetic: the job
+ * takes that agent's system prompt and its tool restrictions, and a job sent
+ * with no ``agent_id`` at all runs with **neither** — no persona, no
+ * delegation, no limits — and nothing in the response says so. See
+ * {@link GatewayStreamClient.setAgentId}.
+ */
+export interface ChatAgent {
+    uuid: string;
+    name: string;
+    description?: string | null;
+}
+
 export interface EnablableTool {
     /** The value to pass to {@link GatewayStreamClient.setEnabledToolIds}. */
     uuid: string;
@@ -369,6 +384,30 @@ export class GatewayStreamClient implements StreamChatClient {
      * Pass the agent id to get only what that agent's policy allows; omit it for
      * an agentless job, where any active user-enabled tool may be requested.
      */
+    /**
+     * List the agents this caller may bind a job to.
+     *
+     * Here rather than in the host application because the three things the
+     * request needs — the gateway URL, the bearer token, and {@link netFetch}'s
+     * local-network annotation — all already live on this client. A host that
+     * rolls its own ``fetch`` for this gets the first two right and silently
+     * loses the third, so the call is blocked on exactly the loopback gateways
+     * that local development runs against.
+     */
+    async listAgents(): Promise<ChatAgent[]> {
+        const response = await netFetch(
+            `${this.gatewayUrl}/v1/user/agents`,
+            { headers: { 'Authorization': `Bearer ${this.token ?? ''}` } }
+        );
+        if (!response.ok) {
+            throw new Error(
+                `[GatewayStreamClient] listing agents failed with ${response.status}`
+            );
+        }
+        const payload = await response.json();
+        return payload?.data?.agents ?? [];
+    }
+
     async listEnablableTools(agentId?: string | null): Promise<EnablableTool[]> {
         const query = agentId ? `?agent_id=${encodeURIComponent(agentId)}` : '';
         const response = await netFetch(

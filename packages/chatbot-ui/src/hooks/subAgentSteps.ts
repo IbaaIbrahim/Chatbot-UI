@@ -89,12 +89,31 @@ export function appendTextAt(
     path: StepPath,
     chunk: string,
     stepId: string,
-    type: MessageStepType = 'text'
+    type: MessageStepType = 'text',
+    /**
+     * Put a *newly created* step in front of this one instead of at the end.
+     * Ignored once the step exists, and ignored if no step here has this id, so
+     * the default stays a plain append.
+     *
+     * This exists for one case: reasoning that arrives **after** the answer it
+     * produced. Some providers emit no ``reasoning`` deltas at all and only a
+     * closing ``reasoning_complete`` once the call is done, by which time the
+     * text step is already in the array — and appending would render the
+     * model's deliberation below its reply. Reloading the same conversation
+     * then moved it back up, because history is rebuilt thinking-first from each
+     * ``llm_call`` (see ``mapSteps``), so the live turn and the reload disagreed
+     * about a transcript the user had just watched.
+     */
+    beforeId?: string
 ): MessageStep[] {
     return atPath(steps, path, current => {
         const index = current.findIndex(step => step.id === stepId);
         if (index === -1) {
-            return [...current, { id: stepId, type, content: chunk }];
+            const created: MessageStep = { id: stepId, type, content: chunk };
+            const at = beforeId ? current.findIndex(step => step.id === beforeId) : -1;
+            return at === -1
+                ? [...current, created]
+                : [...current.slice(0, at), created, ...current.slice(at)];
         }
         const next = [...current];
         next[index] = {

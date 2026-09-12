@@ -66,7 +66,7 @@
     display: flex;
 }
 
-.cb-tool-action-btn {
+:root .cb-tool-action-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;

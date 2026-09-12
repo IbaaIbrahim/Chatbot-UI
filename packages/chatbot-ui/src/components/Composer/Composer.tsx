@@ -139,8 +139,18 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
             return null;
         }
 
-        if (!storageApiUrl || !accessToken) {
-            setUploadError('Storage API not configured.');
+        // Named separately because the two causes look nothing alike from the
+        // host application's side, and one message for both sent a caller who
+        // *was* passing `storageApiUrl` looking at the URL — the missing piece
+        // was `accessToken`, which the upload needs for its Authorization
+        // header and which is easy to leave off since nothing else in the chat
+        // visibly depends on it.
+        if (!storageApiUrl) {
+            setUploadError('File upload is unavailable: no storage API URL is configured.');
+            return null;
+        }
+        if (!accessToken) {
+            setUploadError('File upload is unavailable: no access token is configured.');
             return null;
         }
 
@@ -350,7 +360,10 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                         <button
                             className="cb-action-btn"
                             onClick={() => fileInputRef.current?.click()}
-                            disabled={disabled || isUploading || !storageApiUrl}
+                            // Both, matching `uploadFile`'s guard: with a URL but no
+                            // token the button used to open a file picker for an upload
+                            // that could only ever fail.
+                            disabled={disabled || isUploading || !storageApiUrl || !accessToken}
                             title="Attach files"
                         >
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

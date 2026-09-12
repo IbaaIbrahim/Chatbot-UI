@@ -51,7 +51,7 @@ export type { AgentSwitcherProps } from './components/AgentSwitcher/AgentSwitche
 export { StreamClient } from './api/StreamClient';
 export type { StreamClientConfig, StreamEvent, StreamChatClient, StreamOutcome } from './api/StreamClient';
 export { GatewayStreamClient } from './api/GatewayStreamClient';
-export type { GatewayStreamClientConfig, EnablableTool } from './api/GatewayStreamClient';
+export type { GatewayStreamClientConfig, EnablableTool, ChatAgent } from './api/GatewayStreamClient';
 
 // The tool contract: what a host application declares per tool in ChatApp's
 // `tools` prop. One entry per tool; `run` handles a client-dispatched call,

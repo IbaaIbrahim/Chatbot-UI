@@ -72,7 +72,7 @@
     gap: 8px;
 }
 
-.cb-action-btn {
+:root .cb-action-btn {
     background: transparent;
     border: none;
     color: var(--cb-text-secondary);
@@ -95,7 +95,7 @@
     cursor: not-allowed;
 }
 
-.cb-action-btn.circle {
+:root .cb-action-btn.circle {
     border-radius: 50%;
     width: 32px;
     height: 32px;
@@ -115,7 +115,7 @@
     color: var(--cb-accent-primary);
 }
 
-.cb-send-btn {
+:root .cb-send-btn {
     background-color: var(--cb-bg-tertiary);
     border: none;
     color: var(--cb-text-tertiary);
@@ -215,7 +215,7 @@
     flex-shrink: 0;
 }
 
-.cb-chip-remove {
+:root .cb-chip-remove {
     display: flex;
     align-items: center;
     justify-content: center;

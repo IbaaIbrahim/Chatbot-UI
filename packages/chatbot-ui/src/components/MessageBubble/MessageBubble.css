@@ -457,7 +457,7 @@
     white-space: nowrap;
 }
 
-.cb-attachment-viewer-close {
+:root .cb-attachment-viewer-close {
     width: 32px;
     height: 32px;
     border-radius: 50%;
@@ -611,7 +611,7 @@
     margin-top: 8px;
 }
 
-.cb-attachment-viewer-action-btn {
+:root .cb-attachment-viewer-action-btn {
     padding: 8px 18px;
     border-radius: 8px;
     font-size: 13px;
@@ -764,8 +764,8 @@
     align-items: center;
 }
 
-.cb-edit-cancel,
-.cb-edit-save {
+:root .cb-edit-cancel,
+:root .cb-edit-save {
     padding: 8px 18px;
     border-radius: 8px;
     font-size: 13px;
@@ -1010,12 +1010,23 @@
     border-top: 1px solid var(--cb-border-subtle);
 }
 
-.cb-thinking-text {
+/* `:root`-prefixed, and it states its own background, because this is a bare
+   `<pre>` inside a host application's page. A dashboard that styles `pre`
+   globally — Bootstrap's reboot colours it, and themes on top of it commonly
+   give it a light code-block background — lands that styling here: the block
+   rendered as near-white with this rule's grey text on top, which is unreadable
+   in a dark chat. Naming the surface is what stops a host deciding it, and the
+   prefix is what keeps a host's `[dir] pre` from outranking a lone class. See
+   the note at the top of styles.css. */
+:root .cb-thinking-text {
     margin: 0;
+    padding: var(--cb-space-3);
     font-size: var(--cb-text-sm);
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    /* background: var(--cb-surface-sunken); */
     color: var(--cb-text-secondary);
     white-space: pre-wrap;
+    word-break: break-word;
     line-height: 1.5;
 }
 
@@ -1065,7 +1076,7 @@
    flipping it would reorder operators and punctuation. */
 .cb-markdown-content pre,
 .cb-markdown-content code,
-.cb-thinking-text {
+:root .cb-thinking-text {
     direction: ltr;
     text-align: start;
 }
@@ -1120,7 +1131,7 @@
     overflow-wrap: anywhere;
 }
 
-.cb-error-action {
+:root .cb-error-action {
     flex: none;
     appearance: none;
     padding: 6px 14px;

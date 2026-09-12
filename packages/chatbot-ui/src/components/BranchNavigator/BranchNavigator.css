@@ -10,7 +10,7 @@
     user-select: none;
 }
 
-.cb-branch-nav-btn {
+:root .cb-branch-nav-btn {
     display: flex;
     align-items: center;
     justify-content: center;
