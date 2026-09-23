@@ -7,6 +7,7 @@ import {
     ChatTheme,
     AgentSidebarItem,
     ToolConfig,
+    type ChatbotUIConfig,
 } from '@chatbot-ui/core'
 import data from './data.json'
 
@@ -20,6 +21,71 @@ const MODEL_ID = import.meta.env.VITE_MODEL_ID || 'gpt-5-mini';
 // host app rather than inside the library: the library ships pre-bundled, so a
 // VITE_ variable there would freeze at library-publish time.
 const ALLOW_LOCAL_NETWORK_ACCESS = import.meta.env.VITE_ALLOW_LOCAL_NETWORK_ACCESS === 'true';
+
+// Welcome content belongs to the host application. The library only supplies
+// these values as a backwards-compatible fallback when `config` is omitted.
+const welcomeConfig: ChatbotUIConfig = {
+    quickActions: [
+        {
+            id: 'catch-up',
+            label: 'Catch me up',
+            prompt: 'Catch me up on recent updates',
+            icon: 'clock',
+        },
+        {
+            id: 'create',
+            label: 'Create',
+            prompt: 'Help me create a new inspection checklist',
+            icon: 'pencil',
+        },
+        {
+            id: 'analyze',
+            label: 'Analyze',
+            prompt: 'Analyze recent inspection trends',
+            icon: 'bolt',
+        },
+        {
+            id: 'ask',
+            label: 'Ask',
+            prompt: 'Ask a question about Flowdit',
+            icon: 'message',
+        },
+    ],
+    featureCards: [
+        {
+            id: 'web-search',
+            badge: 'Web search',
+            icon: 'globe',
+            title: 'Now it can look up things for you',
+            description: 'Standards, regulations and supplier detail from the open web, with the source cited.',
+            prompt: 'Look up industry standards and regulations',
+        },
+        {
+            id: 'agents',
+            badge: 'Agents',
+            icon: 'settings',
+            title: 'Build an assistant for the job you repeat',
+            description: 'Custom agents that already know your sites, your rules and your reporting format.',
+            prompt: 'Help me build a custom assistant agent',
+        },
+        {
+            id: 'charts',
+            badge: 'Charts',
+            icon: 'chart',
+            title: 'Ask for the numbers, get the chart',
+            description: 'The assistant now builds the chart for you, ready to drop straight into a report.',
+            prompt: 'Show me charts and statistics for recent inspections',
+        },
+        {
+            id: 'slides',
+            badge: 'Slides',
+            icon: 'slides',
+            title: 'Walk into the room with the deck done',
+            description: "Turn the month's results into a presentation, with charts already in place.",
+            prompt: 'Generate a presentation summary of monthly results',
+        },
+    ],
+};
 
 // Stands in for whatever the host application's routes and records actually are.
 // `read_page_context` reports the current one and `navigate_app_route` moves
@@ -36,6 +102,8 @@ function App() {
     const [theme, setTheme] = useState<ChatTheme>('system');
     const [isOpen, setIsOpen] = useState(true);
     const [isEmbedded, setIsEmbedded] = useState(false);
+    const [noBg, setNoBg] = useState(false);
+    const [allowedModes, setAllowedModes] = useState<ChatMode[]>(['floating', 'sidebar', 'fullscreen']);
     const [client, setClient] = useState<GatewayStreamClient | null>(null);
     const clientRef = useRef<GatewayStreamClient | null>(null);
 
@@ -277,19 +345,19 @@ function App() {
         // A custom control instead of the built-in button. `payload` is the
         // checklist itself, so the label can name what it will open rather than
         // saying "Open Result" for everything.
-        get_checklist_context: {
-            run: () => {
-                return data;
-            },
-            definition: {
-                description: "Returns the full current checklist state including all items, their types, answers, and metadata. Always call this first to understand what items exist.",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {}
-                },
-                requires_approval: false
-            }
-        },
+        // get_checklist_context: {
+        //     run: () => {
+        //         return data;
+        //     },
+        //     definition: {
+        //         description: "Returns the full current checklist state including all items, their types, answers, and metadata. Always call this first to understand what items exist.",
+        //         "input_schema": {
+        //             "type": "object",
+        //             "properties": {}
+        //         },
+        //         requires_approval: false
+        //     }
+        // },
         generate_checklist: {
             preview: (checklist: any) => setChecklistPreview(checklist),
             autoRun: false,
@@ -334,6 +402,20 @@ function App() {
     }, [buildClient]);
 
     // --- Fetch agents from gateway --------------------------------------------
+    // --- Agent switching ------------------------------------------------------
+    const switchAgent = useCallback((agentId: string | null) => {
+        setActiveAgentId(prev => {
+            if (prev === agentId) return prev;
+            clientRef.current?.setAgentId(agentId);
+            setAgentItems(items =>
+                items.map(a => ({ ...a, active: a.id === agentId, onClick: () => switchAgent(a.id) }))
+            );
+            clientRef.current?.reset?.();
+            return agentId;
+        });
+    }, []);
+
+    // --- Fetch agents from gateway --------------------------------------------
     const fetchAgents = useCallback(async (token: string) => {
         try {
             const res = await fetch(`${API_BASE_URL}/v1/user/agents`, {
@@ -345,7 +427,7 @@ function App() {
                 json?.data?.agents ?? [];
 
             setAgentItems(prev => {
-                const currentActiveId = prev.find(a => a.active)?.id ?? raw[0]?.uuid ?? null;
+                const currentActiveId = prev.find(a => a.active)?.id ?? null;
                 return raw.map(a => ({
                     id: a.uuid,
                     label: a.name,
@@ -355,18 +437,14 @@ function App() {
             });
 
             // Adopt whatever the client already has — a binding restored from
-            // this tab's previous page load — rather than overriding it. Only
-            // fall back to the first agent when nothing is bound at all.
-            // Auto-selecting unconditionally meant every reload switched agent
-            // *and*, via switchAgent -> reset(), forked the conversation.
+            // this tab's previous page load. If nothing is bound, it stays on
+            // Auto (null agent UUID passed).
             const restoredAgentId = clientRef.current?.getAgentId?.() ?? null;
             if (restoredAgentId) {
                 setActiveAgentId(restoredAgentId);
                 setAgentItems(prev =>
                     prev.map(a => ({ ...a, active: a.id === restoredAgentId }))
                 );
-            } else if (raw.length > 0 && !activeAgentId) {
-                switchAgent(raw[0].uuid);
             }
         } catch (err) {
             console.error('Failed to fetch agents:', err);
@@ -375,24 +453,11 @@ function App() {
             // leaving the composer disabled on it would strand the user.
             setAgentsResolved(true);
         }
-    }, [activeAgentId]);
+    }, [switchAgent]);
 
     useEffect(() => {
         if (client && STATIC_TOKEN) fetchAgents(STATIC_TOKEN);
     }, [client, fetchAgents]);
-
-    // --- Agent switching ------------------------------------------------------
-    const switchAgent = useCallback((agentId: string) => {
-        // Re-selecting the agent already in use is a no-op. Falling through
-        // would call reset() and throw away the live conversation for nothing.
-        if (clientRef.current?.getAgentId?.() === agentId) return;
-        clientRef.current?.setAgentId(agentId);
-        setActiveAgentId(agentId);
-        setAgentItems(prev =>
-            prev.map(a => ({ ...a, active: a.id === agentId, onClick: () => switchAgent(a.id) }))
-        );
-        clientRef.current?.reset?.();
-    }, []);
 
     // --- Demo controls --------------------------------------------------------
     const demoControls = (
@@ -420,6 +485,19 @@ function App() {
                 style={{ cursor: 'pointer', padding: '4px 8px', background: isEmbedded ? '#4CAF50' : undefined, color: isEmbedded ? '#fff' : undefined }}
             >
                 {isEmbedded ? 'Embedded' : 'Overlay'}
+            </button>
+            <button
+                onClick={() => setNoBg(!noBg)}
+                style={{ cursor: 'pointer', padding: '4px 8px', background: noBg ? '#4CAF50' : undefined, color: noBg ? '#fff' : undefined }}
+            >
+                {noBg ? 'NoBg: ON' : 'NoBg: OFF'}
+            </button>
+            <button
+                onClick={() => setAllowedModes(prev => prev.length <= 1 ? ['floating', 'sidebar', 'fullscreen'] : ['sidebar'])}
+                style={{ cursor: 'pointer', padding: '4px 8px' }}
+                title="Restrict allowed modes"
+            >
+                {allowedModes.length <= 1 ? 'Allow: Sidebar Only' : 'Allow: All Modes'}
             </button>
             <span style={{ fontWeight: 'bold', margin: '0 5px 0 10px' }}>Theme:</span>
             {(['system', 'light', 'dark'] as ChatTheme[]).map(t => (
@@ -575,6 +653,9 @@ function App() {
                         mode={mode}
                         isOpen={isOpen}
                         embedded={true}
+                        allowedModes={allowedModes}
+                        noBackground={noBg}
+                        onSwitchMode={setMode}
                         onClose={() => setIsOpen(false)}
                         onOpen={() => setIsOpen(true)}
                         userName="Ibaa"
@@ -584,8 +665,10 @@ function App() {
                         agents={agentItems}
                         agentId={activeAgentId}
                         agentsLoading={Boolean(STATIC_TOKEN) && !agentsResolved}
+                        onAgentChange={switchAgent}
                         theme={theme}
                         tools={tools}
+                        config={welcomeConfig}
                     />
                 </>
             ) : (
@@ -597,6 +680,9 @@ function App() {
                         client={client}
                         mode={mode}
                         isOpen={isOpen}
+                        allowedModes={allowedModes}
+                        noBackground={noBg}
+                        onSwitchMode={setMode}
                         onClose={() => setIsOpen(false)}
                         onOpen={() => setIsOpen(true)}
                         userName="Ibaa"
@@ -606,8 +692,10 @@ function App() {
                         agents={agentItems}
                         agentId={activeAgentId}
                         agentsLoading={Boolean(STATIC_TOKEN) && !agentsResolved}
+                        onAgentChange={switchAgent}
                         theme={theme}
                         tools={tools}
+                        config={welcomeConfig}
                     />
                 </div>
             )}

@@ -7,51 +7,41 @@ import { EnablableTool } from '../../api/GatewayStreamClient';
 import { ToolToggles, hasRunnableTools } from '../ToolToggles/ToolToggles';
 import { UsageIndicator } from '../UsageIndicator/UsageIndicator';
 import type { TurnUsageSummary } from '../../common/usageSummary';
+import {
+    ChatbotUIConfig,
+    ContextSelectorConfig,
+} from '../../common/chatbotConfig';
 
 export interface ComposerHandle {
     focus: () => void;
 }
 
 export interface ComposerProps {
-    onSend?: (text: string, attachedFiles?: AttachedFile[]) => void;
+    onSend?: (text: string, attachedFiles?: AttachedFile[], contextIds?: string[]) => void;
     disabled?: boolean;
     placeholder?: string;
     storageApiUrl?: string;
     accessToken?: string | null;
-    /**
-     * User-enabled tools offered in the composer's tools menu.
-     *
-     * The button appears only when at least one is runnable here, so a
-     * deployment with no user-enabled tools — or an app with no handler for the
-     * client ones — gets no button rather than one that opens an empty menu.
-     */
     tools?: EnablableTool[];
-    /** UUIDs currently switched on. */
     enabledToolIds?: string[];
-    /** Called with the full new selection — not a delta. */
     onToolsChange?: (enabledIds: string[]) => void;
-    /** Slugs the host app registered a handler for; see {@link ToolToggles}. */
     handledToolSlugs?: string[];
-    /**
-     * Stop the turn in progress. When given, the send button becomes a stop
-     * button for as long as a turn is running.
-     *
-     * In the same place as send on purpose: stopping is what the user wants from
-     * that corner while the agent is working, and a separate control would sit
-     * there disabled and unexplained most of the time.
-     */
     onStop?: () => void;
-    /** Whether a turn is running, so the button knows which job it has. */
     isRunning?: boolean;
-    /** Set once stop has been asked for, until the turn actually ends. */
     isStopping?: boolean;
-    /**
-     * The conversation's consumption so far — credits, tokens, the context
-     * window — shown as a small ring at the end of the footer with the details
-     * on hover. Omitted (or null) until a turn has reported usage, so a fresh
-     * conversation shows nothing rather than zeros.
-     */
     usage?: TurnUsageSummary | null;
+    config?: ChatbotUIConfig;
+    contextConfig?: ContextSelectorConfig;
+    selectedContextIds?: string[];
+    onContextChange?: (selectedIds: string[]) => void;
+    onSelectedContextsChange?: (selectedIds: string[]) => void;
+    onVoiceInput?: () => void;
+    /** Where the tools menu opens relative to the composer. */
+    toolMenuPlacement?: 'above' | 'center';
+    /** Optional agent switcher component to integrate into the bottom row. */
+    agentSwitcher?: React.ReactNode;
+    /** Optional left content for the bottom row. */
+    bottomLeftContent?: React.ReactNode;
 }
 
 const ALLOWED_TYPES = [
@@ -86,7 +76,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     isRunning = false,
     isStopping = false,
     disabled = false,
-    placeholder = 'Type a message…',
+    placeholder = 'Describe what you want to do…',
     storageApiUrl,
     accessToken,
     tools = [],
@@ -94,6 +84,15 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     onToolsChange,
     handledToolSlugs = [],
     usage = null,
+    config: _config,
+    contextConfig: _contextConfig,
+    selectedContextIds,
+    onContextChange: _onContextChange,
+    onSelectedContextsChange: _onSelectedContextsChange,
+    onVoiceInput,
+    toolMenuPlacement = 'above',
+    agentSwitcher,
+    bottomLeftContent,
 }, ref) => {
     const [toolMenuOpen, setToolMenuOpen] = useState(false);
     const showToolsButton =
@@ -126,7 +125,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     }, [input, adjustHeight]);
 
     const isUploading = uploadingCount > 0;
-    const canSend = input.trim() && !disabled && !isUploading;
+    const canSend = Boolean(input.trim()) && !disabled && !isUploading;
 
     const uploadFile = useCallback(async (file: File): Promise<AttachedFile | null> => {
         if (!ALLOWED_TYPES.includes(file.type)) {
@@ -139,12 +138,6 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
             return null;
         }
 
-        // Named separately because the two causes look nothing alike from the
-        // host application's side, and one message for both sent a caller who
-        // *was* passing `storageApiUrl` looking at the URL — the missing piece
-        // was `accessToken`, which the upload needs for its Authorization
-        // header and which is easy to leave off since nothing else in the chat
-        // visibly depends on it.
         if (!storageApiUrl) {
             setUploadError('File upload is unavailable: no storage API URL is configured.');
             return null;
@@ -161,40 +154,42 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
             const formData = new FormData();
             formData.append('file', file);
 
-            const response = await netFetch(`${storageApiUrl}/api/v1/attachments/upload`, {
+            const uploadUrl = `${storageApiUrl.replace(/\/+$/, '')}/upload`;
+            const response = await netFetch(uploadUrl, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${accessToken}` },
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                },
                 body: formData,
             });
 
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({}));
-                throw new Error(errData?.message || errData?.detail || `Upload failed (${response.status})`);
+                throw new Error(errData.detail || errData.message || `Upload failed (${response.status})`);
             }
 
-            const result = await response.json();
-            const fileData: AttachedFile = {
-                file_id: result.data.file.file_id,
-                filename: result.data.file.filename,
-                content_type: result.data.file.content_type,
-                size_bytes: result.data.file.size_bytes,
-                localBlobUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
+            const data = await response.json();
+            return {
+                file_id: data.file_id || data.id,
+                filename: file.name,
+                content_type: file.type,
+                size_bytes: file.size,
+                url: data.url,
             };
-
-            return fileData;
-        } catch (err) {
-            setUploadError(err instanceof Error ? err.message : 'Upload failed');
+        } catch (err: any) {
+            setUploadError(err.message || 'File upload failed');
             return null;
         } finally {
-            setUploadingCount(prev => prev - 1);
+            setUploadingCount(prev => Math.max(0, prev - 1));
         }
     }, [storageApiUrl, accessToken]);
 
     const handleFileSelect = useCallback(async (files: FileList | File[]) => {
-        for (const file of Array.from(files)) {
-            const result = await uploadFile(file);
-            if (result) {
-                setAttachedFiles(prev => [...prev, result]);
+        const fileArray = Array.from(files);
+        for (const file of fileArray) {
+            const uploaded = await uploadFile(file);
+            if (uploaded) {
+                setAttachedFiles(prev => [...prev, uploaded]);
             }
         }
         if (fileInputRef.current) {
@@ -203,37 +198,14 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     }, [uploadFile]);
 
     const removeFile = useCallback((fileId: string) => {
-        setAttachedFiles(prev => {
-            const file = prev.find(f => f.file_id === fileId);
-            if (file?.localBlobUrl) {
-                URL.revokeObjectURL(file.localBlobUrl);
-            }
-            return prev.filter(f => f.file_id !== fileId);
-        });
+        setAttachedFiles(prev => prev.filter(f => f.file_id !== fileId));
     }, []);
-
-    const handleSend = useCallback(() => {
-        if (canSend) {
-            onSend?.(input.trim(), attachedFiles.length > 0 ? attachedFiles : undefined);
-            setInput('');
-            setAttachedFiles([]);
-            setUploadError(null);
-            requestAnimationFrame(() => textareaRef.current?.focus());
-        }
-    }, [input, canSend, onSend, attachedFiles]);
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
-        }
-    };
 
     const handleDragEnter = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
         dragCounterRef.current += 1;
-        if (dragCounterRef.current === 1) {
+        if (e.dataTransfer?.types?.includes('Files')) {
             setIsDragging(true);
         }
     }, []);
@@ -255,183 +227,242 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        dragCounterRef.current = 0;
         setIsDragging(false);
-        if (e.dataTransfer.files.length > 0) {
+        dragCounterRef.current = 0;
+
+        if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
             handleFileSelect(e.dataTransfer.files);
         }
     }, [handleFileSelect]);
 
+    const handleSend = () => {
+        if (!canSend) return;
+        const textToSend = input.trim();
+        const filesToSend = attachedFiles.length > 0 ? [...attachedFiles] : undefined;
+        setInput('');
+        setAttachedFiles([]);
+        setUploadError(null);
+
+        if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+        }
+
+        onSend?.(textToSend, filesToSend, selectedContextIds);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSend();
+        }
+    };
+
     return (
         <div
             ref={composerRef}
-            className={`cb-composer ${isDragging ? 'cb-composer-drag-active' : ''}`}
+            className={`cb-composer ${isDragging ? 'cb-dragging' : ''}`}
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
         >
-            {toolMenuOpen && showToolsButton && (
-                <ToolToggles
-                    tools={tools}
-                    enabledIds={enabledToolIds}
-                    onChange={onToolsChange!}
-                    handledSlugs={handledToolSlugs}
-                    onClose={() => setToolMenuOpen(false)}
-                />
-            )}
             {isDragging && (
                 <div className="cb-drag-overlay">
-                    <div className="cb-drag-overlay-content">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <div className="cb-drag-message">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                             <polyline points="17 8 12 3 7 8" />
                             <line x1="12" y1="3" x2="12" y2="15" />
                         </svg>
-                        <span>Drop files here</span>
+                        <span>Drop files to attach</span>
                     </div>
                 </div>
             )}
+
+            {showToolsButton && toolMenuOpen && (
+                <ToolToggles
+                    onClose={() => setToolMenuOpen(false)}
+                    tools={tools}
+                    enabledIds={enabledToolIds}
+                    onChange={onToolsChange!}
+                    handledSlugs={handledToolSlugs}
+                    placement={toolMenuPlacement}
+                />
+            )}
+
             <div className="cb-composer-input-wrapper">
-                {attachedFiles.length > 0 && (
-                    <div className="cb-attached-files">
-                        {attachedFiles.map(f => (
-                            <div key={f.file_id} className="cb-attached-file-chip">
-                                <span className="cb-chip-icon">{getFileIcon(f.content_type)}</span>
-                                <span className="cb-chip-name">{f.filename}</span>
-                                <span className="cb-chip-size">{formatFileSize(f.size_bytes)}</span>
+                <div className="cb-composer-upper">
+                    {attachedFiles.length > 0 && (
+                        <div className="cb-attached-files-list">
+                            {attachedFiles.map(f => (
+                                <div key={f.file_id} className="cb-attached-file-chip">
+                                    <span className="cb-chip-icon">{getFileIcon(f.content_type)}</span>
+                                    <span className="cb-chip-name">{f.filename}</span>
+                                    <span className="cb-chip-size">{formatFileSize(f.size_bytes)}</span>
+                                    <button
+                                        className="cb-chip-remove"
+                                        onClick={() => removeFile(f.file_id)}
+                                        title="Remove"
+                                    >
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                            <line x1="18" y1="6" x2="6" y2="18" />
+                                            <line x1="6" y1="6" x2="18" y2="18" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {isUploading && (
+                        <div className="cb-upload-progress-bar">
+                            <div className="cb-upload-progress-text">
+                                <span className="cb-upload-spinner-inline" />
+                                Uploading {uploadingCount} file{uploadingCount > 1 ? 's' : ''}...
+                            </div>
+                        </div>
+                    )}
+
+                    {uploadError && (
+                        <div className="cb-upload-error">
+                            <span>{uploadError}</span>
+                            <button className="cb-error-dismiss" onClick={() => setUploadError(null)}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <line x1="18" y1="6" x2="6" y2="18" />
+                                    <line x1="6" y1="6" x2="18" y2="18" />
+                                </svg>
+                            </button>
+                        </div>
+                    )}
+
+                    <textarea
+                        ref={textareaRef}
+                        className="cb-composer-textarea"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder={placeholder}
+                        disabled={disabled}
+                        rows={1}
+                    />
+
+                    <div className="cb-composer-actions">
+                        <div className="cb-actions-left">
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                multiple
+                                onChange={(e) => e.target.files && handleFileSelect(e.target.files)}
+                                accept={ALLOWED_TYPES.join(',')}
+                                style={{ display: 'none' }}
+                                disabled={disabled || isUploading}
+                            />
+
+                            {/* Plus button matching Image 1, 3, 4 */}
+                            <button
+                                className="cb-action-btn cb-plus-btn"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={disabled || isUploading || !storageApiUrl || !accessToken}
+                                title="Add attachment"
+                                aria-label="Add attachment"
+                            >
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <line x1="12" y1="5" x2="12" y2="19" />
+                                    <line x1="5" y1="12" x2="19" y2="12" />
+                                </svg>
+                            </button>
+
+                            {showToolsButton && (
                                 <button
-                                    className="cb-chip-remove"
-                                    onClick={() => removeFile(f.file_id)}
-                                    title="Remove"
+                                    className={
+                                        'cb-action-btn'
+                                        + (toolMenuOpen ? ' active-state' : '')
+                                        + (activeToolCount > 0 ? ' active-icon' : '')
+                                    }
+                                    onClick={() => setToolMenuOpen(open => !open)}
+                                    disabled={disabled}
+                                    title="Tools"
+                                    aria-haspopup="true"
+                                    aria-expanded={toolMenuOpen}
+                                    style={{ position: 'relative' }}
                                 >
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                        <line x1="18" y1="6" x2="6" y2="18" />
-                                        <line x1="6" y1="6" x2="18" y2="18" />
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <line x1="4" y1="21" x2="4" y2="14" />
+                                        <line x1="4" y1="10" x2="4" y2="3" />
+                                        <line x1="12" y1="21" x2="12" y2="12" />
+                                        <line x1="12" y1="8" x2="12" y2="3" />
+                                        <line x1="20" y1="21" x2="20" y2="16" />
+                                        <line x1="20" y1="12" x2="20" y2="3" />
+                                        <line x1="1" y1="14" x2="7" y2="14" />
+                                        <line x1="9" y1="8" x2="15" y2="8" />
+                                        <line x1="17" y1="16" x2="23" y2="16" />
+                                    </svg>
+                                    {activeToolCount > 0 && (
+                                        <span className="cb-action-btn-badge">{activeToolCount}</span>
+                                    )}
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="cb-actions-right">
+                            {/* Voice input button matching Image 1, 3, 4 */}
+                            <button
+                                type="button"
+                                className="cb-action-btn cb-mic-btn"
+                                title="Voice input"
+                                aria-label="Voice input"
+                                onClick={onVoiceInput}
+                            >
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                    <line x1="12" y1="19" x2="12" y2="23" />
+                                    <line x1="8" y1="23" x2="16" y2="23" />
+                                </svg>
+                            </button>
+
+                            {onStop && isRunning ? (
+                                <button
+                                    className="cb-send-btn cb-stop-btn active"
+                                    onClick={onStop}
+                                    disabled={isStopping}
+                                    title={isStopping ? 'Stopping…' : 'Stop generating'}
+                                    aria-label={isStopping ? 'Stopping' : 'Stop generating'}
+                                >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                                        <rect x="6" y="6" width="12" height="12" rx="2" />
                                     </svg>
                                 </button>
-                            </div>
-                        ))}
+                            ) : (
+                                <button
+                                    className={`cb-send-btn ${canSend ? 'active' : ''}`}
+                                    onClick={handleSend}
+                                    disabled={!canSend}
+                                    title={isUploading ? 'Waiting for uploads…' : 'Send message'}
+                                    aria-label="Send message"
+                                >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <line x1="22" y1="2" x2="11" y2="13" />
+                                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                                    </svg>
+                                </button>
+                            )}
+                        </div>
                     </div>
-                )}
+                </div>
 
-                {isUploading && (
-                    <div className="cb-upload-progress-bar">
-                        <div className="cb-upload-progress-text">
-                            <span className="cb-upload-spinner-inline" />
-                            Uploading {uploadingCount} file{uploadingCount > 1 ? 's' : ''}...
+                {(agentSwitcher || bottomLeftContent) && (
+                    <div className="cb-composer-bottom-row">
+                        <div className="cb-composer-bottom-left">
+                            {bottomLeftContent}
+                        </div>
+                        <div className="cb-composer-bottom-right">
+                            {agentSwitcher}
                         </div>
                     </div>
                 )}
-
-                {uploadError && (
-                    <div className="cb-upload-error">
-                        <span>{uploadError}</span>
-                        <button className="cb-error-dismiss" onClick={() => setUploadError(null)}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <line x1="18" y1="6" x2="6" y2="18" />
-                                <line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
-                        </button>
-                    </div>
-                )}
-
-                <textarea
-                    ref={textareaRef}
-                    className="cb-composer-textarea"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder={placeholder}
-                    disabled={disabled}
-                    rows={1}
-                />
-                <div className="cb-composer-actions">
-                    <div className="cb-actions-left">
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            multiple
-                            onChange={(e) => e.target.files && handleFileSelect(e.target.files)}
-                            accept={ALLOWED_TYPES.join(',')}
-                            style={{ display: 'none' }}
-                            disabled={disabled || isUploading}
-                        />
-                        <button
-                            className="cb-action-btn"
-                            onClick={() => fileInputRef.current?.click()}
-                            // Both, matching `uploadFile`'s guard: with a URL but no
-                            // token the button used to open a file picker for an upload
-                            // that could only ever fail.
-                            disabled={disabled || isUploading || !storageApiUrl || !accessToken}
-                            title="Attach files"
-                        >
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                            </svg>
-                        </button>
-                        {showToolsButton && (
-                            <button
-                                // `active-state` while the menu is open, `active-icon` while any
-                                // tool is on — the two are independent, and the icon tint is the
-                                // at-a-glance signal that survives closing the menu.
-                                className={
-                                    'cb-action-btn'
-                                    + (toolMenuOpen ? ' active-state' : '')
-                                    + (activeToolCount > 0 ? ' active-icon' : '')
-                                }
-                                onClick={() => setToolMenuOpen(open => !open)}
-                                disabled={disabled}
-                                title="Tools"
-                                aria-haspopup="true"
-                                aria-expanded={toolMenuOpen}
-                                style={{ position: 'relative' }}
-                            >
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <line x1="4" y1="21" x2="4" y2="14" />
-                                    <line x1="4" y1="10" x2="4" y2="3" />
-                                    <line x1="12" y1="21" x2="12" y2="12" />
-                                    <line x1="12" y1="8" x2="12" y2="3" />
-                                    <line x1="20" y1="21" x2="20" y2="16" />
-                                    <line x1="20" y1="12" x2="20" y2="3" />
-                                    <line x1="1" y1="14" x2="7" y2="14" />
-                                    <line x1="9" y1="8" x2="15" y2="8" />
-                                    <line x1="17" y1="16" x2="23" y2="16" />
-                                </svg>
-                                {activeToolCount > 0 && (
-                                    <span className="cb-action-btn-badge">{activeToolCount}</span>
-                                )}
-                            </button>
-                        )}
-                    </div>
-                    {onStop && isRunning ? (
-                        <button
-                            className="cb-send-btn cb-stop-btn active"
-                            onClick={onStop}
-                            disabled={isStopping}
-                            title={isStopping ? 'Stopping…' : 'Stop generating'}
-                            aria-label={isStopping ? 'Stopping' : 'Stop generating'}
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                                <rect x="6" y="6" width="12" height="12" rx="2" />
-                            </svg>
-                        </button>
-                    ) : (
-                        <button
-                            className={`cb-send-btn ${canSend ? 'active' : ''}`}
-                            onClick={handleSend}
-                            disabled={!canSend}
-                            title={isUploading ? 'Waiting for uploads…' : 'Send message'}
-                            aria-label="Send message"
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <line x1="12" y1="19" x2="12" y2="5" />
-                                <polyline points="5 12 12 5 19 12" />
-                            </svg>
-                        </button>
-                    )}
-                </div>
             </div>
+
             <div className="cb-composer-footer">
                 <span className="cb-composer-footer-note">Uses AI. Verify results.</span>
                 {usage && <UsageIndicator summary={usage} />}

@@ -666,6 +666,10 @@ export class GatewayStreamClient implements StreamChatClient {
         return this.conversationClient.getConversationDetail(id);
     }
 
+    async deleteConversation(id: string): Promise<void> {
+        return this.conversationClient.deleteConversation(id);
+    }
+
     async sendMessage(
         text: string,
         onEvent: (event: StreamEvent) => void,

@@ -440,6 +440,7 @@ export interface UseConversationsResult {
         id: string
     ) => Promise<{ messages: MessageProps[]; detail: ConversationDetail } | null>;
     newChat: () => void;
+    deleteConversation: (id: string) => Promise<void>;
 }
 
 export function useConversations(
@@ -520,6 +521,20 @@ export function useConversations(
         client?.setConversationId(null);
     }, [client]);
 
+    const deleteConversation = useCallback(async (id: string) => {
+        try {
+            if (client && 'deleteConversation' in client && typeof (client as any).deleteConversation === 'function') {
+                await (client as any).deleteConversation(id);
+            }
+        } catch (e) {
+            console.error('[useConversations] deleteConversation failed:', e);
+        }
+        setConversations(prev => prev.filter(c => c.uuid !== id));
+        if (activeConversationId === id) {
+            newChat();
+        }
+    }, [client, activeConversationId, newChat]);
+
     useEffect(() => {
         fetchConversations();
     }, [fetchConversations]);
@@ -534,5 +549,6 @@ export function useConversations(
         loadMore,
         selectConversation,
         newChat,
+        deleteConversation,
     };
 }

@@ -50,4 +50,18 @@ export class ConversationClient {
         const data = await this._fetch<{ conversation: ConversationDetail }>(`/v1/user/conversations/${id}`);
         return data.conversation;
     }
+
+    async deleteConversation(id: string): Promise<void> {
+        try {
+            await netFetch(`${this.gatewayUrl}/v1/user/conversations/${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${this.token ?? ''}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+        } catch (e) {
+            console.error('[ConversationClient] deleteConversation failed:', e);
+        }
+    }
 }

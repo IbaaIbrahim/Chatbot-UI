@@ -5,9 +5,10 @@ import { MessageBubble } from '../MessageBubble/MessageBubble';
 import { Composer, ComposerHandle } from '../Composer/Composer';
 import { WelcomeScreen } from '../WelcomeScreen/WelcomeScreen';
 import { ThinkingIndicator } from '../ThinkingIndicator/ThinkingIndicator';
-import { AgentSidebar, AgentSidebarItem } from '../AgentSidebar/AgentSidebar';
+import type { AgentSidebarItem } from '../AgentSidebar/AgentSidebar';
 import { AgentSwitcher } from '../AgentSwitcher/AgentSwitcher';
 import { ChatbotProvider } from '../../context/ChatbotContext';
+import type { ChatbotUIConfig } from '../../common/chatbotConfig';
 import { QuestionnaireForm, QuestionSpec } from '../Questionnaire/QuestionnaireForm';
 import { StreamClient, StreamChatClient } from '../../api/StreamClient';
 import { GatewayStreamClient, EnablableTool } from '../../api/GatewayStreamClient';
@@ -91,9 +92,8 @@ export interface AppProps {
      */
     allowLocalNetworkAccess?: boolean;
     /**
-     * Agent list to show in the sidebar. When provided the drawer shows an
-     * agent-switcher section above the conversation history. Each item's
-     * ``onClick`` is responsible for switching the active agent on the client.
+     * Agent list exposed by the composer selector. Each item's ``onClick`` is
+     * responsible for switching the active agent on the client.
      */
     agents?: AgentSidebarItem[];
     /**
@@ -166,6 +166,11 @@ export interface AppProps {
      */
     agentsLoading?: boolean;
     /**
+     * Called when the active agent changes from the composer's agent switcher
+     * (passes null when "Auto" is selected).
+     */
+    onAgentChange?: (agentId: string | null) => void;
+    /**
      * Which palette to use: `'light'`, `'dark'`, or `'system'` (the default,
      * which follows the viewer's OS setting).
      */
@@ -202,6 +207,30 @@ export interface AppProps {
      * get it.
      */
     brand?: React.ReactNode;
+    /**
+     * Allowed display modes. When provided, restricts mode switching to this subset.
+     */
+    allowedModes?: ChatMode[];
+    /**
+     * When true, disables widget background, borders, and shadows for seamless embedding.
+     */
+    noBackground?: boolean;
+    /**
+     * Dynamic configuration JSON for greetings, privacy badges, hint questions, quick action pills, feature cards, and context selector.
+     */
+    config?: ChatbotUIConfig;
+    /**
+     * Callback invoked when the user selects or deselects context filters in the composer.
+     */
+    onContextChange?: (contexts: string[]) => void;
+    /**
+     * Callback when the user switches view modes from header menu.
+     */
+    onSwitchMode?: (mode: ChatMode) => void;
+    /**
+     * Callback when the user clicks share button in header.
+     */
+    onShare?: () => void;
 }
 
 export const App: React.FC<AppProps> = ({
@@ -222,10 +251,17 @@ export const App: React.FC<AppProps> = ({
     tools,
     agentId,
     agentsLoading = false,
+    onAgentChange,
     theme = 'system',
     show_tool_toggles = true,
     headerActions,
     brand,
+    allowedModes,
+    noBackground = false,
+    config,
+    onContextChange,
+    onSwitchMode,
+    onShare,
 }) => {
     // Before any client is constructed: the flag has to be in place by the time
     // the first request goes out, and `netFetch` reads it at call time.
@@ -383,6 +419,7 @@ export const App: React.FC<AppProps> = ({
         loadMore,
         selectConversation,
         newChat,
+        deleteConversation,
     } = useConversations(activeClient as GatewayStreamClient | null, storageApiUrl);
 
     const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
@@ -576,6 +613,23 @@ export const App: React.FC<AppProps> = ({
         focusComposer();
     }, [newChat, reset, focusComposer]);
 
+    const currentConversationId = activeConversationId || (activeClient as GatewayStreamClient | null)?.getConversationId?.() || null;
+
+    const handleDeleteThread = React.useCallback(async () => {
+        const id = activeConversationId || (activeClient as GatewayStreamClient | null)?.getConversationId?.();
+        if (id) {
+            await deleteConversation(id);
+        }
+        handleNewChat();
+    }, [activeConversationId, activeClient, deleteConversation, handleNewChat]);
+
+    const handleCopyConversationId = React.useCallback(() => {
+        const id = activeConversationId || (activeClient as GatewayStreamClient | null)?.getConversationId?.();
+        if (id && navigator.clipboard) {
+            void navigator.clipboard.writeText(id);
+        }
+    }, [activeConversationId, activeClient]);
+
     /**
      * Put the user back in the thread this tab was already in.
      *
@@ -616,40 +670,134 @@ export const App: React.FC<AppProps> = ({
         !messages[messages.length - 1]?.content
     );
 
-    // Build chat history sidebar items from fetched conversations.
-    const chatHistoryItems: AgentSidebarItem[] = React.useMemo(() =>
-        conversations.map(conv => ({
-            id: conv.uuid,
-            label: conv.title,
-            active: conv.uuid === activeConversationId,
-            onClick: () => handleSelectConversation(conv.uuid),
-        })),
-        [conversations, activeConversationId, handleSelectConversation]
+    // Agents are selected from the composer, leaving the drawer dedicated to
+    // finding and reopening conversations.
+    const hasAgents = Boolean(agents && agents.length > 0);
+    const drawerContent = (
+        <ConversationDrawer
+            conversations={conversations}
+            onSelect={handleSelectConversation}
+            onNewChat={handleNewChat}
+            activeConversationId={activeConversationId}
+            isLoading={isLoadingConversations}
+            hasMore={hasMore}
+            isLoadingMore={isLoadingMore}
+            onLoadMore={loadMore}
+            onClose={() => setIsDrawerOpen(false)}
+        />
     );
 
-    // When agents are provided use the AgentSidebar (agents + conversations);
-    // otherwise fall back to the plain ConversationDrawer.
-    const hasAgents = Boolean(agents && agents.length > 0);
+    const isEmptyFullscreen = mode === 'fullscreen' && messages.length === 0;
+    const hasFooterNotice = Boolean((staleClientCall && !pendingQuestionnaire) || pendingQuestionnaire);
+    const [internalAgentId, setInternalAgentId] = React.useState<string | null>(null);
+    const effectiveAgentId = agentId !== undefined ? agentId : internalAgentId;
 
-    const drawerContent = hasAgents
-        ? (
-            <AgentSidebar
-                agents={agents!}
-                chatHistory={chatHistoryItems}
-                onNewChat={handleNewChat}
+    const handleSelectAuto = React.useCallback(() => {
+        setInternalAgentId(null);
+        onAgentChange?.(null);
+        if (activeClient && 'setAgentId' in activeClient) {
+            (activeClient as any).setAgentId(null);
+        }
+    }, [activeClient, onAgentChange]);
+
+    const handleSelectAgent = React.useCallback((id: string | null) => {
+        if (id === null) {
+            handleSelectAuto();
+            return;
+        }
+        setInternalAgentId(id);
+        onAgentChange?.(id);
+        if (activeClient && 'setAgentId' in activeClient) {
+            (activeClient as any).setAgentId(id);
+        }
+    }, [activeClient, handleSelectAuto, onAgentChange]);
+
+    const agentSwitcherElement = hasAgents ? (
+        <AgentSwitcher
+            agents={agents!}
+            activeAgentId={effectiveAgentId}
+            onSelectAuto={handleSelectAuto}
+            onSelectAgent={handleSelectAgent}
+            menuPlacement={isEmptyFullscreen ? 'below' : 'above'}
+            menuAlign="right"
+        />
+    ) : undefined;
+
+    const composerElement = (
+        <div className="cb-composer-stack">
+            <Composer
+                ref={composerRef}
+                onSend={handleSend}
+                // A resume counts as a turn in progress. Sending
+                // into a conversation that already has one running
+                // would put two turns on one stream, where either
+                // one's terminal frame closes the other's reader and
+                // their tokens land in the same bubble. Bounded: the
+                // resume ends with the turn, on a dead token, or on
+                // the first-frame deadline — and "New chat" clears it
+                // outright.
+                disabled={
+                    isThinking
+                    || isResuming
+                    || !!pendingQuestionnaire
+                    || awaitingAgentBinding
+                }
+                placeholder={
+                    pendingQuestionnaire
+                        ? 'Answer the questions above…'
+                        : awaitingAgentBinding
+                            ? 'Connecting…'
+                            // Host-supplied placeholder wins; the App-level default
+                            // covers a host that configured no context selector.
+                            : (config?.contextSelector?.placeholder ?? 'Describe what you want to do…')
+                }
+                storageApiUrl={storageApiUrl}
+                accessToken={accessToken}
+                tools={show_tool_toggles ? enablableTools : []}
+                enabledToolIds={enabledToolIds}
+                onToolsChange={show_tool_toggles ? handleToolSelectionChange : undefined}
+                handledToolSlugs={handledSlugs}
+                // Offered only while a turn is actually running, and
+                // only by a client that can stop one server-side.
+                onStop={
+                    'cancelTurn' in (activeClient ?? {})
+                        ? () => { void stopTurn(); }
+                        : undefined
+                }
+                isRunning={isThinking || isResuming}
+                isStopping={isStopping}
+                usage={usageSummary}
+                config={config}
+                onSelectedContextsChange={onContextChange}
+                toolMenuPlacement={isEmptyFullscreen ? 'center' : 'above'}
+                agentSwitcher={agentSwitcherElement}
             />
-        )
+        </div>
+    );
+
+    const footerContent = isEmptyFullscreen && !hasFooterNotice
+        ? null
         : (
-            <ConversationDrawer
-                conversations={conversations}
-                onSelect={handleSelectConversation}
-                onNewChat={handleNewChat}
-                activeConversationId={activeConversationId}
-                isLoading={isLoadingConversations}
-                hasMore={hasMore}
-                isLoadingMore={isLoadingMore}
-                onLoadMore={loadMore}
-            />
+            <>
+                {staleClientCall && !pendingQuestionnaire && (
+                    <div
+                        role="status"
+                        style={{
+                            padding: '8px 16px', fontSize: 13, opacity: 0.75,
+                        }}
+                    >
+                        This turn is waiting on a response from this page
+                        that can no longer be delivered.
+                    </div>
+                )}
+                {pendingQuestionnaire && (
+                    <QuestionnaireForm
+                        questions={pendingQuestionnaire.questions}
+                        onSubmit={handleQuestionnaireSubmit}
+                    />
+                )}
+                {!isEmptyFullscreen && composerElement}
+            </>
         );
 
     return (
@@ -661,76 +809,33 @@ export const App: React.FC<AppProps> = ({
                 onClose={onClose}
                 onOpen={onOpen}
                 embedded={embedded}
+                allowedModes={allowedModes}
+                noBackground={noBackground}
+                onSwitchMode={onSwitchMode}
                 isDrawerOpen={isDrawerOpen}
                 onDrawerOpenChange={setIsDrawerOpen}
                 drawerContent={drawerContent}
                 headerActions={headerActions}
-                brand={brand ?? (hasAgents ? <AgentSwitcher agents={agents!} /> : undefined)}
-                footer={
-                    <>
-                        {staleClientCall && !pendingQuestionnaire && (
-                            <div
-                                role="status"
-                                style={{
-                                    padding: '8px 16px', fontSize: 13, opacity: 0.75,
-                                }}
-                            >
-                                This turn is waiting on a response from this page
-                                that can no longer be delivered.
-                            </div>
-                        )}
-                        {pendingQuestionnaire && (
-                            <QuestionnaireForm
-                                questions={pendingQuestionnaire.questions}
-                                onSubmit={handleQuestionnaireSubmit}
-                            />
-                        )}
-                        <Composer
-                            ref={composerRef}
-                            onSend={handleSend}
-                            // A resume counts as a turn in progress. Sending
-                            // into a conversation that already has one running
-                            // would put two turns on one stream, where either
-                            // one's terminal frame closes the other's reader and
-                            // their tokens land in the same bubble. Bounded: the
-                            // resume ends with the turn, on a dead token, or on
-                            // the first-frame deadline — and "New chat" clears it
-                            // outright.
-                            disabled={
-                                isThinking
-                                || isResuming
-                                || !!pendingQuestionnaire
-                                || awaitingAgentBinding
-                            }
-                            placeholder={
-                                pendingQuestionnaire
-                                    ? 'Answer the questions above…'
-                                    : awaitingAgentBinding
-                                        ? 'Connecting…'
-                                        : 'Type a message…'
-                            }
-                            storageApiUrl={storageApiUrl}
-                            accessToken={accessToken}
-                            tools={show_tool_toggles ? enablableTools : []}
-                            enabledToolIds={enabledToolIds}
-                            onToolsChange={show_tool_toggles ? handleToolSelectionChange : undefined}
-                            handledToolSlugs={handledSlugs}
-                            // Offered only while a turn is actually running, and
-                            // only by a client that can stop one server-side.
-                            onStop={
-                                'cancelTurn' in (activeClient ?? {})
-                                    ? () => { void stopTurn(); }
-                                    : undefined
-                            }
-                            isRunning={isThinking || isResuming}
-                            isStopping={isStopping}
-                            usage={usageSummary}
-                        />
-                    </>
-                }
+                brand={brand}
+                hasMessages={messages.length > 0}
+                onNewChat={handleNewChat}
+                activeConversationId={currentConversationId}
+                onCopyConversationId={handleCopyConversationId}
+                onDeleteThread={handleDeleteThread}
+                onShare={onShare}
+                footer={footerContent}
             >
                 {messages.length === 0 ? (
-                    <WelcomeScreen userName={userName} actions={[]} />
+                    <WelcomeScreen
+                        userName={userName}
+                        config={config}
+                        mode={mode}
+                        composer={isEmptyFullscreen ? composerElement : undefined}
+                        onSelectSuggestion={(prompt) => {
+                            void handleSend(prompt);
+                        }}
+                        actions={[]}
+                    />
                 ) : (
                     <>
                         {messages.map((msg, index) => {

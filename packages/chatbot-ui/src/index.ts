@@ -95,3 +95,6 @@ export type {
 } from './hooks/useConversations';
 export { ConversationDrawer } from './components/ConversationDrawer/ConversationDrawer';
 export type { ConversationDrawerProps } from './components/ConversationDrawer/ConversationDrawer';
+
+// Configuration and mock data types for Mitti / Flowdit assistant design
+export * from './common/chatbotConfig';

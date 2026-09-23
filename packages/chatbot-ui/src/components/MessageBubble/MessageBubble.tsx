@@ -435,6 +435,46 @@ const AttachmentList: React.FC<{ attachments: Attachment[] }> = ({ attachments }
     </div>
 );
 
+type RenderItem =
+    | { type: 'single'; step: MessageStep; originalIndex: number }
+    | { type: 'tool-group'; steps: MessageStep[]; originalIndex: number };
+
+function groupRenderSteps(renderSteps: MessageStep[]): RenderItem[] {
+    const items: RenderItem[] = [];
+    let currentToolGroup: MessageStep[] = [];
+    let firstIdxInGroup = 0;
+
+    for (let i = 0; i < renderSteps.length; i++) {
+        const step = renderSteps[i];
+        if (step.type === 'tool-call') {
+            if (currentToolGroup.length === 0) {
+                firstIdxInGroup = i;
+            }
+            currentToolGroup.push(step);
+        } else {
+            if (currentToolGroup.length > 0) {
+                if (currentToolGroup.length === 1) {
+                    items.push({ type: 'single', step: currentToolGroup[0], originalIndex: firstIdxInGroup });
+                } else {
+                    items.push({ type: 'tool-group', steps: currentToolGroup, originalIndex: firstIdxInGroup });
+                }
+                currentToolGroup = [];
+            }
+            items.push({ type: 'single', step, originalIndex: i });
+        }
+    }
+
+    if (currentToolGroup.length > 0) {
+        if (currentToolGroup.length === 1) {
+            items.push({ type: 'single', step: currentToolGroup[0], originalIndex: firstIdxInGroup });
+        } else {
+            items.push({ type: 'tool-group', steps: currentToolGroup, originalIndex: firstIdxInGroup });
+        }
+    }
+
+    return items;
+}
+
 export const MessageBubble: React.FC<MessageProps> = (props) => {
     const { role, steps, shouldAnimate = true } = props;
 
@@ -544,6 +584,7 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
         // natural ``steps`` array is the source of truth for ordering. Render
         // it directly.
         const renderSteps: MessageStep[] = steps;
+        const groupedRenderItems = groupRenderSteps(renderSteps);
 
         // Collected at this level only. A nested bubble renders the steps of one
         // sub-agent and knows nothing of the turn, so letting it build its own
@@ -615,8 +656,20 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                         </div>
                     ) : (
                         <div className="cb-steps-container">
-                            {renderSteps.map((step, index) => {
-                                const isLast = index === renderSteps.length - 1;
+                            {groupedRenderItems.map((item) => {
+                                const isLast = item.originalIndex === renderSteps.length - 1;
+
+                                if (item.type === 'tool-group') {
+                                    return (
+                                        <ModernToolGroupRow
+                                            key={`group-${item.steps[0].id}`}
+                                            steps={item.steps}
+                                            props={props}
+                                        />
+                                    );
+                                }
+
+                                const step = item.step;
 
                                 if (step.type === 'thinking') {
                                     return (
@@ -628,32 +681,12 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                                 }
 
                                 if (step.type === 'tool-call') {
-                                    // Which handler the entry carries decides the
-                                    // payload: a `run` tool is replayed with its
-                                    // input, a `preview` tool with its result.
-                                    // Resolved by the same function the hoisted row
-                                    // uses, so the two can never disagree about that.
-                                    const resolved = resolveStepAction(step, props);
-                                    // A control placed at turn level is deliberately
-                                    // absent here — hoisting means moving it, not
-                                    // showing it twice.
-                                    const onStep = resolved?.placement === 'step'
-                                        ? resolved
-                                        : undefined;
-
                                     return (
-                                        <div key={step.id} className="cb-step-tool">
-                                            <ToolInvocation
-                                                toolName={step.toolName || 'Tool'}
-                                                args={step.toolArgs}
-                                                status={step.toolStatus as any}
-                                                result={step.toolResult}
-                                                actionPayload={onStep?.payload}
-                                                actionLabel={onStep?.label ?? 'Open Result'}
-                                                onAction={onStep?.onAction}
-                                                renderAction={onStep?.render}
-                                            />
-                                        </div>
+                                        <ModernToolCallRow
+                                            key={step.id}
+                                            step={step}
+                                            props={props}
+                                        />
                                     );
                                 }
 
@@ -1036,43 +1069,229 @@ const ErrorBlock = ({
     );
 };
 
+interface ModernToolCallRowProps {
+    step: MessageStep;
+    props: MessageProps;
+    defaultExpanded?: boolean;
+}
+
+const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defaultExpanded = false }) => {
+    const [expanded, setExpanded] = useState(defaultExpanded);
+    const resolved = resolveStepAction(step, props);
+    const onStep = resolved?.placement === 'step' ? resolved : undefined;
+    const isRunning = step.toolStatus === 'running';
+    const isFailed = step.toolStatus === 'failed';
+    const toolName = step.toolName || 'command';
+
+    const actionValue = React.useMemo(
+        () => parseToolOutput(onStep?.payload ?? step.toolArgs ?? step.toolResult),
+        [onStep?.payload, step.toolArgs, step.toolResult]
+    );
+
+    const isWebSearch = toolName === 'web_search' || toolName === 'search_web';
+
+    return (
+        <div className={`cb-modern-tool-call ${step.toolStatus || 'completed'}`}>
+            <div className="cb-modern-tool-header-row">
+                <button
+                    type="button"
+                    className="cb-modern-tool-btn"
+                    onClick={() => setExpanded(!expanded)}
+                    aria-expanded={expanded}
+                >
+                    <span className="cb-modern-tool-status-icon">
+                        {isRunning ? (
+                            <span className="cb-spinner-xs" />
+                        ) : isFailed ? (
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5">
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                        ) : (
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="cb-modern-tool-check">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                        )}
+                    </span>
+                    <span className="cb-modern-tool-label">
+                        <span className="cb-modern-tool-verb">
+                            {isRunning ? 'Running' : isFailed ? 'Failed' : 'Ran'}
+                        </span>
+                        <code className="cb-modern-tool-code">{toolName}</code>
+                    </span>
+                    <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        className={`cb-modern-chevron ${expanded ? 'cb-chevron-open' : ''}`}
+                    >
+                        <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                </button>
+
+                {onStep && step.toolStatus === 'completed' && (
+                    <div className="cb-modern-tool-action">
+                        <ToolActionControl
+                            onAction={onStep.onAction}
+                            payload={actionValue}
+                            toolName={toolName}
+                            label={onStep.label}
+                            render={onStep.render}
+                        />
+                    </div>
+                )}
+            </div>
+
+            {expanded && (
+                <div className="cb-modern-tool-details">
+                    {isWebSearch && step.toolResult ? (
+                        <div className="cb-web-search-results">
+                            <div className="cb-tool-detail-label">Search Results:</div>
+                            <div className="cb-markdown-content cb-tool-detail-body">
+                                {typeof step.toolResult === 'string' ? step.toolResult : JSON.stringify(step.toolResult, null, 2)}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="cb-code-block">
+                            {step.toolArgs && (
+                                <>
+                                    <div className="cb-tool-detail-key">Arguments:</div>
+                                    {JSON.stringify(step.toolArgs, null, 2)}
+                                </>
+                            )}
+                            {step.toolResult && (
+                                <>
+                                    <div className="cb-tool-detail-key cb-tool-detail-key-spaced">Result:</div>
+                                    {JSON.stringify(step.toolResult, null, 2)}
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+interface ModernToolGroupRowProps {
+    steps: MessageStep[];
+    props: MessageProps;
+}
+
+const ModernToolGroupRow: React.FC<ModernToolGroupRowProps> = ({ steps, props }) => {
+    const [groupExpanded, setGroupExpanded] = useState(false);
+    const anyRunning = steps.some(s => s.toolStatus === 'running');
+    const failedSteps = steps.filter(s => s.toolStatus === 'failed');
+
+    const groupLabel = React.useMemo(() => {
+        if (anyRunning) {
+            return `Running ${steps.length} commands...`;
+        }
+        if (failedSteps.length > 0) {
+            return `Ran ${steps.length} commands (${failedSteps.length} failed)`;
+        }
+        return `Ran ${steps.length} commands`;
+    }, [anyRunning, failedSteps.length, steps.length]);
+
+    return (
+        <div className={`cb-modern-tool-group ${anyRunning ? 'is-running' : ''}`}>
+            <button
+                type="button"
+                className="cb-modern-group-btn"
+                onClick={() => setGroupExpanded(!groupExpanded)}
+                aria-expanded={groupExpanded}
+            >
+                <span className="cb-modern-group-icon">
+                    {anyRunning ? (
+                        <span className="cb-spinner-xs" />
+                    ) : failedSteps.length > 0 ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="8" x2="12" y2="12" />
+                            <line x1="12" y1="16" x2="12.01" y2="16" />
+                        </svg>
+                    ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="4 17 10 11 4 5" />
+                            <line x1="12" y1="19" x2="20" y2="19" />
+                        </svg>
+                    )}
+                </span>
+                <span className="cb-modern-group-label">{groupLabel}</span>
+                <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className={`cb-modern-chevron ${groupExpanded ? 'cb-chevron-open' : ''}`}
+                >
+                    <polyline points="9 18 15 12 9 6" />
+                </svg>
+            </button>
+
+            {groupExpanded && (
+                <div className="cb-modern-group-items">
+                    {steps.map(step => (
+                        <ModernToolCallRow
+                            key={step.id}
+                            step={step}
+                            props={props}
+                            defaultExpanded={false}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const ThinkingBlock = ({ step }: { step: MessageStep }) => {
     const [isOpen, setIsOpen] = useState(false);
     const isFinished = step.isFinished;
     const hasContent = step.content && step.content.trim().length > 0;
 
     return (
-        <div className={`cb-step-thinking-block ${isFinished ? 'is-finished' : 'is-running'}`}>
+        <div className={`cb-modern-thinking ${isFinished ? 'is-finished' : 'is-running'}`}>
             <button
                 type="button"
-                className="cb-thinking-header"
+                className="cb-modern-thinking-btn"
                 onClick={() => setIsOpen(!isOpen)}
                 aria-expanded={isOpen}
             >
-                {isFinished ? (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                ) : (
-                    <span className="cb-sub-agent-spinner" />
-                )}
+                <span className="cb-modern-thinking-icon">
+                    {isFinished ? (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7zM9 21h6" />
+                        </svg>
+                    ) : (
+                        <span className="cb-spinner-xs" />
+                    )}
+                </span>
 
-                <span className="cb-sub-agent-name">Thinking</span>
-
-                {hasContent && (
-                    <span className="cb-sub-agent-count">
-                        {isOpen ? 'Hide' : 'Show'} content
-                    </span>
-                )}
+                <span className="cb-modern-thinking-label">
+                    {isFinished ? 'Thought for a few seconds' : 'Thinking...'}
+                </span>
 
                 <svg
-                    width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                    className={isOpen ? 'cb-chevron cb-chevron-open' : 'cb-chevron'}
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className={`cb-modern-chevron ${isOpen ? 'cb-chevron-open' : ''}`}
                 >
-                    <polyline points="6 9 12 15 18 9"></polyline>
+                    <polyline points="9 18 15 12 9 6" />
                 </svg>
             </button>
 
             {isOpen && hasContent && (
-                <div className="cb-thinking-content">
+                <div className="cb-modern-thinking-content">
                     <pre className="cb-thinking-text">{step.content}</pre>
                 </div>
             )}

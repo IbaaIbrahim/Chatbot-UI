@@ -6,8 +6,11 @@ export type ChatMode = 'floating' | 'sidebar' | 'fullscreen';
 
 export interface ChatContainerProps {
     mode?: ChatMode;
+    allowedModes?: ChatMode[];
+    onSwitchMode?: (newMode: ChatMode) => void;
     isOpen?: boolean;
     embedded?: boolean;
+    noBackground?: boolean;
     onClose?: () => void;
     onOpen?: () => void;
     children?: React.ReactNode;
@@ -16,42 +19,56 @@ export interface ChatContainerProps {
     isDrawerOpen?: boolean;
     onDrawerOpenChange?: (isOpen: boolean) => void;
     headerActions?: React.ReactNode;
-    /**
-     * Custom content rendered in the header next to the menu button, in place
-     * of the default "AI Assistant" brand text (e.g. an agent switcher).
-     */
     brand?: React.ReactNode;
-    /**
-     * Which palette to use. Default `'system'`.
-     *
-     * `'light'` and `'dark'` stamp `data-theme` on the container and are an
-     * explicit choice, which beats the OS. `'system'` stamps nothing and lets
-     * `prefers-color-scheme` decide — which is why it must be the absence of the
-     * attribute rather than a third value: the light rules key off
-     * `:not([data-theme='dark'])`, so any value here would suppress them.
-     */
     theme?: ChatTheme;
+    onManageMemory?: () => void;
+    onViewUsage?: () => void;
+    hasMessages?: boolean;
+    onNewChat?: () => void;
+    onCopyConversationId?: () => void;
+    onDeleteThread?: () => void;
+    onShare?: () => void;
+    activeConversationId?: string | null;
 }
 
 export type ChatTheme = 'light' | 'dark' | 'system';
 
+const ALL_MODES: ChatMode[] = ['floating', 'sidebar', 'fullscreen'];
+
 export const ChatContainer: React.FC<ChatContainerProps> = ({
     mode = 'floating',
+    allowedModes,
+    onSwitchMode,
     theme = 'system',
     isOpen = true,
     embedded = false,
+    noBackground = false,
     onClose,
     onOpen,
     children,
     drawerContent,
     footer,
     isDrawerOpen: controlledIsDrawerOpen,
+    hasMessages = false,
     onDrawerOpenChange,
     headerActions,
-    brand
+    brand,
+    onManageMemory,
+    onViewUsage,
+    onNewChat,
+    onCopyConversationId,
+    onDeleteThread,
+    onShare,
+    activeConversationId,
 }) => {
     const [mounted, setMounted] = useState(false);
     const [internalIsDrawerOpen, setInternalIsDrawerOpen] = useState(false);
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [copiedId, setCopiedId] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    const effectiveAllowedModes = allowedModes && allowedModes.length > 0 ? allowedModes : ALL_MODES;
+    const effectiveMode = effectiveAllowedModes.includes(mode) ? mode : effectiveAllowedModes[0];
 
     const isDrawerOpen = controlledIsDrawerOpen !== undefined ? controlledIsDrawerOpen : internalIsDrawerOpen;
 
@@ -70,7 +87,28 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         setMounted(true);
     }, []);
 
-    // Instant scroll for auto-scroll during streaming (no animation conflicts)
+    // Close menu when clicking outside
+    useEffect(() => {
+        if (!isMenuOpen) return;
+        const handleClickOutside = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                setIsMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isMenuOpen]);
+
+    const handleCycleMode = () => {
+        setIsMenuOpen(false);
+        if (effectiveAllowedModes.length <= 1) return;
+        const currentIndex = effectiveAllowedModes.indexOf(effectiveMode);
+        const nextIndex = (currentIndex + 1) % effectiveAllowedModes.length;
+        const nextMode = effectiveAllowedModes[nextIndex];
+        onSwitchMode?.(nextMode);
+    };
+
+    // Instant scroll for auto-scroll during streaming
     const scrollToBottomInstant = () => {
         if (scrollRef.current) {
             isProgrammaticScroll.current = true;
@@ -81,10 +119,10 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         }
     };
 
-    // Smooth scroll for manual "scroll to bottom" button — also re-enables auto-scroll
+    // Smooth scroll for manual button
     const scrollToBottomSmooth = () => {
         setIsAtBottom(true);
-        scrollEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        scrollEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
     const handleScroll = () => {
@@ -92,15 +130,12 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
         const distFromBottom = scrollHeight - scrollTop - clientHeight;
 
-        // Progress Calculation
         const totalScrollable = scrollHeight - clientHeight;
         const progress = totalScrollable > 0 ? (scrollTop / totalScrollable) * 100 : 0;
         setScrollProgress(progress);
 
-        // Show button if we are more than 100px from bottom
-        setShowScrollBtn(distFromBottom > 100);
+        setShowScrollBtn(hasMessages && distFromBottom > 100);
 
-        // Only update isAtBottom on user-initiated scrolls
         if (!isProgrammaticScroll.current) {
             setIsAtBottom(distFromBottom < 50);
         }
@@ -109,19 +144,15 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     const contentRef = useRef<HTMLDivElement>(null);
     const scrollEndRef = useRef<HTMLDivElement>(null);
 
-    // Whenever children change (new messages), if we were at bottom, scroll to bottom
     useLayoutEffect(() => {
         if (isAtBottom) {
             scrollToBottomInstant();
         }
     }, [children, isAtBottom]);
 
-    // Sticky Scroll: Observe content height changes (Typewriter effect)
     useLayoutEffect(() => {
         if (!contentRef.current) return;
-
         let rafId: number | null = null;
-
         const observer = new ResizeObserver(() => {
             if (isAtBottom) {
                 if (rafId !== null) {
@@ -133,9 +164,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                 });
             }
         });
-
         observer.observe(contentRef.current);
-
         return () => {
             observer.disconnect();
             if (rafId !== null) {
@@ -144,29 +173,21 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         };
     }, [isAtBottom]);
 
-    // Escape closes the drawer, matching every other overlay in the widget (the
-    // agent switcher, the tools menu and the attachment viewer all do this). It
-    // was the one dismissible surface reachable only by pointer — a keyboard user
-    // who opened it had no way back out.
     React.useEffect(() => {
-        if (!isDrawerOpen) return;
+        if (!isDrawerOpen && !isMenuOpen) return;
         const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') setIsDrawerOpen(false);
+            if (event.key === 'Escape') {
+                setIsDrawerOpen(false);
+                setIsMenuOpen(false);
+            }
         };
         document.addEventListener('keydown', onKeyDown);
         return () => document.removeEventListener('keydown', onKeyDown);
-    }, [isDrawerOpen, setIsDrawerOpen]);
+    }, [isDrawerOpen, isMenuOpen, setIsDrawerOpen]);
 
     if (!mounted) return null;
 
-
-    if (!isOpen && mode === 'floating' && !embedded) {
-        // Both classes, and both are load-bearing. `cb-chat-launcher` is the
-        // token scope — `styles.css` defines the palette on it and on
-        // `cb-chat-container`, and nothing else — while `cb-launcher-btn` is
-        // where this button's own layout lives. Rendering only the latter, as
-        // this did, resolved every `var(--cb-*)` to nothing and left a bare
-        // browser button sitting in the host page's normal flow.
+    if (!isOpen && effectiveMode === 'floating' && !embedded) {
         return (
             <button
                 className="cb-chat-launcher cb-launcher-btn"
@@ -174,18 +195,24 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                 onClick={() => onOpen?.()}
                 aria-label="Open chat"
             >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
+                <div className="cb-launcher-sparkle-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path
+                            d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"
+                            fill="currentColor"
+                        />
+                    </svg>
+                </div>
             </button>
         );
     }
 
     const containerClasses = [
         'cb-chat-container',
-        `cb-mode-${mode}`,
+        `cb-mode-${effectiveMode}`,
         isOpen ? 'cb-open' : 'cb-closed',
-        embedded ? 'cb-embedded' : null
+        embedded ? 'cb-embedded' : null,
+        noBackground ? 'cb-no-background' : null,
     ].filter(Boolean).join(' ');
 
     return (
@@ -193,7 +220,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             <div className="cb-chat-header">
                 <div className="cb-header-left">
                     <button
-                        className="cb-header-btn"
+                        className="cb-header-btn cb-drawer-toggle-btn"
                         onClick={() => setIsDrawerOpen(!isDrawerOpen)}
                         aria-label={isDrawerOpen ? 'Close menu' : 'Open menu'}
                         aria-expanded={isDrawerOpen}
@@ -204,15 +231,178 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                             <line x1="3" y1="18" x2="21" y2="18"></line>
                         </svg>
                     </button>
-                    {brand ?? <span className="cb-brand">AI Assistant</span>}
+                    {brand ?? (
+                        <div className="cb-brand-wrapper">
+                            <div className="cb-header-sparkle">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                    <path
+                                        d="M12 2L14.2 9.8L22 12L14.2 14.2L12 22L9.8 14.2L2 12L9.8 9.8L12 2Z"
+                                        fill="url(#cb-sparkle-gradient-hdr)"
+                                    />
+                                    <defs>
+                                        <linearGradient id="cb-sparkle-gradient-hdr" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                                            <stop stopColor="#6366F1" />
+                                            <stop offset="0.5" stopColor="#38BDF8" />
+                                            <stop offset="1" stopColor="#F59E0B" />
+                                        </linearGradient>
+                                    </defs>
+                                </svg>
+                            </div>
+                            <span className="cb-brand">AI Assistant</span>
+                        </div>
+                    )}
                 </div>
+
                 <div className="cb-actions">
                     {headerActions}
-                    <button className="cb-minimize-btn" onClick={onClose} aria-label="Close chat">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M18 6L6 18M6 6l12 12" />
-                        </svg>
-                    </button>
+
+                    {onShare && (
+                        <button
+                            type="button"
+                            className="cb-header-btn cb-share-btn"
+                            onClick={onShare}
+                            title="Share conversation"
+                            aria-label="Share conversation"
+                        >
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                                <polyline points="16 6 12 2 8 6" />
+                                <line x1="12" y1="2" x2="12" y2="15" />
+                            </svg>
+                        </button>
+                    )}
+
+                    {/* New chat button at top right, visible after first message */}
+                    {hasMessages && onNewChat && (
+                        <button
+                            type="button"
+                            className="cb-header-new-chat-btn"
+                            onClick={onNewChat}
+                            title="Start a new chat"
+                            aria-label="New chat"
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M12 20h9" />
+                                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                            </svg>
+                            <span>New chat</span>
+                        </button>
+                    )}
+
+                    {/* More options menu (3 dots) matching Image 4 & context menu */}
+                    <div className="cb-header-menu-container" ref={menuRef}>
+                        <button
+                            className="cb-header-btn cb-more-btn"
+                            onClick={() => setIsMenuOpen(!isMenuOpen)}
+                            aria-label="More options"
+                            aria-expanded={isMenuOpen}
+                        >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                <circle cx="12" cy="12" r="2" />
+                                <circle cx="19" cy="12" r="2" />
+                                <circle cx="5" cy="12" r="2" />
+                            </svg>
+                        </button>
+
+                        {isMenuOpen && (
+                            <div className="cb-header-dropdown-menu" role="menu">
+                                <button
+                                    className="cb-header-menu-item"
+                                    onClick={() => {
+                                        setIsMenuOpen(false);
+                                        onManageMemory?.();
+                                    }}
+                                    role="menuitem"
+                                >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                        <polyline points="14 2 14 8 20 8" />
+                                        <line x1="16" y1="13" x2="8" y2="13" />
+                                        <line x1="16" y1="17" x2="8" y2="17" />
+                                        <polyline points="10 9 9 9 8 9" />
+                                    </svg>
+                                    <span>Manage memory</span>
+                                </button>
+
+                                {effectiveAllowedModes.length > 1 && (
+                                    <button
+                                        className="cb-header-menu-item"
+                                        onClick={handleCycleMode}
+                                        role="menuitem"
+                                    >
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <polyline points="15 3 21 3 21 9" />
+                                            <polyline points="9 21 3 21 3 15" />
+                                            <line x1="21" y1="3" x2="14" y2="10" />
+                                            <line x1="3" y1="21" x2="10" y2="14" />
+                                        </svg>
+                                        <span>Switch view</span>
+                                    </button>
+                                )}
+
+                                <button
+                                    className="cb-header-menu-item"
+                                    onClick={() => {
+                                        setIsMenuOpen(false);
+                                        onViewUsage?.();
+                                    }}
+                                    role="menuitem"
+                                >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <circle cx="12" cy="12" r="10" />
+                                        <polyline points="12 6 12 12 16 14" />
+                                    </svg>
+                                    <span>View my usage</span>
+                                </button>
+
+                                <button
+                                    className="cb-header-menu-item"
+                                    onClick={() => {
+                                        if (activeConversationId && navigator.clipboard) {
+                                            void navigator.clipboard.writeText(activeConversationId);
+                                        }
+                                        onCopyConversationId?.();
+                                        setCopiedId(true);
+                                        setTimeout(() => setCopiedId(false), 2000);
+                                    }}
+                                    role="menuitem"
+                                >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                    </svg>
+                                    <span>{copiedId ? 'Copied ID!' : 'Copy conversation ID'}</span>
+                                </button>
+
+                                {onDeleteThread && (
+                                    <button
+                                        className="cb-header-menu-item cb-header-menu-item-danger"
+                                        onClick={() => {
+                                            setIsMenuOpen(false);
+                                            onDeleteThread();
+                                        }}
+                                        role="menuitem"
+                                    >
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <polyline points="3 6 5 6 21 6" />
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                            <line x1="10" y1="11" x2="10" y2="17" />
+                                            <line x1="14" y1="11" x2="14" y2="17" />
+                                        </svg>
+                                        <span>Delete thread</span>
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {onClose && (
+                        <button className="cb-minimize-btn" onClick={onClose} aria-label="Close chat">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M18 6L6 18M6 6l12 12" />
+                            </svg>
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -225,9 +415,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                 </div>
 
                 <div className="cb-chat-content">
-                    {/* Messages Area (Flex 1, contains scroll view + button) */}
                     <div className="cb-messages-area">
-                        {/* Scroll Progress Indicator */}
                         <div className="cb-scroll-progress-container">
                             <div
                                 className="cb-scroll-progress-bar"
@@ -235,7 +423,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                             />
                         </div>
                         <div className={`cb-scroll-shadow-top ${scrollProgress > 5 ? 'visible' : ''}`} />
-                        {/* Wrapped Scroll View */}
+
                         <div
                             className="cb-scroll-view"
                             ref={scrollRef}
@@ -248,17 +436,19 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                         </div>
                         <div className={`cb-scroll-shadow-bottom ${!isAtBottom ? 'visible' : ''}`} />
 
-                        {/* Scroll To Bottom Button */}
-                        <button
-                            className={`cb-scroll-bottom-btn ${showScrollBtn ? 'visible' : ''}`}
-                            onClick={scrollToBottomSmooth}
-                            aria-label="Scroll to latest message"
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
-                        </button>
+                        {hasMessages && (
+                            <button
+                                className={`cb-scroll-bottom-btn ${showScrollBtn ? 'visible' : ''}`}
+                                onClick={scrollToBottomSmooth}
+                                aria-label="Scroll to latest message"
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M12 5v14M19 12l-7 7-7-7" />
+                                </svg>
+                            </button>
+                        )}
                     </div>
 
-                    {/* Fixed Footer */}
                     {footer && (
                         <div className="cb-chat-footer">
                             {footer}

@@ -20,6 +20,8 @@ export interface ToolTogglesProps {
     handledSlugs?: string[];
     /** Dismiss the menu. */
     onClose: () => void;
+    /** Fullscreen empty states use a centered menu; footer composers open upward. */
+    placement?: 'above' | 'center';
 }
 
 /**
@@ -115,6 +117,7 @@ export const ToolToggles: React.FC<ToolTogglesProps> = ({
     onChange,
     handledSlugs = [],
     onClose,
+    placement = 'above',
 }) => {
     const handled = React.useMemo(() => new Set(handledSlugs), [handledSlugs]);
 
@@ -133,7 +136,8 @@ export const ToolToggles: React.FC<ToolTogglesProps> = ({
 
     const menuRef = React.useRef<HTMLDivElement>(null);
 
-    // Cap the menu at the room the widget actually has above the composer.
+    // Cap the menu at the room owned by the widget. A footer composer opens
+    // upward, while the empty fullscreen composer presents the menu centrally.
     //
     // A viewport-relative ceiling is the wrong ceiling here. `60vh` of a tall
     // window is more height than a 600px floating panel owns, and the excess is
@@ -152,9 +156,10 @@ export const ToolToggles: React.FC<ToolTogglesProps> = ({
         const clip = findClippingAncestor(anchor);
 
         const applyAvailableHeight = () => {
-            const ceiling = clip ? clip.getBoundingClientRect().top : 0;
-            const available =
-                anchor.getBoundingClientRect().bottom - ceiling - MENU_EDGE_GAP_PX;
+            const clipRect = clip?.getBoundingClientRect();
+            const available = placement === 'center'
+                ? (clipRect?.height ?? window.innerHeight) - (MENU_EDGE_GAP_PX * 2)
+                : anchor.getBoundingClientRect().bottom - (clipRect?.top ?? 0) - MENU_EDGE_GAP_PX;
             menu.style.setProperty(
                 '--cb-menu-available-height',
                 `${Math.max(available, MENU_MIN_HEIGHT_PX)}px`
@@ -175,7 +180,7 @@ export const ToolToggles: React.FC<ToolTogglesProps> = ({
             observer.disconnect();
             window.removeEventListener('resize', applyAvailableHeight);
         };
-    }, []);
+    }, [placement]);
 
     // Escape closes, as any menu should. Without it the only way out is the
     // trigger button, which leaves the menu unclosable if that button is ever
@@ -194,7 +199,7 @@ export const ToolToggles: React.FC<ToolTogglesProps> = ({
                 anchored wrapper below is only as big as the menu, so a click
                 anywhere else would never reach a handler on it. */}
             <div className="cb-menu-scrim" onClick={onClose} />
-            <div className="cb-menu-overlay">
+            <div className={`cb-menu-overlay${placement === 'center' ? ' cb-menu-overlay--centered' : ''}`}>
             <div
                 ref={menuRef}
                 className="cb-menu-content cb-tools-menu"

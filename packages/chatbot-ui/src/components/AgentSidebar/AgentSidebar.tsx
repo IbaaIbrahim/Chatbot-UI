@@ -13,7 +13,7 @@ export interface AgentSidebarItem {
 export interface AgentSidebarProps {
     agents: AgentSidebarItem[];
     chatHistory: AgentSidebarItem[];
-    onNewChat: () => void;
+    onNewChat?: () => void;
     onSearch?: (query: string) => void;
     searchResults?: AgentSidebarItem[];
     isSearching?: boolean;
@@ -83,7 +83,7 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
 export const AgentSidebar: React.FC<AgentSidebarProps> = ({
     agents,
     chatHistory,
-    onNewChat,
+    onNewChat: _onNewChat,
     onSearch,
     searchResults,
     isSearching = false,
@@ -105,15 +105,6 @@ export const AgentSidebar: React.FC<AgentSidebarProps> = ({
 
     return (
         <div className="cb-agent-sidebar">
-            <div className="cb-agent-sidebar-header">
-                <button className="cb-new-chat-btn" onClick={onNewChat}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                    </svg>
-                    <span>New chat</span>
-                </button>
-            </div>
 
             {/* One scroll region for both sections, deliberately. A scroller per
                 section splits a fixed column between them, so a deployment with
