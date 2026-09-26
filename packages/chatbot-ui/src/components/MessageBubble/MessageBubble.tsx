@@ -5,7 +5,7 @@ import './MessageBubble.css';
 import { parseToolOutput } from '../../api/toolOutput';
 import { netFetch } from '../../common/localNetwork';
 import { ToolInvocation, ToolActionControl } from '../ToolInvocation/ToolInvocation';
-import type { ToolActionPlacement, ToolConfig, ToolPresentation } from '../../common/toolConfig';
+import { resolveToolDisplayName, type ToolActionPlacement, type ToolConfig, type ToolPresentation } from '../../common/toolConfig';
 import { ConfirmButtons, ConfirmStatus } from '../ConfirmButtons/ConfirmButtons';
 import type { ContextFigures, RunUsage, TreeFigures, UsageFigures } from '../../api/types';
 import { AuthenticatedImage } from '../AuthenticatedImage/AuthenticatedImage';
@@ -38,6 +38,7 @@ export interface MessageStep {
     type: MessageStepType;
     content?: string;
     toolName?: string;
+    toolSlug?: string;
     toolArgs?: any;
     toolStatus?: 'running' | 'completed' | 'failed';
     toolResult?: any;
@@ -703,15 +704,21 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                                 if (step.type === 'confirm-request') {
                                     return (
                                         <div key={step.id} className="cb-step-confirm">
-                                            <ConfirmButtons
-                                                toolCallId={step.toolCallId || step.id}
-                                                toolName={step.toolName || 'Tool'}
-                                                label={step.confirmLabel || step.toolName || 'Confirm Action'}
-                                                description={step.confirmDescription}
-                                                status={step.confirmStatus || 'pending'}
-                                                onConfirm={props.onConfirm || (() => { })}
-                                                onReject={props.onReject || (() => { })}
-                                            />
+                                            {(() => {
+                                                const toolSlug = step.toolSlug || step.toolName || 'Tool';
+                                                const displayName = resolveToolDisplayName(step.toolName || toolSlug, props.tools);
+                                                return (
+                                                    <ConfirmButtons
+                                                        toolCallId={step.toolCallId || step.id}
+                                                        toolName={displayName}
+                                                        label={step.confirmLabel || displayName || 'Confirm Action'}
+                                                        description={step.confirmDescription}
+                                                        status={step.confirmStatus || 'pending'}
+                                                        onConfirm={props.onConfirm || (() => { })}
+                                                        onReject={props.onReject || (() => { })}
+                                                    />
+                                                );
+                                            })()}
                                         </div>
                                     );
                                 }
@@ -762,7 +769,7 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                                     key={`hoisted-${action.step.id}`}
                                     onAction={action.onAction}
                                     payload={action.payload}
-                                    toolName={action.step.toolName || 'Tool'}
+                                    toolName={resolveToolDisplayName(action.step.toolName || action.step.toolSlug || 'Tool', props.tools)}
                                     label={action.label}
                                     render={action.render}
                                 />
@@ -842,9 +849,11 @@ function resolveStepAction(
     step: MessageStep,
     handlers: Pick<MessageProps, 'tools'>,
 ): ResolvedStepAction | null {
-    if (step.type !== 'tool-call' || !step.toolName) return null;
+    if (step.type !== 'tool-call') return null;
+    const toolSlug = step.toolSlug || step.toolName;
+    if (!toolSlug) return null;
 
-    const config = handlers.tools?.[step.toolName];
+    const config = handlers.tools?.[toolSlug] || (step.toolName ? handlers.tools?.[step.toolName] : undefined);
     if (!config || config.show === false) return null;
 
     // Which half of the union the entry is decides the payload, and an entry can
@@ -854,21 +863,21 @@ function resolveStepAction(
     // Tested by truthiness rather than `'preview' in config`: the opposite
     // variant declares the key as `?: never`, so `in` narrows nothing. See
     // isClientTool in common/toolConfig.
-    const toolName = step.toolName;
+    const resolvedSlug = step.toolSlug || toolSlug;
     let onAction: ((data: any) => void) | undefined;
     let rawPayload: any;
     let label = 'Open Result';
     if (config.preview) {
         const preview = config.preview;
         onAction = (data) => {
-            void preview(data, { tool_slug: toolName, step_uuid: step.id, status: 'completed' });
+            void preview(data, { tool_slug: resolvedSlug, step_uuid: step.id, status: 'completed' });
         };
         rawPayload = step.toolResult;
         label = 'Open Preview';
     } else if (config.run) {
         const run = config.run;
         onAction = (data) => {
-            void run(data, { tool_slug: toolName, step_uuid: step.id });
+            void run(data, { tool_slug: resolvedSlug, step_uuid: step.id });
         };
         rawPayload = step.toolArgs;
     }
@@ -947,13 +956,18 @@ const SubAgentBlock = ({
         const names = new Set<string>();
         const walk = (list: MessageStep[]) => {
             for (const child of list) {
-                if (child.type === 'tool-call' && child.toolName) names.add(child.toolName);
+                if (child.type === 'tool-call') {
+                    const slug = child.toolSlug || child.toolName;
+                    if (slug) {
+                        names.add(resolveToolDisplayName(child.toolName || slug, handlers.tools));
+                    }
+                }
                 if (child.subSteps) walk(child.subSteps);
             }
         };
         walk(step.subSteps ?? []);
         return [...names];
-    }, [step.subSteps]);
+    }, [step.subSteps, handlers.tools]);
 
     const summary = toolsUsed.length > 0
         ? toolsUsed.join(', ')
@@ -1081,14 +1095,15 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
     const onStep = resolved?.placement === 'step' ? resolved : undefined;
     const isRunning = step.toolStatus === 'running';
     const isFailed = step.toolStatus === 'failed';
-    const toolName = step.toolName || 'command';
+    const toolSlug = step.toolSlug || step.toolName || 'command';
+    const toolName = resolveToolDisplayName(step.toolName || toolSlug, props.tools);
 
     const actionValue = React.useMemo(
         () => parseToolOutput(onStep?.payload ?? step.toolArgs ?? step.toolResult),
         [onStep?.payload, step.toolArgs, step.toolResult]
     );
 
-    const isWebSearch = toolName === 'web_search' || toolName === 'search_web';
+    const isWebSearch = toolSlug === 'web_search' || toolSlug === 'search_web';
 
     return (
         <div className={`cb-modern-tool-call ${step.toolStatus || 'completed'}`}>
@@ -1117,7 +1132,7 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
                         <span className="cb-modern-tool-verb">
                             {isRunning ? 'Running' : isFailed ? 'Failed' : 'Ran'}
                         </span>
-                        <code className="cb-modern-tool-code">{toolName}</code>
+                        <code className="cb-modern-tool-code" title={toolSlug}>{toolName}</code>
                     </span>
                     <svg
                         width="14"
@@ -1530,10 +1545,11 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                 </div>
                 <div className="cb-message-content-wrapper">
                     <ToolInvocation
-                        toolName={toolInvocation.toolName}
+                        toolName={resolveToolDisplayName(toolInvocation.toolName, props.tools)}
                         args={toolInvocation.args}
                         status={toolInvocation.status}
                         result={toolInvocation.result}
+                        tools={props.tools}
                     />
                 </div>
             </div>

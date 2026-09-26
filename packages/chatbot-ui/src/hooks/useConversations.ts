@@ -3,6 +3,7 @@ import { GatewayStreamClient } from '../api/GatewayStreamClient';
 import { ConversationDetail, ConversationJob, ConversationStep, ConversationSummary, PendingApproval, UsageFigures, ContextFigures, RunUsage, TreeFigures } from '../api/types';
 import { MessageProps, MessageStep } from '../components/MessageBubble/MessageBubble';
 import { describeApprovalRequest } from './useStreamChat';
+import { resolveToolDisplayName } from '../common/toolConfig';
 
 function extractTextFromContentBlocks(responsePayload: any): string {
     if (!responsePayload || typeof responsePayload !== 'object') return '';
@@ -82,7 +83,8 @@ function mapSteps(steps: ConversationStep[], subAgentJobs: ConversationJob[] = [
             messageSteps.push({
                 id: step.uuid,
                 type: 'tool-call',
-                toolName: step.tool_slug || 'Tool',
+                toolName: (step as any).tool_name || (step.tool_slug ? resolveToolDisplayName(step.tool_slug) : 'Tool'),
+                toolSlug: step.tool_slug || undefined,
                 toolArgs: step.tool_input,
                 toolResult: step.tool_output,
                 // Three-way, matching the sub-agent branch above. A two-way
@@ -160,12 +162,14 @@ function approvalSteps(approvals: PendingApproval[] | undefined): MessageStep[] 
         // A check-in is recorded where a held tool call is, and answered the
         // same way; only its wording differs — nobody is approving a tool.
         const isCheckIn = approval.tool_slug === CHECK_IN_TOOL_SLUG;
+        const displayName = (approval as any).tool_name || resolveToolDisplayName(approval.tool_slug);
         return {
             id: approval.approval_uuid,
             type: 'confirm-request' as const,
             toolCallId: approval.approval_uuid,
-            toolName: approval.tool_slug,
-            confirmLabel: isCheckIn ? 'Continue working?' : approval.tool_slug,
+            toolName: displayName,
+            toolSlug: approval.tool_slug,
+            confirmLabel: isCheckIn ? 'Continue working?' : displayName,
             confirmDescription: isCheckIn
                 ? describeRecordedCheckIn(approval.tool_input)
                 : describeApprovalRequest(

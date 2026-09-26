@@ -3,6 +3,7 @@ import { StreamChatClient, StreamEvent } from '../api/StreamClient';
 import { MessageProps, MessageStep } from '../components/MessageBubble/MessageBubble';
 import { AttachedFile, ContextFigures, RunUsage, UsageFigures, UsagePayload } from '../api/types';
 import { turnUsage } from '../common/usageSummary';
+import { resolveToolDisplayName } from '../common/toolConfig';
 import { StepPath, appendStepAt, appendTextAt, patchStepAt } from './subAgentSteps';
 
 export interface UseStreamChatOptions {
@@ -476,12 +477,13 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
 
             // Handle tool_request: add a running tool-call step.
             if (event.type === 'tool_request') {
-                const { step_uuid, tool_slug, tool_input } = event.data?.payload ?? {};
+                const { step_uuid, tool_slug, tool_name, tool_input } = event.data?.payload ?? {};
                 if (step_uuid && tool_slug) {
                     editSteps(steps => appendStepAt(steps, pathFor(event), {
                         id: step_uuid,
                         type: 'tool-call',
-                        toolName: tool_slug,
+                        toolName: tool_name || resolveToolDisplayName(tool_slug, tools),
+                        toolSlug: tool_slug,
                         toolArgs: tool_input,
                         toolStatus: 'running',
                     }));
@@ -508,14 +510,15 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
             // ask_user_questions, whose form renders separately) stay 'running'
             // until the resume tool_result flips them to 'completed'.
             if (event.type === 'client_tool_call') {
-                const { step_uuid, tool_slug, tool_input } = event.data?.payload ?? {};
+                const { step_uuid, tool_slug, tool_name, tool_input } = event.data?.payload ?? {};
                 console.debug('[useStreamChat] client_tool_call', { step_uuid, tool_slug, tool_input, hasHandler: Boolean(tools?.[tool_slug ?? '']) });
                 if (step_uuid && tool_slug) {
                     const isInteractive = tool_slug === 'ask_user_questions';
                     editSteps(steps => appendStepAt(steps, pathFor(event), {
                         id: step_uuid,
                         type: 'tool-call',
-                        toolName: tool_slug,
+                        toolName: tool_name || resolveToolDisplayName(tool_slug, tools),
+                        toolSlug: tool_slug,
                         toolArgs: tool_input,
                         toolStatus: isInteractive ? 'running' : 'completed',
                         ...(isInteractive ? {} : { toolResult: { status: 'previewed' } }),
@@ -528,19 +531,21 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
             // Rendered as a 'confirm-request' step whose toolCallId is the
             // approval_uuid, which is what submitApproval needs back.
             if (event.type === 'approval_request') {
-                const { approval_uuid, tool_slug, tool_input, dispatch_mode } =
+                const { approval_uuid, tool_slug, tool_name, tool_input, dispatch_mode } =
                     event.data?.payload ?? {};
                 if (approval_uuid && tool_slug) {
                     const owningJob = event.data?.job_uuid;
                     if (owningJob) {
                         approvalJobRef.current.set(approval_uuid, String(owningJob));
                     }
+                    const displayName = tool_name || resolveToolDisplayName(tool_slug, tools);
                     editSteps(steps => appendStepAt(steps, pathFor(event), {
                         id: approval_uuid,
                         type: 'confirm-request',
                         toolCallId: approval_uuid,
-                        toolName: tool_slug,
-                        confirmLabel: tool_slug,
+                        toolName: displayName,
+                        toolSlug: tool_slug,
+                        confirmLabel: displayName,
                         confirmDescription: describeApprovalRequest(
                             tool_slug, tool_input, dispatch_mode
                         ),

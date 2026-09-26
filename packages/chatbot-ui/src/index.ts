@@ -56,7 +56,7 @@ export type { GatewayStreamClientConfig, EnablableTool, ChatAgent } from './api/
 // The tool contract: what a host application declares per tool in ChatApp's
 // `tools` prop. One entry per tool; `run` handles a client-dispatched call,
 // `preview` a server-dispatched tool's output.
-export { isClientTool, isServerTool } from './common/toolConfig';
+export { isClientTool, isServerTool, DEFAULT_TOOL_NAMES, formatToolSlug, resolveToolDisplayName } from './common/toolConfig';
 export type {
     ToolConfig,
     ClientToolConfig,

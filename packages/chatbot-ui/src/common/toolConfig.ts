@@ -109,6 +109,13 @@ export interface ServerToolConfig extends ToolPresentation {
  */
 export interface ToolPresentation {
     /**
+     * Human-readable display name for this tool. Shown in step badges,
+     * sub-agent summaries, and group headers in place of the tool slug key.
+     */
+    name?: string;
+    /** Alias for {@link name}. */
+    displayName?: string;
+    /**
      * Offer the action control on this tool's completed step. Default `true`.
      * Set `false` for tools whose result is not worth re-opening.
      */
@@ -187,6 +194,10 @@ export interface ResultPreviewContext extends ToolCallContext {
  * registration. The registration key (slug) becomes the tool ``name``.
  */
 export interface ClientToolDefinition {
+    /** Optional display name for the tool. */
+    name?: string;
+    /** Alias for {@link name}. */
+    displayName?: string;
     /** What the tool does — shown to the model to decide when to call it. */
     description: string;
     /** JSON Schema for the tool arguments. Must be ``{ "type": "object", ... }``. */
@@ -224,3 +235,83 @@ export const isClientTool = (config: ToolConfig): config is ClientToolConfig =>
 /** See {@link isClientTool}. */
 export const isServerTool = (config: ToolConfig): config is ServerToolConfig =>
     typeof (config as ServerToolConfig).preview === 'function';
+
+/**
+ * Known tool names across the platform, matching the ``quota.tools.name``
+ * seeds in the backend services. Used as the default when a tool config or
+ * event does not provide an explicit ``name`` or ``displayName``.
+ */
+export const DEFAULT_TOOL_NAMES: Record<string, string> = {
+    context_retrieve: 'Retrieve saved context',
+    context_upsert: 'Save context',
+    context_upsert_user: 'Save private context',
+    context_upsert_tenant: 'Save organisation context',
+    context_upsert_partner: 'Save platform-wide context',
+    web_search: 'Web search',
+    search_web: 'Web search',
+    fetch_web_page: 'Fetch web page',
+    generate_checklist: 'Checklist Generator',
+    read_page_context: 'Read page context',
+    capture_page_screenshot: 'Capture page screenshot',
+    navigate_app_route: 'Navigate app route',
+    generate_image: 'Generate image',
+    get_file_description: 'Get file description',
+    analyze_file: 'Analyze file',
+    file_analyzer: 'Analyze file',
+    ask_user_questions: 'Ask user questions',
+    generate_structured_output: 'Generate structured output',
+    structured_output: 'Structured output',
+    enhance_texts: 'Enhance texts',
+    text_enhancer: 'Text enhancer',
+    translate_texts: 'Translate texts',
+    translator: 'Translator',
+    preview_property_agent_result: 'Preview investment recommendation',
+    properties_get_persona: 'Get user persona',
+    find_on_page: 'Find on page',
+    read_page_diagnostics: 'Read page diagnostics',
+    validate_checklist: 'Validate checklist',
+    switch_agent: 'Switch agent',
+    checklist_read: 'Read checklist',
+    checklist_apply_suggestions: 'Apply checklist suggestions',
+    read_translation_context: 'Read translation context',
+    propose_translations: 'Propose translations',
+};
+
+/**
+ * Convert a snake_case or kebab-case tool slug into Title Case words.
+ * Example: ``custom_data_fetch`` -> ``Custom Data Fetch``
+ */
+export const formatToolSlug = (slug: string): string => {
+    if (!slug) return '';
+    return slug
+        .split(/[_-]+/)
+        .filter(Boolean)
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+};
+
+/**
+ * Resolves a human-readable tool display name instead of the raw tool slug key.
+ *
+ * Precedence:
+ * 1. Explicit ``name`` or ``displayName`` on the registered tool config or definition.
+ * 2. Platform default name from ``DEFAULT_TOOL_NAMES`` (e.g. ``context_retrieve`` -> ``Retrieve saved context``).
+ * 3. Title-cased fallback formatted from the slug (e.g. ``my_custom_tool`` -> ``My Custom Tool``).
+ */
+export const resolveToolDisplayName = (
+    slugOrName: string,
+    tools?: Record<string, ToolConfig>
+): string => {
+    if (!slugOrName) return 'Tool';
+    const config = tools?.[slugOrName];
+    if (config?.name) return config.name;
+    if (config?.displayName) return config.displayName;
+    if (config?.definition?.name) return config.definition.name;
+    if (config?.definition?.displayName) return config.definition.displayName;
+    if (DEFAULT_TOOL_NAMES[slugOrName]) return DEFAULT_TOOL_NAMES[slugOrName];
+    // If the input already contains spaces and has no underscores, treat as already formatted
+    if (slugOrName.includes(' ') && !slugOrName.includes('_')) {
+        return slugOrName;
+    }
+    return formatToolSlug(slugOrName);
+};

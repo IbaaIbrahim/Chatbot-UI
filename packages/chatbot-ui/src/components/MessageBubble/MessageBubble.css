@@ -151,7 +151,7 @@
     margin-bottom: 0;
 }
 
-.cb-markdown-content code {
+:root .cb-markdown-content code {
     font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
     font-size: 0.875em;
     background: rgba(255, 255, 255, 0.08);
@@ -1260,7 +1260,7 @@
     font-size: 12px;
 }
 
-.cb-modern-tool-code {
+:root .cb-modern-tool-code {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 12px;
     font-weight: 500;
