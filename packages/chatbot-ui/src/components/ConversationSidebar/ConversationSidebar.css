@@ -1,0 +1,36 @@
+.cb-sidebar-item-actions {
+    display: flex;
+    align-items: center;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    margin-left: 8px;
+}
+
+.cb-conversation-item:hover .cb-sidebar-item-actions {
+    opacity: 1;
+}
+
+:root .cb-sidebar-delete-btn {
+    background: transparent;
+    border: none;
+    color: var(--cb-text-tertiary);
+    cursor: pointer;
+    padding: 3px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background-color 0.15s;
+}
+
+.cb-sidebar-delete-btn:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.cb-conversation-sidebar-embedded {
+    border-right: 1px solid var(--cb-border-subtle);
+    width: 100%;
+    max-width: 320px;
+    height: 100%;
+}

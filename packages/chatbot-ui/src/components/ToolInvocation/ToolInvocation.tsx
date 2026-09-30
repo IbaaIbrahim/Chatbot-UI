@@ -4,7 +4,7 @@ import { parseToolOutput } from '../../api/toolOutput';
 // Declared in common/toolConfig, where the whole tool contract lives, and
 // imported back here: this component renders a control, it does not own the
 // shape of the configuration that asks for one.
-import type { ToolActionRenderProps } from '../../common/toolConfig';
+import { resolveToolDisplayName, type ToolActionRenderProps, type ToolConfig } from '../../common/toolConfig';
 import './ToolInvocation.css';
 
 export type ToolStatus = 'running' | 'completed' | 'failed';
@@ -69,6 +69,7 @@ export interface ToolInvocationProps {
      * control cannot get the client-tool/previewer payload distinction wrong.
      */
     renderAction?: (props: ToolActionRenderProps) => React.ReactNode;
+    tools?: Record<string, ToolConfig>;
 }
 
 export const ToolInvocation: React.FC<ToolInvocationProps> = ({
@@ -80,8 +81,11 @@ export const ToolInvocation: React.FC<ToolInvocationProps> = ({
     renderAction,
     actionLabel = 'Open Result',
     actionPayload,
+    tools,
 }) => {
     const [expanded, setExpanded] = useState(false);
+
+    const displayName = resolveToolDisplayName(toolName, tools);
 
     // Resolved once and shared by the built-in button and any custom control,
     // so a custom control cannot pick the wrong end of the call. The registrant
@@ -112,7 +116,7 @@ export const ToolInvocation: React.FC<ToolInvocationProps> = ({
                 </div>
                 <span className="cb-tool-name">
                     <span className="cb-tool-verb">{status === 'running' ? 'Calling' : 'Used tool'}</span>
-                    <strong>{toolName}</strong>
+                    <strong title={toolName}>{displayName}</strong>
                 </span>
                 <span className="cb-tool-chevron">
                     <svg

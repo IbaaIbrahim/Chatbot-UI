@@ -35,8 +35,8 @@
     gap: 8px;
 }
 
-.cb-btn-confirm,
-.cb-btn-reject {
+:root .cb-btn-confirm,
+:root .cb-btn-reject {
     display: flex;
     align-items: center;
     gap: 6px;

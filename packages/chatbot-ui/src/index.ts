@@ -3,14 +3,26 @@ import './styles.css';
 // Main entry — simple stream-connected chat app
 export * from './components/App/App';
 
+// 4 Modular Widgets & Aliases
+// Widget 1: Conversation History Sidebar
+export * from './components/ConversationSidebar/ConversationSidebar';
+// Widget 2: Main Chat Area
+export * from './components/MainChat/MainChat';
+// Widget 3: Composer / Input Area
+export * from './components/Composer/Composer';
+// Widget 4: Configurable Header Bar
+export * from './components/ChatHeader/ChatHeader';
+
 // Core UI components
 export * from './components/ChatContainer/ChatContainer';
 export type { ChatTheme } from './components/ChatContainer/ChatContainer';
-export * from './components/Composer/Composer';
 export * from './components/MessageBubble/MessageBubble';
 export * from './components/ThinkingIndicator/ThinkingIndicator';
 export * from './components/BlinkingIndicator/BlinkingIndicator';
 export * from './components/WelcomeScreen/WelcomeScreen';
+
+// Attachment utilities
+export * from './common/attachmentUtils';
 
 // Supporting display components (kept for MessageBubble compatibility)
 export * from './components/ToolInvocation/ToolInvocation';
@@ -51,12 +63,12 @@ export type { AgentSwitcherProps } from './components/AgentSwitcher/AgentSwitche
 export { StreamClient } from './api/StreamClient';
 export type { StreamClientConfig, StreamEvent, StreamChatClient, StreamOutcome } from './api/StreamClient';
 export { GatewayStreamClient } from './api/GatewayStreamClient';
-export type { GatewayStreamClientConfig, EnablableTool } from './api/GatewayStreamClient';
+export type { GatewayStreamClientConfig, EnablableTool, ChatAgent } from './api/GatewayStreamClient';
 
 // The tool contract: what a host application declares per tool in ChatApp's
 // `tools` prop. One entry per tool; `run` handles a client-dispatched call,
 // `preview` a server-dispatched tool's output.
-export { isClientTool, isServerTool } from './common/toolConfig';
+export { isClientTool, isServerTool, DEFAULT_TOOL_NAMES, formatToolSlug, resolveToolDisplayName } from './common/toolConfig';
 export type {
     ToolConfig,
     ClientToolConfig,
@@ -95,3 +107,6 @@ export type {
 } from './hooks/useConversations';
 export { ConversationDrawer } from './components/ConversationDrawer/ConversationDrawer';
 export type { ConversationDrawerProps } from './components/ConversationDrawer/ConversationDrawer';
+
+// Configuration and mock data types for Mitti / Flowdit assistant design
+export * from './common/chatbotConfig';

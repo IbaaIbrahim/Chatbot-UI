@@ -3,7 +3,9 @@ import { StreamChatClient, StreamEvent } from '../api/StreamClient';
 import { MessageProps, MessageStep } from '../components/MessageBubble/MessageBubble';
 import { AttachedFile, ContextFigures, RunUsage, UsageFigures, UsagePayload } from '../api/types';
 import { turnUsage } from '../common/usageSummary';
+import { resolveToolDisplayName } from '../common/toolConfig';
 import { StepPath, appendStepAt, appendTextAt, patchStepAt } from './subAgentSteps';
+import { resolveStorageAttachmentFileUrl } from '../common/attachmentUtils';
 
 export interface UseStreamChatOptions {
     client: StreamChatClient | null;
@@ -307,11 +309,46 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
         // text. Lives in the closure for the same reason ``pathByJob`` does —
         // two bubbles must not share it.
         const closedThinkingBlocks = new Map<string, number>();
+        /**
+         * The text of every thinking block already closed for a step.
+         *
+         * ``closedThinkingBlocks`` above is a *counter*, so the id it produces
+         * changes every time a block closes — which is exactly what a second
+         * ``reasoning_complete`` for the same block must not do. The orchestrator
+         * can deliver that frame twice (a replay re-delivers the turn's frames
+         * verbatim, and this file's other handlers are idempotent precisely
+         * because of it), and the counter cannot tell a repeat from a genuine
+         * second block: it minted a fresh id and the same deliberation rendered
+         * twice, above one answer. A reload then showed one block, because
+         * history is rebuilt from the single step the backend actually stored.
+         *
+         * Keyed by text because that is the only thing the duplicate frames
+         * share — the frame carries no block identity of its own. A model that
+         * genuinely thinks the same thing twice in one step therefore shows one
+         * block, which is the better of the two wrong answers available here.
+         */
+        const closedThinkingTexts = new Map<string, Set<string>>();
         const thinkingStepKey = (event: any): string =>
             `${event.data?.job_uuid ?? 'self'}-step-${event.data?.step_sequence ?? '0'}`;
         const thinkingStepId = (event: any): string => {
             const key = thinkingStepKey(event);
             return `thinking-${key}-${closedThinkingBlocks.get(key) ?? 0}`;
+        };
+        /**
+         * The id of the text step this reasoning produced, so a block that
+         * arrives late can be put in front of it rather than below it.
+         *
+         * Mirrors the ids the two text paths mint for the same
+         * ``step_sequence`` — ``updateAssistantContent`` for the turn's own
+         * answer, ``appendTextAt`` for a sub-agent's. When the sequence is
+         * absent the answer's id is generated and unpredictable, and this
+         * simply will not match, leaving the append-at-the-end default.
+         */
+        const answerStepIdFor = (event: any): string => {
+            const seq = event.data?.step_sequence ?? '0';
+            return pathFor(event).length > 0
+                ? `sub-${event.data?.job_uuid}-step-${seq}`
+                : `step-${seq}`;
         };
 
         // Every step mutation goes through here so routing is applied in one
@@ -395,7 +432,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                                 return {
                                     ...att,
                                     id: meta.attachment_uuid,
-                                    url: `${storageApiUrl.replace(/\/$/, '')}/api/v1/attachments/jobs/${jobUuid}/files/${meta.attachment_uuid}`,
+                                    url: resolveStorageAttachmentFileUrl(storageApiUrl, jobUuid, meta.attachment_uuid),
                                     localUrl: undefined,
                                     contentType: meta.content_type || att.contentType,
                                     size: meta.size_bytes ?? att.size,
@@ -441,12 +478,13 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
 
             // Handle tool_request: add a running tool-call step.
             if (event.type === 'tool_request') {
-                const { step_uuid, tool_slug, tool_input } = event.data?.payload ?? {};
+                const { step_uuid, tool_slug, tool_name, tool_input } = event.data?.payload ?? {};
                 if (step_uuid && tool_slug) {
                     editSteps(steps => appendStepAt(steps, pathFor(event), {
                         id: step_uuid,
                         type: 'tool-call',
-                        toolName: tool_slug,
+                        toolName: tool_name || resolveToolDisplayName(tool_slug, tools),
+                        toolSlug: tool_slug,
                         toolArgs: tool_input,
                         toolStatus: 'running',
                     }));
@@ -473,14 +511,15 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
             // ask_user_questions, whose form renders separately) stay 'running'
             // until the resume tool_result flips them to 'completed'.
             if (event.type === 'client_tool_call') {
-                const { step_uuid, tool_slug, tool_input } = event.data?.payload ?? {};
+                const { step_uuid, tool_slug, tool_name, tool_input } = event.data?.payload ?? {};
                 console.debug('[useStreamChat] client_tool_call', { step_uuid, tool_slug, tool_input, hasHandler: Boolean(tools?.[tool_slug ?? '']) });
                 if (step_uuid && tool_slug) {
                     const isInteractive = tool_slug === 'ask_user_questions';
                     editSteps(steps => appendStepAt(steps, pathFor(event), {
                         id: step_uuid,
                         type: 'tool-call',
-                        toolName: tool_slug,
+                        toolName: tool_name || resolveToolDisplayName(tool_slug, tools),
+                        toolSlug: tool_slug,
                         toolArgs: tool_input,
                         toolStatus: isInteractive ? 'running' : 'completed',
                         ...(isInteractive ? {} : { toolResult: { status: 'previewed' } }),
@@ -493,19 +532,21 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
             // Rendered as a 'confirm-request' step whose toolCallId is the
             // approval_uuid, which is what submitApproval needs back.
             if (event.type === 'approval_request') {
-                const { approval_uuid, tool_slug, tool_input, dispatch_mode } =
+                const { approval_uuid, tool_slug, tool_name, tool_input, dispatch_mode } =
                     event.data?.payload ?? {};
                 if (approval_uuid && tool_slug) {
                     const owningJob = event.data?.job_uuid;
                     if (owningJob) {
                         approvalJobRef.current.set(approval_uuid, String(owningJob));
                     }
+                    const displayName = tool_name || resolveToolDisplayName(tool_slug, tools);
                     editSteps(steps => appendStepAt(steps, pathFor(event), {
                         id: approval_uuid,
                         type: 'confirm-request',
                         toolCallId: approval_uuid,
-                        toolName: tool_slug,
-                        confirmLabel: tool_slug,
+                        toolName: displayName,
+                        toolSlug: tool_slug,
+                        confirmLabel: displayName,
                         confirmDescription: describeApprovalRequest(
                             tool_slug, tool_input, dispatch_mode
                         ),
@@ -663,27 +704,39 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                 const text: string = event.data?.payload?.text ?? '';
                 const path = pathFor(event);
                 const stepId = thinkingStepId(event);
+                const answerStepId = answerStepIdFor(event);
                 if (event.type === 'reasoning') {
                     if (text) {
                         editSteps(steps =>
-                            appendTextAt(steps, path, text, stepId, 'thinking')
+                            appendTextAt(steps, path, text, stepId, 'thinking', answerStepId)
                         );
                     }
                 } else {
                     const key = thinkingStepKey(event);
+                    let closed = closedThinkingTexts.get(key);
+                    if (!closed) {
+                        closed = new Set<string>();
+                        closedThinkingTexts.set(key, closed);
+                    }
+                    // Only non-empty text is deduplicated: an empty
+                    // ``reasoning_complete`` is the frame that closes a block
+                    // built from deltas, and it has to be allowed through to
+                    // mark it finished.
+                    if (text && closed.has(text)) return;
                     editSteps(steps => {
                         // Create-then-patch so a client that connected
                         // mid-block — a reconnect, or a second tab — still
                         // gets the whole block from this one frame, having
                         // seen none of the deltas.
                         const withBlock = appendTextAt(
-                            steps, path, '', stepId, 'thinking'
+                            steps, path, '', stepId, 'thinking', answerStepId
                         );
                         return patchStepAt(withBlock, path, stepId, {
                             content: text,
                             isFinished: true,
                         });
                     });
+                    if (text) closed.add(text);
                     // The next delta on this step opens a fresh block.
                     closedThinkingBlocks.set(
                         key, (closedThinkingBlocks.get(key) ?? 0) + 1
@@ -766,7 +819,9 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
     }, [onEvent, tools, setApprovalStatus, storageApiUrl, updateAssistantContent]);
 
     const sendMessage = React.useCallback(async (text: string, attachedFiles?: AttachedFile[]) => {
-        if (!client || !text.trim() || isThinking) return;
+        const hasText = Boolean(text && text.trim());
+        const hasFiles = Boolean(attachedFiles && attachedFiles.length > 0);
+        if (!client || (!hasText && !hasFiles) || isThinking) return;
 
         const userId = `user-${Date.now()}`;
         const assistantId = `assistant-${Date.now() + 1}`;
@@ -777,7 +832,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
         const attachments = attachedFiles?.map(f => ({
             id: f.file_id,
             type: (f.content_type?.startsWith('image/') ? 'image' : 'file') as 'image' | 'file',
-            url: f.localBlobUrl ?? '',
+            url: f.url || f.localBlobUrl || '',
             name: f.filename,
             size: f.size_bytes,
             contentType: f.content_type ?? undefined,

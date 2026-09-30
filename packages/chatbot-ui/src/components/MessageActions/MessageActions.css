@@ -22,7 +22,7 @@
     pointer-events: auto;
 }
 
-.cb-action-btn {
+:root .cb-action-btn {
     display: flex;
     align-items: center;
     justify-content: center;

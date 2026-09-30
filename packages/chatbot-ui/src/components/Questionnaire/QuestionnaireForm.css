@@ -164,7 +164,7 @@
     gap: var(--cb-space-3);
 }
 
-.cb-questionnaire-nav {
+:root .cb-questionnaire-nav {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -194,7 +194,7 @@
     font-variant-numeric: tabular-nums;
 }
 
-.cb-questionnaire-submit {
+:root .cb-questionnaire-submit {
     padding: 8px 20px;
     border: none;
     border-radius: var(--cb-radius-md);

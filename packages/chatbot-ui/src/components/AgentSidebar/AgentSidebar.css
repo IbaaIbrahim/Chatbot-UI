@@ -12,7 +12,7 @@
     margin-bottom: var(--cb-space-2);
 }
 
-.cb-new-chat-btn {
+:root .cb-new-chat-btn {
     width: 100%;
     display: flex;
     align-items: center;
@@ -82,7 +82,7 @@
     background-color: var(--cb-bg-primary);
 }
 
-.cb-agent-section-toggle {
+:root .cb-agent-section-toggle {
     width: 100%;
     display: flex;
     align-items: center;
@@ -127,7 +127,7 @@
     display: none;
 }
 
-.cb-agent-item {
+:root .cb-agent-item {
     display: flex;
     align-items: center;
     gap: var(--cb-space-3);

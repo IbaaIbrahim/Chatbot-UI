@@ -6,6 +6,7 @@ export interface AttachedFile {
     content_type: string;
     size_bytes: number;
     localBlobUrl?: string;
+    url?: string;
 }
 
 export interface ChatState {

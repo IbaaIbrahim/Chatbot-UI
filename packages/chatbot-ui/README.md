@@ -7,6 +7,71 @@ agent's steps, and lets the host application take part in tool calls.
 import { App as ChatApp, GatewayStreamClient } from 'iocloud-chatbot-library';
 ```
 
+## Welcome screen configuration
+
+The welcome screen is host-configurable. Import `ChatbotUIConfig` and pass it
+to `ChatApp` through the `config` prop; the same object can be state-derived if
+the available actions depend on the signed-in user or current page.
+
+```tsx
+import { App as ChatApp, type ChatbotUIConfig } from 'iocloud-chatbot-library';
+
+const welcomeConfig: ChatbotUIConfig = {
+  quickActions: [
+    { id: 'create', label: 'Create report', prompt: 'Create a weekly report', icon: 'pencil' },
+    { id: 'ask', label: 'Ask', prompt: 'Help me investigate an issue', icon: 'message' },
+  ],
+  featureCards: [
+    {
+      id: 'research',
+      badge: 'Research',
+      icon: 'globe',
+      title: 'Research a regulation',
+      description: 'Find current guidance with citations.',
+      prompt: 'Research the relevant regulation',
+      image: '/assets/regulation-card.png', // optional
+    },
+  ],
+};
+
+<ChatApp client={client} config={welcomeConfig} />;
+```
+
+`quickActions`, `featureCards`, and `suggestions` replace their respective
+default lists when supplied. Omit a field to retain its default, or pass an
+empty array to hide that section.
+
+## The `agents` prop
+
+The agent list renders as a compact selector **under the composer**, not in the
+sidebar. The drawer stays dedicated to conversation history (search on top,
+date-grouped threads), so switching agents never costs a trip through a menu
+that also lists chats.
+
+```tsx
+const [agents, setAgents] = useState<AgentSidebarItem[]>([]);
+
+<ChatApp
+  client={client}
+  agents={agents.map(a => ({
+    ...a,
+    active: a.id === activeAgentId,
+    onClick: () => setActiveAgentId(a.id),
+  }))}
+/>;
+```
+
+Each item's `onClick` is responsible for switching the active agent on the
+client — the library never does it. When `agents` is empty or omitted, the
+selector does not render and the header keeps the plain brand. The selector's
+menu opens upward from the footer composer and downward in the empty fullscreen
+state, where the composer sits mid-screen.
+
+While the agent list is still loading pass `agentsLoading` (with `agents`)
+rather than an empty array: an empty array renders no selector, but loading
+state disables the composer until the first agent id arrives, so the first
+message cannot go out agentless.
+
 ## The `tools` prop
 
 Everything this application contributes to a tool goes in one entry, keyed by tool
