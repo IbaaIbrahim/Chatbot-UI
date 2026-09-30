@@ -6,14 +6,24 @@ import { netFetch } from '../../common/localNetwork';
 import { EnablableTool } from '../../api/GatewayStreamClient';
 import { ToolToggles, hasRunnableTools } from '../ToolToggles/ToolToggles';
 import { UsageIndicator } from '../UsageIndicator/UsageIndicator';
+import { AgentSwitcher } from '../AgentSwitcher/AgentSwitcher';
+import type { AgentSidebarItem } from '../AgentSidebar/AgentSidebar';
 import type { TurnUsageSummary } from '../../common/usageSummary';
 import {
     ChatbotUIConfig,
     ContextSelectorConfig,
 } from '../../common/chatbotConfig';
+import {
+    resolveStorageUploadUrl,
+    parseUploadedFileResponse,
+} from '../../common/attachmentUtils';
+import { useChatbot } from '../../context/ChatbotContext';
 
 export interface ComposerHandle {
     focus: () => void;
+    directToolCall?: (toolSlug: string, toolInput: any) => Promise<any>;
+    getAttachedFiles: () => AttachedFile[];
+    clearAttachedFiles: () => void;
 }
 
 export interface ComposerProps {
@@ -42,6 +52,14 @@ export interface ComposerProps {
     agentSwitcher?: React.ReactNode;
     /** Optional left content for the bottom row. */
     bottomLeftContent?: React.ReactNode;
+    /** Current active agent ID */
+    agentId?: string | null;
+    /** List of available agents */
+    agents?: AgentSidebarItem[];
+    /** Callback when agent changes */
+    onAgentChange?: (agentId: string | null) => void;
+    /** Direct tool call execution helper */
+    directToolCall?: (toolSlug: string, toolInput: any) => Promise<any>;
 }
 
 const ALLOWED_TYPES = [
@@ -54,7 +72,7 @@ const ALLOWED_TYPES = [
     'text/csv',
 ];
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
 const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`;
@@ -71,35 +89,63 @@ const getFileIcon = (contentType?: string | null): string => {
 };
 
 export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
-    onSend,
-    onStop,
-    isRunning = false,
-    isStopping = false,
-    disabled = false,
-    placeholder = 'Describe what you want to do…',
-    storageApiUrl,
-    accessToken,
-    tools = [],
-    enabledToolIds = [],
-    onToolsChange,
-    handledToolSlugs = [],
-    usage = null,
-    config: _config,
+    onSend: onSendProp,
+    onStop: onStopProp,
+    isRunning: isRunningProp,
+    isStopping: isStoppingProp,
+    disabled: disabledProp,
+    placeholder: placeholderProp,
+    storageApiUrl: storageApiUrlProp,
+    accessToken: accessTokenProp,
+    tools: toolsProp,
+    enabledToolIds: enabledToolIdsProp,
+    onToolsChange: onToolsChangeProp,
+    handledToolSlugs: handledToolSlugsProp,
+    usage: usageProp,
+    config: configProp,
     contextConfig: _contextConfig,
     selectedContextIds,
     onContextChange: _onContextChange,
     onSelectedContextsChange: _onSelectedContextsChange,
     onVoiceInput,
     toolMenuPlacement = 'above',
-    agentSwitcher,
+    agentSwitcher: agentSwitcherProp,
     bottomLeftContent,
+    agentId: agentIdProp,
+    agents: agentsProp,
+    onAgentChange: onAgentChangeProp,
+    directToolCall: directToolCallProp,
 }, ref) => {
+    const context = useChatbot();
+
+    // Fall back to context values when not explicitly provided via props
+    const storageApiUrl = storageApiUrlProp !== undefined ? storageApiUrlProp : (context?.storageApiUrl ?? '');
+    const accessToken = accessTokenProp !== undefined ? accessTokenProp : (context?.accessToken ?? null);
+    const tools = toolsProp !== undefined ? toolsProp : (context?.enablableTools ?? []);
+    const enabledToolIds = enabledToolIdsProp !== undefined ? enabledToolIdsProp : (context?.enabledToolIds ?? []);
+    const onToolsChange = onToolsChangeProp !== undefined ? onToolsChangeProp : context?.handleToolSelectionChange;
+    const handledToolSlugs = handledToolSlugsProp !== undefined ? handledToolSlugsProp : (context?.handledToolSlugs ?? []);
+    const isRunning = isRunningProp !== undefined ? isRunningProp : (context ? context.isThinking || context.isResuming : false);
+    const isStopping = isStoppingProp !== undefined ? isStoppingProp : (context?.isStopping ?? false);
+    const onStop = onStopProp !== undefined ? onStopProp : (context?.client && 'cancelTurn' in context.client ? () => { void context?.stopTurn(); } : undefined);
+    const usage = usageProp !== undefined ? usageProp : (context?.usageSummary ?? null);
+    const config = configProp !== undefined ? configProp : context?.config;
+    const disabled = disabledProp !== undefined ? disabledProp : Boolean(context?.isThinking || context?.isResuming || !!context?.pendingQuestionnaire);
+    const placeholder = placeholderProp !== undefined ? placeholderProp : (context?.pendingQuestionnaire ? 'Answer the questions above…' : (config?.contextSelector?.placeholder ?? 'Describe what you want to do…'));
+
+    const effectiveAgentId = agentIdProp !== undefined ? agentIdProp : (context?.agentId ?? null);
+    const effectiveAgents = agentsProp !== undefined ? agentsProp : (context?.agents ?? []);
+    const effectiveOnAgentChange = onAgentChangeProp !== undefined ? onAgentChangeProp : context?.onAgentChange;
+
     const [toolMenuOpen, setToolMenuOpen] = useState(false);
     const showToolsButton =
         Boolean(onToolsChange) && hasRunnableTools(tools, handledToolSlugs);
     const activeToolCount = enabledToolIds.length;
     const [input, setInput] = useState('');
     const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+    const attachedFilesRef = useRef<AttachedFile[]>(attachedFiles);
+    attachedFilesRef.current = attachedFiles;
+
     const [uploadingCount, setUploadingCount] = useState(0);
     const [uploadError, setUploadError] = useState<string | null>(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -108,9 +154,36 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     const composerRef = useRef<HTMLDivElement>(null);
     const dragCounterRef = useRef(0);
 
+    const directToolCall = useCallback(async (toolSlug: string, toolInput: any): Promise<any> => {
+        if (directToolCallProp) {
+            return directToolCallProp(toolSlug, toolInput);
+        }
+        const registeredTool = context?.registeredTools?.[toolSlug];
+        if (registeredTool && 'run' in registeredTool && registeredTool.run) {
+            return registeredTool.run(toolInput, { tool_slug: toolSlug, step_uuid: '' });
+        }
+        throw new Error(`No direct tool handler available for '${toolSlug}'`);
+    }, [directToolCallProp, context?.registeredTools]);
+
     useImperativeHandle(ref, () => ({
         focus: () => textareaRef.current?.focus(),
+        directToolCall,
+        getAttachedFiles: () => attachedFilesRef.current,
+        clearAttachedFiles: () => setAttachedFiles([]),
     }));
+
+    // Cleanup object URLs on unmount
+    useEffect(() => {
+        return () => {
+            attachedFilesRef.current.forEach(f => {
+                if (f.localBlobUrl) {
+                    try {
+                        URL.revokeObjectURL(f.localBlobUrl);
+                    } catch {}
+                }
+            });
+        };
+    }, []);
 
     const adjustHeight = useCallback(() => {
         const textarea = textareaRef.current;
@@ -125,7 +198,9 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     }, [input, adjustHeight]);
 
     const isUploading = uploadingCount > 0;
-    const canSend = Boolean(input.trim()) && !disabled && !isUploading;
+    const hasText = Boolean(input.trim());
+    const hasFiles = attachedFiles.length > 0;
+    const canSend = (hasText || hasFiles) && !disabled && !isUploading;
 
     const uploadFile = useCallback(async (file: File): Promise<AttachedFile | null> => {
         if (!ALLOWED_TYPES.includes(file.type)) {
@@ -154,7 +229,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
             const formData = new FormData();
             formData.append('file', file);
 
-            const uploadUrl = `${storageApiUrl.replace(/\/+$/, '')}/upload`;
+            const uploadUrl = resolveStorageUploadUrl(storageApiUrl);
             const response = await netFetch(uploadUrl, {
                 method: 'POST',
                 headers: {
@@ -168,13 +243,22 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                 throw new Error(errData.detail || errData.message || `Upload failed (${response.status})`);
             }
 
-            const data = await response.json();
+            const resJson = await response.json();
+            const parsed = parseUploadedFileResponse(resJson, file);
+
+            // Generate a local blob URL for immediate local preview
+            let localBlobUrl: string | undefined;
+            try {
+                localBlobUrl = URL.createObjectURL(file);
+            } catch {}
+
             return {
-                file_id: data.file_id || data.id,
-                filename: file.name,
-                content_type: file.type,
-                size_bytes: file.size,
-                url: data.url,
+                file_id: parsed.file_id,
+                filename: parsed.filename,
+                content_type: parsed.content_type,
+                size_bytes: parsed.size_bytes,
+                url: parsed.url,
+                localBlobUrl,
             };
         } catch (err: any) {
             setUploadError(err.message || 'File upload failed');
@@ -198,8 +282,42 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     }, [uploadFile]);
 
     const removeFile = useCallback((fileId: string) => {
-        setAttachedFiles(prev => prev.filter(f => f.file_id !== fileId));
+        setAttachedFiles(prev => {
+            const file = prev.find(f => f.file_id === fileId);
+            if (file?.localBlobUrl) {
+                try {
+                    URL.revokeObjectURL(file.localBlobUrl);
+                } catch {}
+            }
+            return prev.filter(f => f.file_id !== fileId);
+        });
     }, []);
+
+    const handleSend = () => {
+        if (!canSend) return;
+        const textToSend = input.trim();
+        const filesToSend = attachedFiles.length > 0 ? [...attachedFiles] : undefined;
+        setInput('');
+        setAttachedFiles([]);
+        setUploadError(null);
+
+        if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+        }
+
+        if (onSendProp) {
+            onSendProp(textToSend, filesToSend, selectedContextIds);
+        } else if (context?.sendMessage) {
+            void context.sendMessage(textToSend, filesToSend, selectedContextIds);
+        }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSend();
+        }
+    };
 
     const handleDragEnter = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -235,27 +353,27 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
         }
     }, [handleFileSelect]);
 
-    const handleSend = () => {
-        if (!canSend) return;
-        const textToSend = input.trim();
-        const filesToSend = attachedFiles.length > 0 ? [...attachedFiles] : undefined;
-        setInput('');
-        setAttachedFiles([]);
-        setUploadError(null);
-
-        if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
-        }
-
-        onSend?.(textToSend, filesToSend, selectedContextIds);
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
-        }
-    };
+    // Render automatic AgentSwitcher in bottom row if agents exist and no custom switcher provided
+    const resolvedAgentSwitcher = agentSwitcherProp !== undefined
+        ? agentSwitcherProp
+        : (effectiveAgents && effectiveAgents.length > 0)
+            ? (
+                <AgentSwitcher
+                    agents={effectiveAgents}
+                    activeAgentId={effectiveAgentId}
+                    onSelectAuto={() => {
+                        effectiveOnAgentChange?.(null);
+                        context?.setAgentId(null);
+                    }}
+                    onSelectAgent={(id) => {
+                        effectiveOnAgentChange?.(id);
+                        context?.setAgentId(id);
+                    }}
+                    menuPlacement={toolMenuPlacement === 'center' ? 'below' : 'above'}
+                    menuAlign="right"
+                />
+            )
+            : undefined;
 
     return (
         <div
@@ -300,6 +418,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                                     <span className="cb-chip-name">{f.filename}</span>
                                     <span className="cb-chip-size">{formatFileSize(f.size_bytes)}</span>
                                     <button
+                                        type="button"
                                         className="cb-chip-remove"
                                         onClick={() => removeFile(f.file_id)}
                                         title="Remove"
@@ -326,7 +445,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                     {uploadError && (
                         <div className="cb-upload-error">
                             <span>{uploadError}</span>
-                            <button className="cb-error-dismiss" onClick={() => setUploadError(null)}>
+                            <button type="button" className="cb-error-dismiss" onClick={() => setUploadError(null)}>
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                     <line x1="18" y1="6" x2="6" y2="18" />
                                     <line x1="6" y1="6" x2="18" y2="18" />
@@ -358,12 +477,13 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                                 disabled={disabled || isUploading}
                             />
 
-                            {/* Plus button matching Image 1, 3, 4 */}
+                            {/* Plus button for file upload */}
                             <button
+                                type="button"
                                 className="cb-action-btn cb-plus-btn"
                                 onClick={() => fileInputRef.current?.click()}
-                                disabled={disabled || isUploading || !storageApiUrl || !accessToken}
-                                title="Add attachment"
+                                disabled={disabled || isUploading || !storageApiUrl}
+                                title={!storageApiUrl ? 'Storage URL not configured' : 'Add attachment'}
                                 aria-label="Add attachment"
                             >
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -374,6 +494,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
 
                             {showToolsButton && (
                                 <button
+                                    type="button"
                                     className={
                                         'cb-action-btn'
                                         + (toolMenuOpen ? ' active-state' : '')
@@ -405,7 +526,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                         </div>
 
                         <div className="cb-actions-right">
-                            {/* Voice input button matching Image 1, 3, 4 */}
+                            {/* Voice input button */}
                             <button
                                 type="button"
                                 className="cb-action-btn cb-mic-btn"
@@ -423,6 +544,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
 
                             {onStop && isRunning ? (
                                 <button
+                                    type="button"
                                     className="cb-send-btn cb-stop-btn active"
                                     onClick={onStop}
                                     disabled={isStopping}
@@ -435,6 +557,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                                 </button>
                             ) : (
                                 <button
+                                    type="button"
                                     className={`cb-send-btn ${canSend ? 'active' : ''}`}
                                     onClick={handleSend}
                                     disabled={!canSend}
@@ -451,13 +574,13 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                     </div>
                 </div>
 
-                {(agentSwitcher || bottomLeftContent) && (
+                {(resolvedAgentSwitcher || bottomLeftContent) && (
                     <div className="cb-composer-bottom-row">
                         <div className="cb-composer-bottom-left">
                             {bottomLeftContent}
                         </div>
                         <div className="cb-composer-bottom-right">
-                            {agentSwitcher}
+                            {resolvedAgentSwitcher}
                         </div>
                     </div>
                 )}
@@ -472,3 +595,5 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
 });
 
 Composer.displayName = 'Composer';
+
+export const ChatComposer = Composer;

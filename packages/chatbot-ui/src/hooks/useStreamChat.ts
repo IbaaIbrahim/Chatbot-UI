@@ -5,6 +5,7 @@ import { AttachedFile, ContextFigures, RunUsage, UsageFigures, UsagePayload } fr
 import { turnUsage } from '../common/usageSummary';
 import { resolveToolDisplayName } from '../common/toolConfig';
 import { StepPath, appendStepAt, appendTextAt, patchStepAt } from './subAgentSteps';
+import { resolveStorageAttachmentFileUrl } from '../common/attachmentUtils';
 
 export interface UseStreamChatOptions {
     client: StreamChatClient | null;
@@ -431,7 +432,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                                 return {
                                     ...att,
                                     id: meta.attachment_uuid,
-                                    url: `${storageApiUrl.replace(/\/$/, '')}/api/v1/attachments/jobs/${jobUuid}/files/${meta.attachment_uuid}`,
+                                    url: resolveStorageAttachmentFileUrl(storageApiUrl, jobUuid, meta.attachment_uuid),
                                     localUrl: undefined,
                                     contentType: meta.content_type || att.contentType,
                                     size: meta.size_bytes ?? att.size,
@@ -818,7 +819,9 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
     }, [onEvent, tools, setApprovalStatus, storageApiUrl, updateAssistantContent]);
 
     const sendMessage = React.useCallback(async (text: string, attachedFiles?: AttachedFile[]) => {
-        if (!client || !text.trim() || isThinking) return;
+        const hasText = Boolean(text && text.trim());
+        const hasFiles = Boolean(attachedFiles && attachedFiles.length > 0);
+        if (!client || (!hasText && !hasFiles) || isThinking) return;
 
         const userId = `user-${Date.now()}`;
         const assistantId = `assistant-${Date.now() + 1}`;
@@ -829,7 +832,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
         const attachments = attachedFiles?.map(f => ({
             id: f.file_id,
             type: (f.content_type?.startsWith('image/') ? 'image' : 'file') as 'image' | 'file',
-            url: f.localBlobUrl ?? '',
+            url: f.url || f.localBlobUrl || '',
             name: f.filename,
             size: f.size_bytes,
             contentType: f.content_type ?? undefined,
