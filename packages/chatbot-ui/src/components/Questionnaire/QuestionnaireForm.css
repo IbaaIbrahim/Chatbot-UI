@@ -18,6 +18,9 @@
     display: flex;
     flex-direction: column;
     max-height: 50vh;
+    width: 100%;
+    max-width: 840px;
+    align-self: center;
 }
 
 /* The question stays put. Scrolling the options while the question scrolled away
@@ -220,7 +223,7 @@
    the job waits until its TTL expires. */
 .cb-questionnaire-textarea:focus-visible,
 .cb-questionnaire-other-input:focus-visible,
-.cb-questionnaire-option:focus-within,
+/* .cb-questionnaire-option:focus-within, */
 .cb-questionnaire-nav:focus-visible,
 .cb-questionnaire-submit:focus-visible {
     outline: 2px solid var(--cb-border-focus);
