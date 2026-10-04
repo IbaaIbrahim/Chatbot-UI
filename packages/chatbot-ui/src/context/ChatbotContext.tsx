@@ -114,6 +114,12 @@ export interface ChatbotContextValue {
     onOpen?: () => void;
     onSwitchMode?: (mode: ChatMode) => void;
     onShare?: () => void;
+
+    // Composer & Agent display toggles
+    showAgentSwitcher?: boolean;
+    show_agent_switcher?: boolean;
+    showBottomSection?: boolean;
+    show_bottom_section?: boolean;
 }
 
 const ChatbotContext = createContext<ChatbotContextValue | null>(null);
@@ -141,6 +147,10 @@ export interface ChatbotProviderProps {
     agentsLoading?: boolean;
     onAgentChange?: (agentId: string | null) => void;
     show_tool_toggles?: boolean;
+    showAgentSwitcher?: boolean;
+    show_agent_switcher?: boolean;
+    showBottomSection?: boolean;
+    show_bottom_section?: boolean;
     config?: ChatbotUIConfig;
     onContextChange?: (contexts: string[]) => void;
     onSwitchMode?: (mode: ChatMode) => void;
@@ -169,12 +179,24 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     agentsLoading = false,
     onAgentChange,
     show_tool_toggles = true,
+    showAgentSwitcher: showAgentSwitcherProp,
+    show_agent_switcher: show_agent_switcherProp,
+    showBottomSection: showBottomSectionProp,
+    show_bottom_section: show_bottom_sectionProp,
     config,
     onContextChange: _onContextChange,
     onSwitchMode,
     onShare,
 }) => {
     const storageApiUrl = storageApiUrlProp || apiBaseUrl || '';
+
+    const effectiveShowAgentSwitcher = showAgentSwitcherProp !== undefined
+        ? showAgentSwitcherProp
+        : (show_agent_switcherProp !== undefined ? show_agent_switcherProp : true);
+
+    const effectiveShowBottomSection = showBottomSectionProp !== undefined
+        ? showBottomSectionProp
+        : (show_bottom_sectionProp !== undefined ? show_bottom_sectionProp : true);
 
     // Configure Local Network Access early
     configureLocalNetworkAccess({ enabled: allowLocalNetworkAccess });
@@ -599,6 +621,11 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
             onOpen,
             onSwitchMode,
             onShare,
+
+            showAgentSwitcher: effectiveShowAgentSwitcher,
+            show_agent_switcher: effectiveShowAgentSwitcher,
+            showBottomSection: effectiveShowBottomSection,
+            show_bottom_section: effectiveShowBottomSection,
         }),
         [
             activeClient,
@@ -656,6 +683,8 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
             onOpen,
             onSwitchMode,
             onShare,
+            effectiveShowAgentSwitcher,
+            effectiveShowBottomSection,
         ]
     );
 
@@ -723,5 +752,9 @@ export const useChatComposer = () => {
         setAgentId: ctx?.setAgentId,
         storageApiUrl: ctx?.storageApiUrl ?? '',
         accessToken: ctx?.accessToken ?? null,
+        showAgentSwitcher: ctx?.showAgentSwitcher ?? true,
+        show_agent_switcher: ctx?.show_agent_switcher ?? true,
+        showBottomSection: ctx?.showBottomSection ?? true,
+        show_bottom_section: ctx?.show_bottom_section ?? true,
     };
 };

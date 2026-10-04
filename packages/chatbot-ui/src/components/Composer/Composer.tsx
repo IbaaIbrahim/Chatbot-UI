@@ -52,6 +52,14 @@ export interface ComposerProps {
     agentSwitcher?: React.ReactNode;
     /** Optional left content for the bottom row. */
     bottomLeftContent?: React.ReactNode;
+    /** Whether to show the bottom section (containing agent switcher and bottom-left content). Defaults to true. */
+    showBottomSection?: boolean;
+    /** Snake_case alias for showBottomSection. */
+    show_bottom_section?: boolean;
+    /** Whether to show the agent switcher in the bottom row. Defaults to true. */
+    showAgentSwitcher?: boolean;
+    /** Snake_case alias for showAgentSwitcher. */
+    show_agent_switcher?: boolean;
     /** Current active agent ID */
     agentId?: string | null;
     /** List of available agents */
@@ -111,6 +119,10 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     toolMenuPlacement = 'above',
     agentSwitcher: agentSwitcherProp,
     bottomLeftContent,
+    showBottomSection: showBottomSectionProp,
+    show_bottom_section: show_bottom_sectionProp,
+    showAgentSwitcher: showAgentSwitcherProp,
+    show_agent_switcher: show_agent_switcherProp,
     agentId: agentIdProp,
     agents: agentsProp,
     onAgentChange: onAgentChangeProp,
@@ -132,6 +144,18 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     const config = configProp !== undefined ? configProp : context?.config;
     const disabled = disabledProp !== undefined ? disabledProp : Boolean(context?.isThinking || context?.isResuming || !!context?.pendingQuestionnaire);
     const placeholder = placeholderProp !== undefined ? placeholderProp : (context?.pendingQuestionnaire ? 'Answer the questions above…' : (config?.contextSelector?.placeholder ?? 'Describe what you want to do…'));
+
+    const showAgentSwitcher = showAgentSwitcherProp !== undefined
+        ? showAgentSwitcherProp
+        : (show_agent_switcherProp !== undefined
+            ? show_agent_switcherProp
+            : (config?.composer?.showAgentSwitcher ?? context?.showAgentSwitcher ?? context?.show_agent_switcher ?? true));
+
+    const showBottomSection = showBottomSectionProp !== undefined
+        ? showBottomSectionProp
+        : (show_bottom_sectionProp !== undefined
+            ? show_bottom_sectionProp
+            : (config?.composer?.showBottomSection ?? context?.showBottomSection ?? context?.show_bottom_section ?? true));
 
     const effectiveAgentId = agentIdProp !== undefined ? agentIdProp : (context?.agentId ?? null);
     const effectiveAgents = agentsProp !== undefined ? agentsProp : (context?.agents ?? []);
@@ -353,27 +377,29 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
         }
     }, [handleFileSelect]);
 
-    // Render automatic AgentSwitcher in bottom row if agents exist and no custom switcher provided
-    const resolvedAgentSwitcher = agentSwitcherProp !== undefined
-        ? agentSwitcherProp
-        : (effectiveAgents && effectiveAgents.length > 0)
-            ? (
-                <AgentSwitcher
-                    agents={effectiveAgents}
-                    activeAgentId={effectiveAgentId}
-                    onSelectAuto={() => {
-                        effectiveOnAgentChange?.(null);
-                        context?.setAgentId(null);
-                    }}
-                    onSelectAgent={(id) => {
-                        effectiveOnAgentChange?.(id);
-                        context?.setAgentId(id);
-                    }}
-                    menuPlacement={toolMenuPlacement === 'center' ? 'below' : 'above'}
-                    menuAlign="right"
-                />
-            )
-            : undefined;
+    // Render automatic AgentSwitcher in bottom row if enabled, agents exist, and no custom switcher provided
+    const resolvedAgentSwitcher = !showAgentSwitcher
+        ? undefined
+        : (agentSwitcherProp !== undefined
+            ? agentSwitcherProp
+            : (effectiveAgents && effectiveAgents.length > 0)
+                ? (
+                    <AgentSwitcher
+                        agents={effectiveAgents}
+                        activeAgentId={effectiveAgentId}
+                        onSelectAuto={() => {
+                            effectiveOnAgentChange?.(null);
+                            context?.setAgentId(null);
+                        }}
+                        onSelectAgent={(id) => {
+                            effectiveOnAgentChange?.(id);
+                            context?.setAgentId(id);
+                        }}
+                        menuPlacement={toolMenuPlacement === 'center' ? 'below' : 'above'}
+                        menuAlign="right"
+                    />
+                )
+                : undefined);
 
     return (
         <div
@@ -574,7 +600,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                     </div>
                 </div>
 
-                {(resolvedAgentSwitcher || bottomLeftContent) && (
+                {showBottomSection && (resolvedAgentSwitcher || bottomLeftContent) && (
                     <div className="cb-composer-bottom-row">
                         <div className="cb-composer-bottom-left">
                             {bottomLeftContent}

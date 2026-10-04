@@ -582,9 +582,18 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
         // Streamed tokens live on trailing ``'text'`` steps (see
         // useStreamChat.updateAssistantContent) and persisted text arrives as
         // ``'text'`` steps via ``mapSteps`` in useConversations.ts, so the
-        // natural ``steps`` array is the source of truth for ordering. Render
-        // it directly.
-        const renderSteps: MessageStep[] = steps;
+        // natural ``steps`` array is the source of truth for ordering.
+        // For tools configured with showLastOnly (e.g. generate_checklist),
+        // we only display the last invocation if the agent tried multiple times.
+        const lastStepIds = React.useMemo(
+            () => findLastToolCallStepIds(steps, props.tools),
+            [steps, props.tools]
+        );
+
+        const renderSteps: MessageStep[] = React.useMemo(
+            () => filterStepsForDisplay(steps, props.tools, lastStepIds),
+            [steps, props.tools, lastStepIds]
+        );
         const groupedRenderItems = groupRenderSteps(renderSteps);
 
         // Collected at this level only. A nested bubble renders the steps of one
@@ -592,7 +601,7 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
         // row would put the same control on screen once per nesting level.
         const hoistedActions = props.embedded
             ? []
-            : collectHoistedActions(steps, props, props.isTurnComplete !== false);
+            : collectHoistedActions(steps, props, props.isTurnComplete !== false, lastStepIds);
 
         return (
             <div ref={bubbleRef} className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`}>
@@ -902,6 +911,84 @@ function resolveStepAction(
     };
 }
 
+function isShowLastOnlyTool(
+    step: MessageStep,
+    tools?: Record<string, ToolConfig>
+): boolean {
+    const slug = step.toolSlug || step.toolName;
+    if (!slug) return false;
+    const config = tools?.[slug] || (step.toolName ? tools?.[step.toolName] : undefined);
+    if (config?.showLastOnly !== undefined) {
+        return Boolean(config.showLastOnly);
+    }
+    return slug === 'generate_checklist';
+}
+
+function findLastToolCallStepIds(
+    steps: MessageStep[],
+    tools?: Record<string, ToolConfig>
+): Map<string, string> {
+    const lastIdByTool = new Map<string, string>();
+
+    function walk(list: MessageStep[]) {
+        for (const s of list) {
+            if (s.subSteps && s.subSteps.length > 0) {
+                walk(s.subSteps);
+            }
+            if (s.type === 'tool-call') {
+                const slug = s.toolSlug || s.toolName;
+                if (slug && isShowLastOnlyTool(s, tools)) {
+                    lastIdByTool.set(slug, s.id);
+                }
+            }
+        }
+    }
+
+    walk(steps);
+    return lastIdByTool;
+}
+
+function filterStepsForDisplay(
+    steps: MessageStep[],
+    tools: Record<string, ToolConfig> | undefined,
+    lastStepIds: Map<string, string>
+): MessageStep[] {
+    const result: MessageStep[] = [];
+    for (const step of steps) {
+        if (step.type === 'tool-call') {
+            const slug = step.toolSlug || step.toolName;
+            if (slug && isShowLastOnlyTool(step, tools)) {
+                const lastId = lastStepIds.get(slug);
+                if (lastId && step.id !== lastId) {
+                    continue;
+                }
+            }
+            result.push(step);
+        } else if (step.type === 'sub-agent') {
+            const filteredSubSteps = step.subSteps
+                ? filterStepsForDisplay(step.subSteps, tools, lastStepIds)
+                : [];
+            const hadShowLastOnlyTool = step.subSteps?.some(s =>
+                s.type === 'tool-call' && isShowLastOnlyTool(s, tools)
+            );
+            const hasRemainingShowLastOnlyTool = filteredSubSteps.some(s =>
+                s.type === 'tool-call' && isShowLastOnlyTool(s, tools)
+            );
+            if (hadShowLastOnlyTool && !hasRemainingShowLastOnlyTool && step.toolStatus !== 'failed') {
+                // Entire sub-agent was an earlier superseded attempt of a showLastOnly tool
+                continue;
+            }
+            result.push({
+                ...step,
+                subSteps: filteredSubSteps,
+            });
+        } else {
+            result.push(step);
+        }
+    }
+    return result;
+}
+
 /**
  * Every completed action in this turn that asked to be hoisted, in depth-first
  * order.
@@ -915,18 +1002,34 @@ function collectHoistedActions(
     steps: MessageStep[],
     handlers: Pick<MessageProps, 'tools'>,
     isTurnComplete: boolean,
+    lastStepIds?: Map<string, string>,
 ): ResolvedStepAction[] {
+    const lastIds = lastStepIds ?? findLastToolCallStepIds(steps, handlers.tools);
     const found: ResolvedStepAction[] = [];
-    for (const step of steps) {
-        if (step.subSteps && step.subSteps.length > 0) {
-            found.push(...collectHoistedActions(step.subSteps, handlers, isTurnComplete));
+
+    function collect(list: MessageStep[]) {
+        for (const step of list) {
+            if (step.subSteps && step.subSteps.length > 0) {
+                collect(step.subSteps);
+            }
+            if (step.toolStatus !== 'completed') continue;
+            const resolved = resolveStepAction(step, handlers);
+            if (!resolved || resolved.placement === 'step') continue;
+            if (resolved.placement === 'turn-end' && !isTurnComplete) continue;
+
+            const slug = step.toolSlug || step.toolName;
+            if (slug && isShowLastOnlyTool(step, handlers.tools)) {
+                const lastId = lastIds.get(slug);
+                if (lastId && step.id !== lastId) {
+                    continue;
+                }
+            }
+
+            found.push(resolved);
         }
-        if (step.toolStatus !== 'completed') continue;
-        const resolved = resolveStepAction(step, handlers);
-        if (!resolved || resolved.placement === 'step') continue;
-        if (resolved.placement === 'turn-end' && !isTurnComplete) continue;
-        found.push(resolved);
     }
+
+    collect(steps);
     return found;
 }
 

@@ -31,6 +31,10 @@ export interface AppProps {
     onAgentChange?: (agentId: string | null) => void;
     theme?: ChatTheme;
     show_tool_toggles?: boolean;
+    showAgentSwitcher?: boolean;
+    show_agent_switcher?: boolean;
+    showBottomSection?: boolean;
+    show_bottom_section?: boolean;
     headerActions?: React.ReactNode;
     brand?: React.ReactNode;
     allowedModes?: ChatMode[];
@@ -57,6 +61,10 @@ const ChatAppInner: React.FC<AppProps> = ({
     onContextChange,
     onSwitchMode,
     onShare,
+    showAgentSwitcher,
+    show_agent_switcher,
+    showBottomSection,
+    show_bottom_section,
 }) => {
     const context = useChatbot();
 
@@ -69,6 +77,10 @@ const ChatAppInner: React.FC<AppProps> = ({
                 ref={context?.composerRef}
                 onSelectedContextsChange={onContextChange}
                 toolMenuPlacement={isEmptyFullscreen ? 'center' : 'above'}
+                showAgentSwitcher={showAgentSwitcher}
+                show_agent_switcher={show_agent_switcher}
+                showBottomSection={showBottomSection}
+                show_bottom_section={show_bottom_section}
             />
         </div>
     );

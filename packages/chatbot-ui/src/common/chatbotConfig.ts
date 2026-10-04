@@ -46,12 +46,19 @@ export interface FeatureCardItem {
     prompt?: string;
 }
 
+export interface ComposerConfig {
+    showAgentSwitcher?: boolean;
+    showBottomSection?: boolean;
+    placeholder?: string;
+}
+
 export interface ChatbotUIConfig {
     greeting?: GreetingConfig;
     contextSelector?: ContextSelectorConfig;
     suggestions?: SuggestionItem[];
     quickActions?: QuickActionItem[];
     featureCards?: FeatureCardItem[];
+    composer?: ComposerConfig;
 }
 
 export const DEFAULT_CHATBOT_CONFIG: ChatbotUIConfig = {

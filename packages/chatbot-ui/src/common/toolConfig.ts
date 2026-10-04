@@ -151,6 +151,11 @@ export interface ToolPresentation {
      * this with {@link ServerToolConfig.autoRun}.
      */
     placement?: ToolActionPlacement;
+    /**
+     * If the tool is invoked multiple times in a turn, show only the last invocation
+     * in the chat transcript and hoisted action row. Default `false`.
+     */
+    showLastOnly?: boolean;
 }
 
 /** Where a tool's action control is offered. See {@link ToolPresentation.placement}. */
