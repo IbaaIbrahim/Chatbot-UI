@@ -280,6 +280,9 @@ export const DEFAULT_TOOL_NAMES: Record<string, string> = {
     checklist_apply_suggestions: 'Apply checklist suggestions',
     read_translation_context: 'Read translation context',
     propose_translations: 'Propose translations',
+    show_step_output: 'Action Execution',
+    find_conversation_artifacts: 'Search Conversation Artifacts',
+    get_step_details: 'Step Details',
 };
 
 /**

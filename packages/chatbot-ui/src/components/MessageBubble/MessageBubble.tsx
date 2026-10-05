@@ -585,15 +585,8 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
         // natural ``steps`` array is the source of truth for ordering.
         // For tools configured with showLastOnly (e.g. generate_checklist),
         // we only display the last invocation if the agent tried multiple times.
-        const lastStepIds = React.useMemo(
-            () => findLastToolCallStepIds(steps, props.tools),
-            [steps, props.tools]
-        );
-
-        const renderSteps: MessageStep[] = React.useMemo(
-            () => filterStepsForDisplay(steps, props.tools, lastStepIds),
-            [steps, props.tools, lastStepIds]
-        );
+        const lastStepIds = findLastToolCallStepIds(steps, props.tools);
+        const renderSteps: MessageStep[] = filterStepsForDisplay(steps, props.tools, lastStepIds);
         const groupedRenderItems = groupRenderSteps(renderSteps);
 
         // Collected at this level only. A nested bubble renders the steps of one

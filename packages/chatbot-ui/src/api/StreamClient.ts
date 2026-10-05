@@ -76,6 +76,12 @@ export interface StreamChatClient {
         stepUuid: string,
         toolOutput: any,
     ): Promise<void>;
+
+    /**
+     * Retrieve the output of a completed tool step by its UUID.
+     * Checks in-memory stream results and replayed turn steps.
+     */
+    getStepOutput?(stepUuid: string): any | undefined;
 }
 
 /**

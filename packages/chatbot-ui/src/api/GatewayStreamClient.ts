@@ -277,6 +277,14 @@ export class GatewayStreamClient implements StreamChatClient {
     private enabledToolIds: string[] = [];
 
     /**
+     * Cache of settled tool results keyed by step UUID.
+     * Retains outputs from live stream events and fetched history so client-side
+     * action tools (like show_step_output) can resolve artifacts without waiting
+     * for Kafka archival.
+     */
+    private stepOutputs = new Map<string, any>();
+
+    /**
      * One reader per conversation — the whole of change (b).
      *
      * This used to be a single ``AbortController`` slot and a single
@@ -475,6 +483,18 @@ export class GatewayStreamClient implements StreamChatClient {
         this.tools = tools;
     }
 
+    /** Retrieve the cached output of a completed step by its UUID. */
+    getStepOutput(stepUuid: string): any | undefined {
+        return this.stepOutputs.get(stepUuid);
+    }
+
+    /** Manually record or override a step output in cache. */
+    setStepOutput(stepUuid: string, output: any): void {
+        if (stepUuid && output !== undefined) {
+            this.stepOutputs.set(stepUuid, output);
+        }
+    }
+
     reset() {
         // Every reader stops, but no credential is thrown away. "New chat" says
         // where the user is going, not that the thread they left should become
@@ -658,12 +678,31 @@ export class GatewayStreamClient implements StreamChatClient {
         return this._runStream(session, onEvent, onError, { isResume: true });
     }
 
+    private _indexJobsSteps(jobs: any[]): void {
+        for (const job of jobs) {
+            if (Array.isArray(job.steps)) {
+                for (const step of job.steps) {
+                    if (step?.uuid && step?.tool_output !== undefined && step?.tool_output !== null) {
+                        this.stepOutputs.set(String(step.uuid), parseToolOutput(step.tool_output));
+                    }
+                }
+            }
+            if (Array.isArray(job.sub_agent_jobs)) {
+                this._indexJobsSteps(job.sub_agent_jobs);
+            }
+        }
+    }
+
     async getConversations(offset?: number, limit?: number): Promise<ConversationListResponse> {
         return this.conversationClient.getConversations(limit, offset);
     }
 
     async getConversationDetail(id: string): Promise<ConversationDetail> {
-        return this.conversationClient.getConversationDetail(id);
+        const detail = await this.conversationClient.getConversationDetail(id);
+        if (detail?.jobs) {
+            this._indexJobsSteps(detail.jobs);
+        }
+        return detail;
     }
 
     async deleteConversation(id: string): Promise<void> {
@@ -1084,8 +1123,12 @@ export class GatewayStreamClient implements StreamChatClient {
                     // resume path the request is held, and this is what discards
                     // it when its answer turns up further down the same replay.
                     if (event.type === 'tool_result' && payload.step_uuid) {
-                        session.settledStepUuids.add(String(payload.step_uuid));
-                        session.deferredClientCalls.delete(String(payload.step_uuid));
+                        const stepUuid = String(payload.step_uuid);
+                        session.settledStepUuids.add(stepUuid);
+                        session.deferredClientCalls.delete(stepUuid);
+                        if (payload.tool_output !== undefined && payload.tool_output !== null) {
+                            this.stepOutputs.set(stepUuid, parseToolOutput(payload.tool_output));
+                        }
                     }
 
                     // Handle client-side tool call: fire callback, then ack
@@ -1190,6 +1233,10 @@ export class GatewayStreamClient implements StreamChatClient {
     ): Promise<void> {
         const { step_uuid, tool_slug, tool_output, status } = payload ?? {};
         if (!tool_slug || status !== 'completed') return;
+
+        if (step_uuid && tool_output !== undefined && tool_output !== null) {
+            this.stepOutputs.set(String(step_uuid), parseToolOutput(tool_output));
+        }
 
         const config = this.tools[tool_slug];
         if (!config || !isServerTool(config)) return;
