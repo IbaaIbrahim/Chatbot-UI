@@ -155,14 +155,6 @@ export const MainChat: React.FC<MainChatProps> = ({
     return (
         <div className={`cb-main-chat ${className}`} style={style}>
             <div className="cb-messages-area">
-                <div className="cb-scroll-progress-container">
-                    <div
-                        className="cb-scroll-progress-bar"
-                        style={{ width: `${scrollProgress}%` }}
-                    />
-                </div>
-                <div className={`cb-scroll-shadow-top ${scrollProgress > 5 ? 'visible' : ''}`} />
-
                 <div
                     className="cb-scroll-view"
                     ref={scrollRef}
@@ -189,14 +181,14 @@ export const MainChat: React.FC<MainChatProps> = ({
                                     const withTools =
                                         msg.role === 'assistant'
                                             ? {
-                                                  ...msg,
-                                                  tools: { ...registeredTools, ...(msg.tools ?? {}) },
-                                                  onConfirm: msg.onConfirm ?? onConfirm,
-                                                  onReject: msg.onReject ?? onReject,
-                                                  isTurnComplete: !isLiveTurn,
-                                                  onRetry: msg.onRetry ?? onRetry,
-                                                  onContinue: msg.onContinue ?? onContinue,
-                                              }
+                                                ...msg,
+                                                tools: { ...registeredTools, ...(msg.tools ?? {}) },
+                                                onConfirm: msg.onConfirm ?? onConfirm,
+                                                onReject: msg.onReject ?? onReject,
+                                                isTurnComplete: !isLiveTurn,
+                                                onRetry: msg.onRetry ?? onRetry,
+                                                onContinue: msg.onContinue ?? onContinue,
+                                            }
                                             : msg;
                                     return (
                                         <MessageBubble key={withTools.id} {...withTools} shouldAnimate={false} />

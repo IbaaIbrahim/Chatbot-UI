@@ -256,8 +256,6 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
     return (
         <div className={containerClasses} data-theme={theme === 'system' ? undefined : theme}>
-            {renderedHeader}
-
             <div className="cb-chat-body-wrapper">
                 <div className={`cb-drawer-wrapper ${isDrawerOpen ? 'open' : ''}`}>
                     <div className="cb-drawer-content">
@@ -267,17 +265,18 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                 </div>
 
                 <div className="cb-chat-content">
+                    {renderedHeader}
                     {isMainChatChild ? (
                         children
                     ) : (
                         <div className="cb-messages-area">
-                            <div className="cb-scroll-progress-container">
+                            {/* <div className="cb-scroll-progress-container">
                                 <div
                                     className="cb-scroll-progress-bar"
                                     style={{ width: `${scrollProgress}%` }}
                                 />
                             </div>
-                            <div className={`cb-scroll-shadow-top ${scrollProgress > 5 ? 'visible' : ''}`} />
+                            <div className={`cb-scroll-shadow-top ${scrollProgress > 5 ? 'visible' : ''}`} /> */}
 
                             <div
                                 className="cb-scroll-view"
