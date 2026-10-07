@@ -1,99 +1,67 @@
 import React from 'react';
-const { useState, useRef, useLayoutEffect } = React;
 import './MainChat.css';
-import { MessageBubble, MessageProps } from '../MessageBubble/MessageBubble';
+import { MessageBubble } from '../MessageBubble/MessageBubble';
 import { ThinkingIndicator } from '../ThinkingIndicator/ThinkingIndicator';
 import { WelcomeScreen } from '../WelcomeScreen/WelcomeScreen';
-import { QuestionnaireForm, QuestionSpec } from '../Questionnaire/QuestionnaireForm';
-import type { ChatbotUIConfig } from '../../common/chatbotConfig';
-import type { ChatMode } from '../ChatContainer/ChatContainer';
-import type { ToolConfig } from '../../common/toolConfig';
-import { useChatbot } from '../../context/ChatbotContext';
+import { QuestionnaireForm } from '../Questionnaire/QuestionnaireForm';
+import { useChatActions, useChatState, useIcons, useLabels } from '../../store/hooks';
+
+const { useState, useRef, useLayoutEffect, useCallback } = React;
+
+/** How far from the bottom still counts as "following the stream". */
+const FOLLOW_THRESHOLD_PX = 50;
+/** How far up the reader must be before the jump-to-latest button appears. */
+const SCROLL_BUTTON_THRESHOLD_PX = 100;
 
 export interface MainChatProps {
-    messages?: MessageProps[];
-    isThinking?: boolean;
-    isResuming?: boolean;
-    userName?: string;
-    config?: ChatbotUIConfig;
-    mode?: ChatMode;
-    tools?: Record<string, ToolConfig>;
-    pendingQuestionnaire?: { questions: QuestionSpec[]; resolve: (formatted: string) => void } | null;
-    onQuestionnaireSubmit?: (formatted: string) => void;
-    staleClientCall?: boolean;
-    onRetryTurn?: () => void;
-    onContinueTurn?: () => void;
-    onConfirmApproval?: (approvalUuid: string) => void;
-    onRejectApproval?: (approvalUuid: string) => void;
-    onSelectSuggestion?: (prompt: string) => void;
+    /** Shown in the centre of an empty fullscreen chat, under the greeting. */
     emptyComposer?: React.ReactNode;
-    welcomeActions?: any[];
     className?: string;
     style?: React.CSSProperties;
 }
 
-export const MainChat: React.FC<MainChatProps> = ({
-    messages: messagesProp,
-    isThinking: isThinkingProp,
-    isResuming: isResumingProp,
-    userName: userNameProp,
-    config: configProp,
-    mode: modeProp,
-    tools: toolsProp,
-    pendingQuestionnaire: pendingQuestionnaireProp,
-    onQuestionnaireSubmit: onQuestionnaireSubmitProp,
-    staleClientCall: staleClientCallProp,
-    onRetryTurn: onRetryTurnProp,
-    onContinueTurn: onContinueTurnProp,
-    onConfirmApproval: onConfirmApprovalProp,
-    onRejectApproval: onRejectApprovalProp,
-    onSelectSuggestion: onSelectSuggestionProp,
-    emptyComposer,
-    welcomeActions = [],
-    className = '',
-    style,
-}) => {
-    const context = useChatbot();
+/**
+ * The transcript: the welcome screen while the conversation is empty, then the
+ * messages, the thinking indicator and any questionnaire the agent is asking.
+ *
+ * It follows the stream while the reader is at the bottom and stops following
+ * once they scroll up to read, with a button to jump back.
+ */
+export const MainChat: React.FC<MainChatProps> = ({ emptyComposer, className = '', style }) => {
+    const messages = useChatState(s => s.messages);
+    const isBusy = useChatState(s => s.isThinking || s.isResuming);
+    const registeredTools = useChatState(s => s.registeredTools);
+    const pendingQuestions = useChatState(s => s.pendingQuestions);
+    const staleClientCall = useChatState(s => s.staleClientCall);
+    const actions = useChatActions();
+    const labels = useLabels();
+    const icons = useIcons();
 
-    const messages = messagesProp !== undefined ? messagesProp : (context?.messages ?? []);
-    const isThinking = isThinkingProp !== undefined ? isThinkingProp : (context?.isThinking ?? false);
-    const isResuming = isResumingProp !== undefined ? isResumingProp : (context?.isResuming ?? false);
-    const userName = userNameProp !== undefined ? userNameProp : (context?.userName ?? 'User');
-    const config = configProp !== undefined ? configProp : context?.config;
-    const mode = modeProp !== undefined ? modeProp : (context?.mode ?? 'floating');
-    const registeredTools = toolsProp !== undefined ? toolsProp : (context?.registeredTools ?? {});
-    const pendingQuestionnaire = pendingQuestionnaireProp !== undefined ? pendingQuestionnaireProp : (context?.pendingQuestionnaire ?? null);
-    const onQuestionnaireSubmit = onQuestionnaireSubmitProp !== undefined ? onQuestionnaireSubmitProp : context?.handleQuestionnaireSubmit;
-    const staleClientCall = staleClientCallProp !== undefined ? staleClientCallProp : (context?.staleClientCall ?? false);
+    // Stable for the chat's lifetime, so a memoised bubble is not re-rendered
+    // just because the transcript was.
+    const onRetry = useCallback(() => {
+        void actions.retryTurn();
+    }, [actions]);
+    const onContinue = useCallback(() => {
+        void actions.continueTurn();
+    }, [actions]);
 
-    const onRetry = onRetryTurnProp !== undefined ? onRetryTurnProp : (() => { void context?.retryTurn(); });
-    const onContinue = onContinueTurnProp !== undefined ? onContinueTurnProp : (() => { void context?.continueTurn(); });
-    const onConfirm = onConfirmApprovalProp !== undefined ? onConfirmApprovalProp : context?.confirmApproval;
-    const onReject = onRejectApprovalProp !== undefined ? onRejectApprovalProp : context?.rejectApproval;
-
-    const onSelectSuggestion = onSelectSuggestionProp !== undefined
-        ? onSelectSuggestionProp
-        : (prompt: string) => { void context?.sendMessage(prompt); };
-
-    // Scroll engine
     const [showScrollBtn, setShowScrollBtn] = useState(false);
-    const scrollRef = useRef<HTMLDivElement>(null);
-    const [scrollProgress, setScrollProgress] = useState(0);
     const [isAtBottom, setIsAtBottom] = useState(true);
-    const isProgrammaticScroll = useRef(false);
+    const scrollRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
     const scrollEndRef = useRef<HTMLDivElement>(null);
+    const isProgrammaticScroll = useRef(false);
 
     const hasMessages = messages.length > 0;
 
     const scrollToBottomInstant = () => {
-        if (scrollRef.current) {
-            isProgrammaticScroll.current = true;
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-            requestAnimationFrame(() => {
-                isProgrammaticScroll.current = false;
-            });
-        }
+        if (!scrollRef.current) return;
+        isProgrammaticScroll.current = true;
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        requestAnimationFrame(() => {
+            isProgrammaticScroll.current = false;
+        });
     };
 
     const scrollToBottomSmooth = () => {
@@ -104,102 +72,77 @@ export const MainChat: React.FC<MainChatProps> = ({
     const handleScroll = () => {
         if (!scrollRef.current) return;
         const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
-        const distFromBottom = scrollHeight - scrollTop - clientHeight;
-
-        const totalScrollable = scrollHeight - clientHeight;
-        const progress = totalScrollable > 0 ? (scrollTop / totalScrollable) * 100 : 0;
-        setScrollProgress(progress);
-
-        setShowScrollBtn(hasMessages && distFromBottom > 100);
-
+        const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+        setShowScrollBtn(hasMessages && distanceFromBottom > SCROLL_BUTTON_THRESHOLD_PX);
         if (!isProgrammaticScroll.current) {
-            setIsAtBottom(distFromBottom < 50);
+            setIsAtBottom(distanceFromBottom < FOLLOW_THRESHOLD_PX);
         }
     };
 
+    // Following applies to a transcript. The welcome screen grows too — a
+    // quick-action category opening — and following it would scroll the
+    // greeting out of view.
     useLayoutEffect(() => {
-        if (isAtBottom) {
+        if (isAtBottom && hasMessages) {
             scrollToBottomInstant();
         }
-    }, [messages, isAtBottom]);
+    }, [messages, isAtBottom, hasMessages]);
 
     useLayoutEffect(() => {
-        if (!contentRef.current) return;
+        if (!contentRef.current || !hasMessages) return undefined;
         let rafId: number | null = null;
         const observer = new ResizeObserver(() => {
-            if (isAtBottom) {
-                if (rafId !== null) {
-                    cancelAnimationFrame(rafId);
-                }
-                rafId = requestAnimationFrame(() => {
-                    scrollToBottomInstant();
-                    rafId = null;
-                });
-            }
+            if (!isAtBottom) return;
+            if (rafId !== null) cancelAnimationFrame(rafId);
+            rafId = requestAnimationFrame(() => {
+                scrollToBottomInstant();
+                rafId = null;
+            });
         });
         observer.observe(contentRef.current);
         return () => {
             observer.disconnect();
-            if (rafId !== null) {
-                cancelAnimationFrame(rafId);
-            }
+            if (rafId !== null) cancelAnimationFrame(rafId);
         };
-    }, [isAtBottom]);
+    }, [isAtBottom, hasMessages]);
 
-    const showThinking = (isThinking || isResuming) && (
-        messages.length === 0 ||
-        messages[messages.length - 1]?.role !== 'assistant' ||
-        !messages[messages.length - 1]?.content
-    );
+    const lastMessage = messages[messages.length - 1];
+    const showThinking = isBusy && (!lastMessage || lastMessage.role !== 'assistant' || !lastMessage.content);
 
     return (
         <div className={`cb-main-chat ${className}`} style={style}>
             <div className="cb-messages-area">
-                <div
-                    className="cb-scroll-view"
-                    ref={scrollRef}
-                    onScroll={handleScroll}
-                >
+                <div className="cb-scroll-view" ref={scrollRef} onScroll={handleScroll}>
                     <div ref={contentRef}>
-                        {messages.length === 0 ? (
-                            <WelcomeScreen
-                                userName={userName}
-                                config={config}
-                                mode={mode}
-                                composer={emptyComposer}
-                                onSelectSuggestion={onSelectSuggestion}
-                                actions={welcomeActions}
-                            />
-                        ) : (
+                        {hasMessages ? (
                             <>
-                                {messages.map((msg, index) => {
-                                    const isLiveTurn =
-                                        index === messages.length - 1 &&
-                                        msg.role === 'assistant' &&
-                                        (isThinking || isResuming);
-
-                                    const withTools =
-                                        msg.role === 'assistant'
-                                            ? {
-                                                ...msg,
-                                                tools: { ...registeredTools, ...(msg.tools ?? {}) },
-                                                onConfirm: msg.onConfirm ?? onConfirm,
-                                                onReject: msg.onReject ?? onReject,
-                                                isTurnComplete: !isLiveTurn,
-                                                onRetry: msg.onRetry ?? onRetry,
-                                                onContinue: msg.onContinue ?? onContinue,
-                                            }
-                                            : msg;
+                                {messages.map((message, index) => {
+                                    if (message.role !== 'assistant') {
+                                        return <MessageBubble key={message.id} {...message} shouldAnimate={false} />;
+                                    }
+                                    const isLiveTurn = index === messages.length - 1 && isBusy;
                                     return (
-                                        <MessageBubble key={withTools.id} {...withTools} shouldAnimate={false} />
+                                        <MessageBubble
+                                            key={message.id}
+                                            {...message}
+                                            tools={message.tools ? { ...registeredTools, ...message.tools } : registeredTools}
+                                            onConfirm={message.onConfirm ?? actions.confirmApproval}
+                                            onReject={message.onReject ?? actions.rejectApproval}
+                                            onRetry={message.onRetry ?? onRetry}
+                                            onContinue={message.onContinue ?? onContinue}
+                                            isTurnComplete={!isLiveTurn}
+                                            shouldAnimate={false}
+                                        />
                                     );
                                 })}
                                 {showThinking && (
-                                    <div style={{ paddingLeft: '16px' }}>
+                                    <div className="cb-main-chat-thinking">
                                         <ThinkingIndicator />
                                     </div>
                                 )}
                             </>
+                        ) : (
+                            <WelcomeScreen composer={emptyComposer} />
                         )}
                         <div ref={scrollEndRef} />
                     </div>
@@ -211,33 +154,22 @@ export const MainChat: React.FC<MainChatProps> = ({
                         type="button"
                         className={`cb-scroll-bottom-btn ${showScrollBtn ? 'visible' : ''}`}
                         onClick={scrollToBottomSmooth}
-                        aria-label="Scroll to latest message"
+                        aria-label={labels.scrollToLatest}
+                        title={labels.scrollToLatest}
                     >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 5v14M19 12l-7 7-7-7" />
-                        </svg>
+                        {icons.scrollDown}
                     </button>
                 )}
             </div>
 
-            {staleClientCall && !pendingQuestionnaire && (
-                <div
-                    role="status"
-                    style={{
-                        padding: '8px 16px',
-                        fontSize: 13,
-                        opacity: 0.75,
-                    }}
-                >
-                    This turn is waiting on a response from this page that can no longer be delivered.
+            {staleClientCall && !pendingQuestions && (
+                <div role="status" className="cb-stale-client-call">
+                    {labels.staleClientCall}
                 </div>
             )}
 
-            {pendingQuestionnaire && onQuestionnaireSubmit && (
-                <QuestionnaireForm
-                    questions={pendingQuestionnaire.questions}
-                    onSubmit={onQuestionnaireSubmit}
-                />
+            {pendingQuestions && (
+                <QuestionnaireForm questions={pendingQuestions} onSubmit={actions.submitQuestionnaire} />
             )}
         </div>
     );

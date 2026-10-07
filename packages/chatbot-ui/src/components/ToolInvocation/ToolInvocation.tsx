@@ -6,6 +6,7 @@ import { parseToolOutput } from '../../api/toolOutput';
 // shape of the configuration that asks for one.
 import { resolveToolDisplayName, type ToolActionRenderProps, type ToolConfig } from '../../common/toolConfig';
 import './ToolInvocation.css';
+import { useLabels } from '../../store/hooks';
 
 export type ToolStatus = 'running' | 'completed' | 'failed';
 
@@ -20,13 +21,15 @@ export type ToolStatus = 'running' | 'completed' | 'failed';
 export const ToolActionControl: React.FC<{
     onAction: (data: any) => void;
     payload: any;
+    /** The call's parsed result, for a custom control; see {@link ToolActionRenderProps.result}. */
+    result?: any;
     toolName: string;
     label: string;
     render?: (props: ToolActionRenderProps) => React.ReactNode;
-}> = ({ onAction, payload, toolName, label, render }) => {
+}> = ({ onAction, payload, result, toolName, label, render }) => {
     const fire = () => onAction(payload);
     if (render) {
-        return <>{render({ onAction: fire, payload, toolName, label })}</>;
+        return <>{render({ onAction: fire, payload, result, toolName, label })}</>;
     }
     return (
         <button className="cb-tool-action-btn" onClick={fire}>
@@ -79,10 +82,11 @@ export const ToolInvocation: React.FC<ToolInvocationProps> = ({
     result,
     onAction,
     renderAction,
-    actionLabel = 'Open Result',
+    actionLabel,
     actionPayload,
     tools,
 }) => {
+    const labels = useLabels();
     const [expanded, setExpanded] = useState(false);
 
     const displayName = resolveToolDisplayName(toolName, tools);
@@ -94,6 +98,7 @@ export const ToolInvocation: React.FC<ToolInvocationProps> = ({
         () => parseToolOutput(actionPayload ?? args ?? result),
         [actionPayload, args, result]
     );
+    const parsedResult = React.useMemo(() => parseToolOutput(result), [result]);
 
     const isWebSearch = toolName === 'web_search' || toolName === 'search_web';
 
@@ -115,7 +120,7 @@ export const ToolInvocation: React.FC<ToolInvocationProps> = ({
                     )}
                 </div>
                 <span className="cb-tool-name">
-                    <span className="cb-tool-verb">{status === 'running' ? 'Calling' : 'Used tool'}</span>
+                    <span className="cb-tool-verb">{status === 'running' ? labels.toolCalling : labels.toolUsed}</span>
                     <strong title={toolName}>{displayName}</strong>
                 </span>
                 <span className="cb-tool-chevron">
@@ -136,8 +141,9 @@ export const ToolInvocation: React.FC<ToolInvocationProps> = ({
                     <ToolActionControl
                         onAction={onAction}
                         payload={actionValue}
+                        result={parsedResult}
                         toolName={toolName}
-                        label={actionLabel}
+                        label={actionLabel ?? labels.openResult}
                         render={renderAction}
                     />
                 </div>
@@ -146,18 +152,18 @@ export const ToolInvocation: React.FC<ToolInvocationProps> = ({
                 <div className="cb-tool-details">
                     {isWebSearch && result ? (
                         <div className="cb-web-search-results">
-                            <div className="cb-tool-detail-label">Search Results:</div>
+                            <div className="cb-tool-detail-label">{labels.searchResultsHeading}</div>
                             <div className="cb-markdown-content cb-tool-detail-body">
                                 {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
                             </div>
                         </div>
                     ) : (
                         <div className="cb-code-block">
-                            <div className="cb-tool-detail-key">Arguments:</div>
+                            <div className="cb-tool-detail-key">{labels.toolArguments}</div>
                             {JSON.stringify(args, null, 2)}
                             {result && (
                                 <>
-                                    <div className="cb-tool-detail-key cb-tool-detail-key-spaced">Result:</div>
+                                    <div className="cb-tool-detail-key cb-tool-detail-key-spaced">{labels.toolResult}</div>
                                     {JSON.stringify(result, null, 2)}
                                 </>
                             )}

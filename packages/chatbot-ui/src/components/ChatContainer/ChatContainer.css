@@ -328,6 +328,60 @@
     color: var(--cb-text-primary);
 }
 
+/* "Switch view": one entry whose views open beneath it, inside the menu. */
+.cb-header-menu-chevron {
+    display: inline-flex;
+    margin-inline-start: auto;
+    transition: transform var(--cb-transition-fast);
+}
+
+.cb-header-switch-view.is-open .cb-header-menu-chevron {
+    transform: rotate(180deg);
+}
+
+.cb-header-switch-view.is-open {
+    background-color: var(--cb-surface-hover);
+}
+
+.cb-header-view-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 2px 0 2px 14px;
+    padding-inline-start: 8px;
+    border-inline-start: 1px solid var(--cb-border-subtle);
+    animation: cb-fade-in 0.12s ease-out;
+}
+
+.cb-header-view-item {
+    padding-block: 6px;
+    font-weight: 400;
+    color: var(--cb-text-secondary);
+}
+
+.cb-header-view-item.is-active {
+    color: var(--cb-text-primary);
+    font-weight: 500;
+    cursor: default;
+}
+
+.cb-header-view-item.is-active svg,
+.cb-header-view-check svg {
+    color: var(--cb-accent-primary);
+}
+
+.cb-header-view-check {
+    display: inline-flex;
+    margin-inline-start: auto;
+}
+
+/* Between "Switch view" and the rest of the menu. */
+.cb-header-menu-separator {
+    height: 1px;
+    margin: 4px 6px;
+    background-color: var(--cb-border-subtle);
+}
+
 /* Delete thread danger row in context menu */
 .cb-header-menu-item.cb-header-menu-item-danger {
     color: #ef4444;

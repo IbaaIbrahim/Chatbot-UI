@@ -1,6 +1,6 @@
 import React from 'react';
 const { useState, useEffect } = React;
-import { useChatbotContext } from '../../context/ChatbotContext';
+import { useAuthenticatedFetch } from '../../store/hooks';
 
 export interface AuthenticatedImageProps {
     /**
@@ -31,8 +31,8 @@ export interface AuthenticatedImageProps {
 
 /**
  * Image component that fetches images using authenticated requests.
- * Uses the ChatbotContext to get the authentication credentials.
- * Falls back to direct URL if context is not available.
+ * Uses the provider's credentials; outside a provider it falls back to the
+ * plain URL, which an authenticated endpoint will refuse.
  */
 export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({
     src,
@@ -42,7 +42,7 @@ export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({
     onError,
     style,
 }) => {
-    const context = useChatbotContext();
+    const fetchAuthenticatedUrl = useAuthenticatedFetch();
     const [imageSrc, setImageSrc] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [hasError, setHasError] = useState(false);
@@ -55,15 +55,15 @@ export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({
             setHasError(false);
             setImageSrc(null);
 
-            // If no context, use direct URL (will likely fail for authenticated endpoints)
-            if (!context) {
+            // No provider: the plain URL, which an authenticated endpoint will refuse.
+            if (!fetchAuthenticatedUrl) {
                 setImageSrc(src);
                 setIsLoading(false);
                 return;
             }
 
             try {
-                const authenticatedUrl = await context.fetchAuthenticatedUrl(src);
+                const authenticatedUrl = await fetchAuthenticatedUrl(src);
                 if (isMounted) {
                     setImageSrc(authenticatedUrl);
                     setIsLoading(false);
@@ -82,7 +82,7 @@ export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({
         return () => {
             isMounted = false;
         };
-    }, [src, context]);
+    }, [src, fetchAuthenticatedUrl]);
 
     const handleError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
         setHasError(true);

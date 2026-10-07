@@ -155,7 +155,15 @@
     color: var(--cb-text-primary);
 }
 
+/* Two lines at most. A tool's description is written for the model — when to
+   call it, what to prefer instead — and runs to a paragraph, while the menu only
+   needs enough to tell the tools apart. The whole text stays in the DOM for
+   screen readers and in the tooltip. */
 .cb-menu-desc {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
     font-size: 11px;
     line-height: 1.4;
     color: var(--cb-text-secondary);

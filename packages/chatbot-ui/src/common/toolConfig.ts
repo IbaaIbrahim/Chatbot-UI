@@ -172,6 +172,13 @@ export interface ToolActionRenderProps {
      * the tool slug.
      */
     payload: any;
+    /**
+     * What the call returned, parsed — a client tool's `run` result, a server
+     * tool's output — or `undefined` before there is one. A control for an
+     * action that has already happened reads it to offer the outcome rather
+     * than the action: "Open the imported checklist", not a second import.
+     */
+    result?: any;
     toolName: string;
     /** The resolved label, whether the default or one set on the config. */
     label: string;

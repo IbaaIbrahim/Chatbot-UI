@@ -12,7 +12,8 @@ import { AuthenticatedImage } from '../AuthenticatedImage/AuthenticatedImage';
 import { BlinkingIndicator } from '../BlinkingIndicator/BlinkingIndicator';
 import { MessageActions } from '../MessageActions/MessageActions';
 import { BranchNavigator } from '../BranchNavigator/BranchNavigator';
-import { useChatbotContext } from '../../context/ChatbotContext';
+import { useAuthenticatedFetch, useLabels } from '../../store/hooks';
+import type { ChatLabels } from '../../common/labels';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Document, Page, pdfjs } from 'react-pdf';
@@ -217,7 +218,8 @@ const AttachmentViewerModal: React.FC<{
     const [errorMsg, setErrorMsg] = useState<string>('');
     const [pdfPageNumber, setPdfPageNumber] = useState(1);
     const [pdfNumPages, setPdfNumPages] = useState<number | null>(null);
-    const context = useChatbotContext();
+    const fetchAuthenticatedUrl = useAuthenticatedFetch();
+    const labels = useLabels();
     const downloadLinkRef = useRef<HTMLAnchorElement | null>(null);
 
     useEffect(() => {
@@ -230,14 +232,14 @@ const AttachmentViewerModal: React.FC<{
             setTextContent(null);
             setErrorMsg('');
 
-            if (!context) {
+            if (!fetchAuthenticatedUrl) {
                 setState('error');
-                setErrorMsg('No authentication context available');
+                setErrorMsg(labels.attachmentNoAuth);
                 return;
             }
 
             try {
-                const url = await context.fetchAuthenticatedUrl(attachment.url);
+                const url = await fetchAuthenticatedUrl(attachment.url);
                 if (cancelled) return;
                 setBlobUrl(url);
 
@@ -252,13 +254,13 @@ const AttachmentViewerModal: React.FC<{
             } catch (e) {
                 if (cancelled) return;
                 setState('error');
-                setErrorMsg(e instanceof Error ? e.message : 'Failed to load attachment');
+                setErrorMsg(e instanceof Error ? e.message : labels.attachmentLoadFailed);
             }
         };
 
         load();
         return () => { cancelled = true; };
-    }, [isOpen, attachment, context]);
+    }, [isOpen, attachment, fetchAuthenticatedUrl, labels]);
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -288,8 +290,8 @@ const AttachmentViewerModal: React.FC<{
                     <button
                         className="cb-attachment-viewer-close"
                         onClick={onClose}
-                        title="Close (Esc)"
-                        aria-label="Close attachment"
+                        title={`${labels.close} (Esc)`}
+                        aria-label={labels.closeAttachment}
                     >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -308,7 +310,7 @@ const AttachmentViewerModal: React.FC<{
                         <div className="cb-attachment-viewer-error-icon">&#x26A0;</div>
                         <div className="cb-attachment-viewer-error-msg">{errorMsg}</div>
                         <div className="cb-attachment-viewer-actions">
-                            <button className="cb-attachment-viewer-action-btn" onClick={onClose}>Close</button>
+                            <button className="cb-attachment-viewer-action-btn" onClick={onClose}>{labels.close}</button>
                         </div>
                     </div>
                 )}
@@ -327,7 +329,7 @@ const AttachmentViewerModal: React.FC<{
                                         setPdfPageNumber(1);
                                     }}
                                     loading={<div className="cb-attachment-viewer-loading"><span className="cb-att-chip-spinner" aria-hidden /></div>}
-                                    error={<div className="cb-attachment-viewer-error-msg">Failed to load PDF.</div>}
+                                    error={<div className="cb-attachment-viewer-error-msg">{labels.pdfLoadFailed}</div>}
                                 >
                                     <Page pageNumber={pdfPageNumber} width={undefined} />
                                 </Document>
@@ -476,8 +478,9 @@ function groupRenderSteps(renderSteps: MessageStep[]): RenderItem[] {
     return items;
 }
 
-export const MessageBubble: React.FC<MessageProps> = (props) => {
+const MessageBubbleView: React.FC<MessageProps> = (props) => {
     const { role, steps, shouldAnimate = true } = props;
+    const labels = useLabels();
 
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState('');
@@ -594,7 +597,7 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
         // row would put the same control on screen once per nesting level.
         const hoistedActions = props.embedded
             ? []
-            : collectHoistedActions(steps, props, props.isTurnComplete !== false, lastStepIds);
+            : collectHoistedActions(steps, props, props.isTurnComplete !== false, labels, lastStepIds);
 
         return (
             <div ref={bubbleRef} className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`}>
@@ -771,6 +774,7 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                                     key={`hoisted-${action.step.id}`}
                                     onAction={action.onAction}
                                     payload={action.payload}
+                                    result={action.result}
                                     toolName={resolveToolDisplayName(action.step.toolName || action.step.toolSlug || 'Tool', props.tools)}
                                     label={action.label}
                                     render={action.render}
@@ -819,6 +823,12 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
     return <LegacyMessageBubble {...props} />;
 };
 
+/**
+ * Memoised: a streamed token changes only the last message, so in a long
+ * thread every earlier bubble — handed the same props — skips re-rendering.
+ */
+export const MessageBubble = React.memo(MessageBubbleView);
+
 // Collapsible Thinking Block
 /**
  * One agent's run, rendered inside the turn of the agent that started it.
@@ -833,6 +843,8 @@ interface ResolvedStepAction {
     step: MessageStep;
     onAction: (data: any) => void;
     payload: any;
+    /** The step's parsed result, so a control can offer what the call did. */
+    result: any;
     label: string;
     render?: ToolPresentation['render'];
     placement: ToolActionPlacement;
@@ -847,9 +859,12 @@ interface ResolvedStepAction {
  * differently from the step-level one would hand the host app the wrong half of
  * the same call.
  */
+type ActionLabels = Pick<ChatLabels, 'openResult' | 'openPreview'>;
+
 function resolveStepAction(
     step: MessageStep,
     handlers: Pick<MessageProps, 'tools'>,
+    labels: ActionLabels,
 ): ResolvedStepAction | null {
     if (step.type !== 'tool-call') return null;
     const toolSlug = step.toolSlug || step.toolName;
@@ -868,14 +883,14 @@ function resolveStepAction(
     const resolvedSlug = step.toolSlug || toolSlug;
     let onAction: ((data: any) => void) | undefined;
     let rawPayload: any;
-    let label = 'Open Result';
+    let label = labels.openResult;
     if (config.preview) {
         const preview = config.preview;
         onAction = (data) => {
             void preview(data, { tool_slug: resolvedSlug, step_uuid: step.id, status: 'completed' });
         };
         rawPayload = step.toolResult;
-        label = 'Open Preview';
+        label = labels.openPreview;
     } else if (config.run) {
         const run = config.run;
         onAction = (data) => {
@@ -898,6 +913,7 @@ function resolveStepAction(
         step,
         onAction,
         payload,
+        result: parseToolOutput(step.toolResult),
         label: config.label ?? label,
         render: config.render,
         placement: config.placement ?? 'step',
@@ -995,6 +1011,7 @@ function collectHoistedActions(
     steps: MessageStep[],
     handlers: Pick<MessageProps, 'tools'>,
     isTurnComplete: boolean,
+    labels: ActionLabels,
     lastStepIds?: Map<string, string>,
 ): ResolvedStepAction[] {
     const lastIds = lastStepIds ?? findLastToolCallStepIds(steps, handlers.tools);
@@ -1006,7 +1023,7 @@ function collectHoistedActions(
                 collect(step.subSteps);
             }
             if (step.toolStatus !== 'completed') continue;
-            const resolved = resolveStepAction(step, handlers);
+            const resolved = resolveStepAction(step, handlers, labels);
             if (!resolved || resolved.placement === 'step') continue;
             if (resolved.placement === 'turn-end' && !isTurnComplete) continue;
 
@@ -1033,6 +1050,7 @@ const SubAgentBlock = ({
     step: MessageStep;
     handlers: Pick<MessageProps, 'tools'>;
 }) => {
+    const labels = useLabels();
     const [isOpen, setIsOpen] = useState(false);
     const isRunning = step.toolStatus === 'running';
     const failed = step.toolStatus === 'failed';
@@ -1098,7 +1116,7 @@ const SubAgentBlock = ({
 
                 {hasDetail && (
                     <span className="cb-sub-agent-count">
-                        {isOpen ? 'Hide' : 'Show'}
+                        {isOpen ? labels.hide : labels.show}
                     </span>
                 )}
             </button>
@@ -1145,10 +1163,11 @@ const ErrorBlock = ({
     onRetry?: () => void;
     onContinue?: () => void;
 }) => {
+    const labels = useLabels();
     const action = step.recovery === 'continue'
-        ? { label: 'Continue', handler: onContinue }
+        ? { label: labels.continue, handler: onContinue }
         : step.recovery === 'retry'
-            ? { label: 'Retry', handler: onRetry }
+            ? { label: labels.retry, handler: onRetry }
             : null;
 
     return (
@@ -1186,8 +1205,9 @@ interface ModernToolCallRowProps {
 }
 
 const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defaultExpanded = false }) => {
+    const labels = useLabels();
     const [expanded, setExpanded] = useState(defaultExpanded);
-    const resolved = resolveStepAction(step, props);
+    const resolved = resolveStepAction(step, props, labels);
     const onStep = resolved?.placement === 'step' ? resolved : undefined;
     const isRunning = step.toolStatus === 'running';
     const isFailed = step.toolStatus === 'failed';
@@ -1226,7 +1246,7 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
                     </span>
                     <span className="cb-modern-tool-label">
                         <span className="cb-modern-tool-verb">
-                            {isRunning ? 'Running' : isFailed ? 'Failed' : 'Ran'}
+                            {isRunning ? labels.toolRunning : isFailed ? labels.toolFailed : labels.toolRan}
                         </span>
                         <code className="cb-modern-tool-code" title={toolSlug}>{toolName}</code>
                     </span>
@@ -1248,6 +1268,7 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
                         <ToolActionControl
                             onAction={onStep.onAction}
                             payload={actionValue}
+                            result={onStep.result}
                             toolName={toolName}
                             label={onStep.label}
                             render={onStep.render}
@@ -1260,7 +1281,7 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
                 <div className="cb-modern-tool-details">
                     {isWebSearch && step.toolResult ? (
                         <div className="cb-web-search-results">
-                            <div className="cb-tool-detail-label">Search Results:</div>
+                            <div className="cb-tool-detail-label">{labels.searchResultsHeading}</div>
                             <div className="cb-markdown-content cb-tool-detail-body">
                                 {typeof step.toolResult === 'string' ? step.toolResult : JSON.stringify(step.toolResult, null, 2)}
                             </div>
@@ -1269,13 +1290,13 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
                         <div className="cb-code-block">
                             {step.toolArgs && (
                                 <>
-                                    <div className="cb-tool-detail-key">Arguments:</div>
+                                    <div className="cb-tool-detail-key">{labels.toolArguments}</div>
                                     {JSON.stringify(step.toolArgs, null, 2)}
                                 </>
                             )}
                             {step.toolResult && (
                                 <>
-                                    <div className="cb-tool-detail-key cb-tool-detail-key-spaced">Result:</div>
+                                    <div className="cb-tool-detail-key cb-tool-detail-key-spaced">{labels.toolResult}</div>
                                     {JSON.stringify(step.toolResult, null, 2)}
                                 </>
                             )}
@@ -1362,6 +1383,7 @@ const ModernToolGroupRow: React.FC<ModernToolGroupRowProps> = ({ steps, props })
 };
 
 const ThinkingBlock = ({ step }: { step: MessageStep }) => {
+    const labels = useLabels();
     const [isOpen, setIsOpen] = useState(false);
     const isFinished = step.isFinished;
     const hasContent = step.content && step.content.trim().length > 0;
@@ -1385,7 +1407,7 @@ const ThinkingBlock = ({ step }: { step: MessageStep }) => {
                 </span>
 
                 <span className="cb-modern-thinking-label">
-                    {isFinished ? 'Thought for a few seconds' : 'Thinking...'}
+                    {isFinished ? labels.thoughtBriefly : labels.thinking}
                 </span>
 
                 <svg

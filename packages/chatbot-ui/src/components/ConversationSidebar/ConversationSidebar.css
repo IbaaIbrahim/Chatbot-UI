@@ -34,3 +34,165 @@
     max-width: 320px;
     height: 100%;
 }
+
+/* Keyboard users reach a row's actions too: they show on focus as on hover. */
+.cb-conversation-item:focus-within .cb-sidebar-item-actions,
+.cb-conversation-item:focus-visible .cb-sidebar-item-actions {
+    opacity: 1;
+}
+
+.cb-conversation-item:focus-visible {
+    outline: 2px solid var(--cb-border-focus);
+    outline-offset: -2px;
+}
+
+/* --- Navigation: new chat and the host's own entries ---------------------- */
+
+.cb-sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--cb-space-2) var(--cb-space-3) var(--cb-space-1);
+}
+
+:root .cb-sidebar-nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--cb-space-2);
+    width: 100%;
+    padding: 7px 10px;
+    border: none;
+    border-radius: var(--cb-radius-md);
+    background: transparent;
+    color: var(--cb-text-primary);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: start;
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+:root .cb-sidebar-nav-item:hover {
+    background: var(--cb-surface-hover);
+}
+
+:root .cb-sidebar-nav-item:focus-visible {
+    outline: 2px solid var(--cb-border-focus);
+    outline-offset: -2px;
+}
+
+:root .cb-sidebar-nav-item.active {
+    background: #ede9fe;
+}
+
+[data-theme='dark'] .cb-sidebar-nav-item.active,
+.cb-chat-container:not([data-theme='light']) .cb-sidebar-nav-item.active {
+    background: rgba(99, 102, 241, 0.22);
+}
+
+.cb-sidebar-nav-primary {
+    font-weight: 600;
+}
+
+.cb-sidebar-nav-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    color: var(--cb-text-secondary);
+    flex-shrink: 0;
+}
+
+.cb-sidebar-nav-label {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cb-sidebar-nav-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: var(--cb-radius-full);
+    background: var(--cb-surface-sunken);
+    color: var(--cb-text-secondary);
+}
+
+/* --- Sections: Starred, Recents, search results --------------------------- */
+
+.cb-sidebar-section {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: var(--cb-space-3);
+}
+
+:root .cb-sidebar-section-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px;
+    border: none;
+    border-radius: var(--cb-radius-sm);
+    background: transparent;
+    color: var(--cb-text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: start;
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+:root .cb-sidebar-section-toggle:hover {
+    color: var(--cb-text-primary);
+    background: var(--cb-surface-hover);
+}
+
+.cb-sidebar-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--cb-text-secondary);
+    padding: 6px 6px 4px;
+}
+
+.cb-sidebar-hint {
+    margin: 2px 6px var(--cb-space-2);
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--cb-text-tertiary);
+}
+
+/* --- Row actions: star ----------------------------------------------------- */
+
+:root .cb-sidebar-star-btn {
+    background: transparent;
+    border: none;
+    color: var(--cb-text-tertiary);
+    cursor: pointer;
+    padding: 3px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--cb-transition-state);
+}
+
+:root .cb-sidebar-star-btn:hover {
+    color: var(--cb-text-primary);
+    background: var(--cb-surface-hover);
+}
+
+:root .cb-sidebar-star-btn.is-starred {
+    color: #f59e0b;
+}
+
+.cb-drawer-search-input::-webkit-search-cancel-button {
+    cursor: pointer;
+}
+
+/* The title gives way to the row's actions instead of pushing them out. */
+.cb-conversation-item .cb-conversation-title {
+    flex: 1;
+    min-width: 0;
+}

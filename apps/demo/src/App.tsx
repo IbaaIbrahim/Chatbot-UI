@@ -7,7 +7,7 @@ import {
     ChatTheme,
     AgentSidebarItem,
     ToolConfig,
-    type ChatbotUIConfig,
+    type ChatbotConfig,
 } from '@chatbot-ui/core'
 import data from './data.json'
 
@@ -22,9 +22,21 @@ const MODEL_ID = import.meta.env.VITE_MODEL_ID || 'gpt-5-mini';
 // VITE_ variable there would freeze at library-publish time.
 const ALLOW_LOCAL_NETWORK_ACCESS = import.meta.env.VITE_ALLOW_LOCAL_NETWORK_ACCESS === 'true';
 
-// Welcome content belongs to the host application. The library only supplies
-// these values as a backwards-compatible fallback when `config` is omitted.
-const welcomeConfig: ChatbotUIConfig = {
+// Welcome content belongs to the host application: since 3.0 the library ships
+// neutral defaults (no prompts, no cards, no badges), so a host that wants any
+// supplies them here.
+const welcomeConfig: ChatbotConfig = {
+    greeting: {
+        privacyBadges: [
+            { text: 'Only you can access this chat', icon: 'lock' },
+            { text: 'Your organization data is private', icon: 'shield' },
+        ],
+    },
+    suggestions: [
+        { id: 'attention', text: 'What needs my attention?', icon: 'pin' },
+        { id: 'last-inspection', text: 'Summarize my last inspection', icon: 'clipboard' },
+        { id: 'incident', text: 'How do I report an incident?', icon: 'message' },
+    ],
     quickActions: [
         {
             id: 'catch-up',
@@ -39,10 +51,15 @@ const welcomeConfig: ChatbotUIConfig = {
             icon: 'pencil',
         },
         {
+            // A category: the pill opens these prompts instead of sending one.
             id: 'analyze',
             label: 'Analyze',
-            prompt: 'Analyze recent inspection trends',
             icon: 'bolt',
+            prompts: [
+                { id: 'gaps', label: 'Show me compliance gaps across my sites' },
+                { id: 'trends', label: 'Show trends across my inspections' },
+                { id: 'template', label: 'Show me how a template is performing', behavior: 'insert' },
+            ],
         },
         {
             id: 'ask',
@@ -651,13 +668,12 @@ function App() {
                     <ChatApp
                         client={client}
                         mode={mode}
-                        isOpen={isOpen}
+                        open={isOpen}
+                        onOpenChange={setIsOpen}
                         embedded={true}
                         allowedModes={allowedModes}
                         noBackground={noBg}
                         onSwitchMode={setMode}
-                        onClose={() => setIsOpen(false)}
-                        onOpen={() => setIsOpen(true)}
                         userName="Ibaa"
                         storageApiUrl={STORAGE_API_BASE_URL}
                         allowLocalNetworkAccess={ALLOW_LOCAL_NETWORK_ACCESS}
@@ -679,12 +695,11 @@ function App() {
                     <ChatApp
                         client={client}
                         mode={mode}
-                        isOpen={isOpen}
+                        open={isOpen}
+                        onOpenChange={setIsOpen}
                         allowedModes={allowedModes}
                         noBackground={noBg}
                         onSwitchMode={setMode}
-                        onClose={() => setIsOpen(false)}
-                        onOpen={() => setIsOpen(true)}
                         userName="Ibaa"
                         storageApiUrl={STORAGE_API_BASE_URL}
                         allowLocalNetworkAccess={ALLOW_LOCAL_NETWORK_ACCESS}

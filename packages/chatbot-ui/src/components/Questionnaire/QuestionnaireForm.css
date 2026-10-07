@@ -1,31 +1,33 @@
 .cb-questionnaire {
+    box-sizing: border-box;
+    /* The composer's box below it is the footer's width less its 16px gutters,
+       capped at 768px in fullscreen; the card matches it edge for edge. */
+    width: calc(100% - 2 * var(--cb-space-4));
+    max-width: 768px;
+    align-self: center;
+    margin: 0 0 var(--cb-space-1);
+    padding: 10px var(--cb-space-3);
     background: var(--cb-bg-secondary);
     border: 1px solid var(--cb-border-subtle);
     border-radius: var(--cb-radius-lg);
-    padding: var(--cb-space-4);
-    margin-bottom: var(--cb-space-3);
     box-shadow: var(--cb-shadow-md);
     animation: cb-questionnaire-in var(--cb-transition-normal);
-    margin-left: var(--cb-space-4);
-    margin-right: var(--cb-space-4);
 
-    /* Bounded, because this sits in the footer *above* the composer and the
-       footer does not shrink. Unbounded, a question with six options grew the
-       footer until the composer was pushed off the bottom of the screen — the
-       user could neither finish answering nor type.
+    /* Bounded, because the composer's footer below this does not shrink.
+       Unbounded, a question with six options grew until the composer was
+       pushed off the bottom of the screen — the user could neither finish
+       answering nor type.
        A flex column so the cap can be spent deliberately: the question and the
        buttons keep their space and the options give theirs up. */
     display: flex;
     flex-direction: column;
+    gap: var(--cb-space-2);
     max-height: 50vh;
-    width: 100%;
-    max-width: 840px;
-    align-self: center;
 }
 
 /* The question stays put. Scrolling the options while the question scrolled away
    would leave the user choosing between six labels with nothing to answer. */
-.cb-questionnaire-question,
+.cb-questionnaire-header,
 .cb-questionnaire-footer {
     flex: none;
 }
@@ -42,16 +44,28 @@
     }
 }
 
+.cb-questionnaire-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--cb-space-3);
+}
+
 .cb-questionnaire-question {
     color: var(--cb-text-primary);
-    font-size: var(--cb-text-base);
+    font-size: var(--cb-text-sm);
     font-weight: 600;
     line-height: 1.4;
-    margin-bottom: var(--cb-space-3);
+}
+
+.cb-questionnaire-counter {
+    flex: none;
+    color: var(--cb-text-tertiary);
+    font-size: calc(var(--cb-text-xs) - 1px);
+    font-variant-numeric: tabular-nums;
 }
 
 .cb-questionnaire-body {
-    margin-bottom: var(--cb-space-3);
     /* The only part that scrolls. `min-height: 0` is what lets it: a flex child
        will not shrink below its content without it, so the cap above would be
        ignored and the whole form would grow again. */
@@ -61,8 +75,10 @@
     overscroll-behavior: contain;
     scrollbar-width: thin;
     scrollbar-color: var(--cb-border-strong) transparent;
-    /* Room for the scrollbar so it never sits on top of an option's border. */
-    padding-inline-end: 2px;
+    /* Room for the scrollbar so it never sits on top of an option's border, and
+       for the selected option's ring at the top and bottom edges. */
+    padding: 1px;
+    padding-inline-end: 3px;
 }
 
 /* Matched to the tools menu's scrollbar so the two read as one product. */
@@ -87,27 +103,34 @@
     background-clip: padding-box;
 }
 
+/* Choices as chips that wrap: short answers share a row, so five of them take
+   two rows rather than five, and a long one simply takes a row of its own. */
 .cb-questionnaire-options {
     display: flex;
-    flex-direction: column;
-    gap: var(--cb-space-2);
+    flex-wrap: wrap;
+    gap: 6px;
 }
 
 .cb-questionnaire-option {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: var(--cb-space-3);
-    padding: 10px 12px;
+    gap: var(--cb-space-2);
+    box-sizing: border-box;
+    max-width: 100%;
+    padding: 5px var(--cb-space-3) 5px 10px;
     border: 1px solid var(--cb-border-subtle);
-    border-radius: var(--cb-radius-md);
+    /* Round on one line, a soft card when a long option wraps. */
+    border-radius: var(--cb-radius-lg);
+    background: var(--cb-bg-primary);
     color: var(--cb-text-secondary);
-    font-size: var(--cb-text-sm);
+    font-size: calc(var(--cb-text-xs) + 1px);
+    line-height: 18px;
     cursor: pointer;
-    transition: background-color var(--cb-transition-fast), border-color var(--cb-transition-fast), color var(--cb-transition-fast);
+    transition: var(--cb-transition-state);
 }
 
 .cb-questionnaire-option:hover {
-    background: var(--cb-bg-tertiary);
+    border-color: var(--cb-border-strong);
     color: var(--cb-text-primary);
 }
 
@@ -115,22 +138,26 @@
     border-color: var(--cb-border-focus);
     color: var(--cb-text-primary);
     background: rgba(99, 102, 241, 0.08);
+    box-shadow: 0 0 0 1px var(--cb-border-focus);
 }
 
 .cb-questionnaire-option input {
+    margin: 0;
     accent-color: var(--cb-accent-primary);
-    width: 16px;
-    height: 16px;
+    width: 13px;
+    height: 13px;
     flex-shrink: 0;
     cursor: pointer;
 }
 
 .cb-questionnaire-option span {
-    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .cb-questionnaire-other-input,
 .cb-questionnaire-textarea {
+    box-sizing: border-box;
     width: 100%;
     background: var(--cb-bg-primary);
     border: 1px solid var(--cb-border-subtle);
@@ -138,7 +165,7 @@
     color: var(--cb-text-primary);
     font-family: inherit;
     font-size: var(--cb-text-sm);
-    padding: 10px 12px;
+    padding: var(--cb-space-2) var(--cb-space-3);
     /* Suppressed here; these text-entry controls get their focus indicator
        from :focus below instead — border colour plus a box-shadow halo that
        hugs the border. The outline ring the buttons use sits 2px off the
@@ -149,14 +176,16 @@
     transition: border-color var(--cb-transition-fast), box-shadow var(--cb-transition-fast);
 }
 
+/* Its own row under the chips. */
 .cb-questionnaire-other-input {
-    margin-top: 2px;
+    flex: 1 0 100%;
 }
 
 .cb-questionnaire-textarea {
+    display: block;
     resize: vertical;
     line-height: 1.5;
-    min-height: 64px;
+    min-height: 52px;
 }
 
 .cb-questionnaire-other-input:focus,
@@ -166,53 +195,53 @@
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
 }
 
+/* The way forward on the right, the way back — when there is one — on the left. */
 .cb-questionnaire-footer {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--cb-space-3);
+    justify-content: flex-end;
+    gap: var(--cb-space-2);
 }
 
 :root .cb-questionnaire-nav {
+    margin-inline-end: auto;
+    padding: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: var(--cb-radius-md);
+    width: 28px;
+    height: 28px;
+    border-radius: var(--cb-radius-full);
     border: 1px solid var(--cb-border-subtle);
-    background: var(--cb-bg-tertiary);
+    background: transparent;
     color: var(--cb-text-secondary);
     cursor: pointer;
-    transition: background-color var(--cb-transition-fast), color var(--cb-transition-fast);
+    transition: var(--cb-transition-state);
 }
 
-.cb-questionnaire-nav:hover:not(:disabled) {
-    background: var(--cb-bg-primary);
+.cb-questionnaire-nav:hover {
+    background: var(--cb-bg-tertiary);
     color: var(--cb-text-primary);
 }
 
-.cb-questionnaire-nav:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
-.cb-questionnaire-counter {
-    color: var(--cb-text-tertiary);
-    font-size: var(--cb-text-xs);
-    font-variant-numeric: tabular-nums;
-}
-
 :root .cb-questionnaire-submit {
-    padding: 8px 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cb-space-1);
+    height: 28px;
+    padding: 0 14px;
     border: none;
-    border-radius: var(--cb-radius-md);
+    border-radius: var(--cb-radius-full);
     background: var(--cb-accent-primary);
     color: #ffffff;
-    font-size: var(--cb-text-sm);
+    font-size: var(--cb-text-xs);
     font-weight: 600;
     cursor: pointer;
-    transition: background-color var(--cb-transition-fast);
+    transition: var(--cb-transition-state);
+}
+
+:root .cb-questionnaire-next {
+    padding-inline-end: 10px;
 }
 
 .cb-questionnaire-submit:hover:not(:disabled) {
@@ -220,7 +249,7 @@
 }
 
 .cb-questionnaire-submit:disabled {
-    opacity: 0.5;
+    opacity: 0.45;
     cursor: not-allowed;
 }
 
@@ -230,7 +259,8 @@
 /* Text-entry controls above are not listed here on purpose: their :focus
    rule is their indicator, and adding this offset outline gave them two. */
 .cb-questionnaire-nav:focus-visible,
-.cb-questionnaire-submit:focus-visible {
+.cb-questionnaire-submit:focus-visible,
+.cb-questionnaire-option input:focus-visible {
     outline: 2px solid var(--cb-border-focus);
     outline-offset: 2px;
 }

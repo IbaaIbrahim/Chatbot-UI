@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { AgentSidebarItem } from '../AgentSidebar/AgentSidebar';
 import './AgentSwitcher.css';
+import { useLabels } from '../../store/hooks';
 
 export interface AgentSwitcherProps {
     /** Available agents. Each item's ``onClick`` switches the active agent. */
@@ -44,6 +45,7 @@ export const AgentSwitcher: React.FC<AgentSwitcherProps> = ({
     activeAgentId,
     onSelectAgent,
 }) => {
+    const labels = useLabels();
     const [isOpen, setIsOpen] = React.useState(false);
     const containerRef = React.useRef<HTMLDivElement>(null);
 
@@ -58,8 +60,8 @@ export const AgentSwitcher: React.FC<AgentSwitcherProps> = ({
             : agents.find(agent => agent.active) ?? (includeAuto ? null : agents[0]));
 
     const displayLabel = isAutoActive
-        ? 'Auto'
-        : (activeAgent?.label ?? (includeAuto ? 'Auto' : 'Select agent'));
+        ? labels.agentAuto
+        : (activeAgent?.label ?? (includeAuto ? labels.agentAuto : labels.selectAgent));
 
     const displayIcon = isAutoActive
         ? <SparkleIcon />
@@ -114,7 +116,7 @@ export const AgentSwitcher: React.FC<AgentSwitcherProps> = ({
                 onClick={() => setIsOpen(open => !open)}
                 aria-haspopup="listbox"
                 aria-expanded={isOpen}
-                title="Switch agent"
+                title={labels.switchAgent}
             >
                 {displayIcon && (
                     <span className="cb-agent-switcher-icon">{displayIcon}</span>
@@ -146,7 +148,7 @@ export const AgentSwitcher: React.FC<AgentSwitcherProps> = ({
                                 onClick={handleSelectAuto}
                             >
                                 <span className="cb-agent-switcher-icon"><SparkleIcon /></span>
-                                <span className="cb-agent-switcher-option-label">Auto</span>
+                                <span className="cb-agent-switcher-option-label">{labels.agentAuto}</span>
                                 {isAutoActive && (
                                     <svg
                                         className="cb-agent-switcher-check"

@@ -142,8 +142,11 @@
     background-color: var(--cb-bg-hover, #444);
 }
 
+/* The hover's tint. This read `--cb-bg-hover`, which was never a token, so an
+   open tools menu painted its #444 fallback — a dark disc on the light theme. */
 .cb-action-btn.active-state {
-    background-color: var(--cb-bg-hover, #444);
+    background-color: var(--cb-bg-tertiary);
+    color: var(--cb-text-primary);
 }
 
 .cb-action-btn.active-icon {
@@ -196,7 +199,13 @@
 }
 
 /* === Attached Files === */
-.cb-attached-files {
+.cb-composer-notices {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cb-space-2);
+}
+
+.cb-attached-files-list {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
@@ -326,11 +335,7 @@
 }
 
 /* === Drag & Drop === */
-.cb-composer-drag-active {
-    position: relative;
-}
-
-.cb-composer-drag-active .cb-composer-input-wrapper {
+.cb-dragging .cb-composer-input-wrapper {
     border-color: var(--cb-accent-primary, #7c7cff);
     border-style: dashed;
 }
@@ -348,7 +353,7 @@
     pointer-events: none;
 }
 
-.cb-drag-overlay-content {
+.cb-drag-message {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -380,4 +385,121 @@
 }
 
 
+
+
+/* The active-tool count is positioned against the button. */
+.cb-tools-btn {
+    position: relative;
+}
+
+/* === Compact density ===
+ *
+ * Once a conversation has messages the transcript is what the user reads, and
+ * the comfortable composer — text, a row of buttons, the agent strip, about
+ * 160px — left a short panel a few lines of answer. Compact puts the buttons on
+ * the text's own row and the agent switcher in the footer line, and gives the
+ * text the full width only once it needs a second line (`--multiline`, which
+ * the component sets and keeps until the box is emptied).
+ *
+ * The row is 32px controls inside 7px of padding and a 1px border, 48px in all,
+ * and the radius is half of that: the box's round ends and the round buttons
+ * at them share a centre.
+ */
+.cb-composer--compact {
+    padding: var(--cb-space-2) var(--cb-space-4);
+}
+
+.cb-composer--compact .cb-composer-input-wrapper {
+    border-radius: var(--cb-radius-xl);
+    box-shadow: var(--cb-shadow-sm);
+}
+
+.cb-composer--compact .cb-composer-upper {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+        "notices notices notices"
+        "left text right";
+    align-items: end;
+    /* No row gap: the notices row is empty most of the time, and a gap above
+       an empty row still takes its space. Rows space themselves instead. */
+    gap: 0 var(--cb-space-1);
+    padding: 7px;
+}
+
+.cb-composer--compact.cb-composer--multiline .cb-composer-upper {
+    grid-template-areas:
+        "notices notices notices"
+        "text text text"
+        "left . right";
+}
+
+.cb-composer--compact .cb-composer-notices {
+    grid-area: notices;
+    padding: 2px var(--cb-space-1) var(--cb-space-2);
+}
+
+.cb-composer--compact .cb-composer-textarea {
+    grid-area: text;
+    min-height: 32px;
+    padding: 5px 6px;
+    line-height: 22px;
+}
+
+.cb-composer--compact.cb-composer--multiline .cb-composer-textarea {
+    margin-bottom: var(--cb-space-1);
+    padding: 2px var(--cb-space-2) 0;
+}
+
+/* An empty one-row box shows its placeholder on one line, cut short if the
+   panel is narrow, rather than a second line clipped in half. */
+.cb-composer--compact .cb-composer-textarea:placeholder-shown {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* The wrapper lays the two button groups out as one row in the comfortable
+   layout; here the groups are grid items of their own. */
+.cb-composer--compact .cb-composer-actions {
+    display: contents;
+}
+
+.cb-composer--compact .cb-actions-left {
+    grid-area: left;
+    gap: 2px;
+}
+
+.cb-composer--compact .cb-actions-right {
+    grid-area: right;
+    gap: var(--cb-space-1);
+}
+
+:root .cb-composer--compact .cb-action-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: var(--cb-radius-full);
+}
+
+.cb-composer--compact .cb-composer-footer {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    column-gap: var(--cb-space-2);
+    margin-top: 6px;
+    padding: 0 var(--cb-space-1);
+}
+
+.cb-composer-footer-agent {
+    grid-column: 1;
+    justify-self: start;
+    display: flex;
+    min-width: 0;
+    max-width: 100%;
+}
+
+:root .cb-composer-footer-agent .cb-agent-switcher-trigger {
+    gap: var(--cb-space-1);
+    padding: 2px 6px;
+    font-size: 11px;
+}
 

@@ -43,7 +43,8 @@
 
 /* Base variables scoped to prevent global leakage, but including the launcher */
 .cb-chat-container,
-.cb-chat-launcher {
+.cb-chat-launcher,
+.cb-root {
   /* Colors - Premium Dark Theme Base */
   --cb-bg-primary: #121212 !important;
   --cb-bg-secondary: #1E1E1E !important;
@@ -63,6 +64,8 @@
   --cb-glass-bg: rgba(30, 30, 30, 0.7) !important;
   --cb-glass-border: rgba(255, 255, 255, 0.1) !important;
   --cb-backdrop-blur: 12px !important;
+  /* Dims the chat behind a dialog; the same in both themes. */
+  --cb-scrim: rgba(15, 23, 42, 0.4) !important;
 
   /* Surfaces and state.
    *
@@ -81,6 +84,10 @@
   --cb-surface-sunken: rgba(0, 0, 0, 0.2) !important;
   --cb-surface-hover: rgba(255, 255, 255, 0.07) !important;
   --cb-border-strong: rgba(255, 255, 255, 0.16) !important;
+  /* Between subtle and strong. Referenced by the sidebar and the message
+   * spinners long before it was defined, which voided every `border` that
+   * named it. */
+  --cb-border-medium: rgba(255, 255, 255, 0.13) !important;
   /* Opacity steps for text that is deliberately quieter than
    * --cb-text-secondary, so "slightly dimmer" stops being a magic number. */
   --cb-dim-strong: 0.9 !important;
@@ -112,6 +119,8 @@
   --cb-radius-sm: 6px !important;
   --cb-radius-md: 8px !important;
   --cb-radius-lg: 16px !important;
+  /* Half the compact composer's 48px row, so its ends are round. */
+  --cb-radius-xl: 24px !important;
   --cb-radius-full: 9999px !important;
   --cb-border-subtle: rgba(255, 255, 255, 0.1) !important;
   --cb-border-focus: rgba(99, 102, 241, 0.5) !important;
@@ -172,7 +181,8 @@
  * whole point: a surface that reads its colour from a token works in both, and
  * one that hardcodes a colour works in neither. */
 .cb-chat-container[data-theme='light'],
-.cb-chat-launcher[data-theme='light'] {
+.cb-chat-launcher[data-theme='light'],
+.cb-root[data-theme='light'] {
   --cb-bg-primary: #ffffff !important;
   --cb-bg-secondary: #f9fafb !important;
   --cb-bg-tertiary: #f3f4f6 !important;
@@ -183,6 +193,7 @@
 
   --cb-border-subtle: rgba(17, 24, 39, 0.1) !important;
   --cb-border-strong: rgba(17, 24, 39, 0.2) !important;
+  --cb-border-medium: rgba(17, 24, 39, 0.15) !important;
   --cb-glass-bg: rgba(255, 255, 255, 0.8) !important;
   --cb-glass-border: rgba(0, 0, 0, 0.05) !important;
 
@@ -208,7 +219,8 @@
 @media (prefers-color-scheme: light) {
 
   .cb-chat-container:not([data-theme='dark']),
-  .cb-chat-launcher:not([data-theme='dark']) {
+  .cb-chat-launcher:not([data-theme='dark']),
+  .cb-root:not([data-theme='dark']) {
     --cb-bg-primary: #ffffff !important;
     --cb-bg-secondary: #f9fafb !important;
     --cb-bg-tertiary: #f3f4f6 !important;
@@ -219,6 +231,7 @@
 
     --cb-border-subtle: rgba(17, 24, 39, 0.1) !important;
     --cb-border-strong: rgba(17, 24, 39, 0.2) !important;
+    --cb-border-medium: rgba(17, 24, 39, 0.15) !important;
     --cb-glass-bg: rgba(255, 255, 255, 0.8) !important;
     --cb-glass-border: rgba(0, 0, 0, 0.05) !important;
 
@@ -238,14 +251,16 @@
 }
 
 .cb-chat-container *,
-.cb-chat-launcher * {
+.cb-chat-launcher *,
+.cb-root * {
   box-sizing: border-box !important;
 }
 
 /* --- Platform behaviour --------------------------------------------------- */
 
 .cb-chat-container,
-.cb-chat-launcher {
+.cb-chat-launcher,
+.cb-root {
   /* Tells the browser this subtree wants no double-tap-to-zoom, which is what
      causes the ~300ms delay before a tap registers as a click. */
   touch-action: manipulation;
@@ -260,19 +275,22 @@
    widget keeps dark scrollbars and vice versa. Set per theme rather than once,
    for the same reason the tokens are. */
 .cb-chat-container,
-.cb-chat-launcher {
+.cb-chat-launcher,
+.cb-root {
   color-scheme: dark;
 }
 
 .cb-chat-container[data-theme='light'],
-.cb-chat-launcher[data-theme='light'] {
+.cb-chat-launcher[data-theme='light'],
+.cb-root[data-theme='light'] {
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: light) {
 
   .cb-chat-container:not([data-theme='dark']),
-  .cb-chat-launcher:not([data-theme='dark']) {
+  .cb-chat-launcher:not([data-theme='dark']),
+  .cb-root:not([data-theme='dark']) {
     color-scheme: light;
   }
 }
@@ -297,7 +315,8 @@
 @media (prefers-reduced-motion: reduce) {
 
   .cb-chat-container *,
-  .cb-chat-launcher * {
+  .cb-chat-launcher *,
+  .cb-root * {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -340,4 +359,11 @@
 
 .cb-sub-agent-body .cb-message-content-wrapper .cb-message-bubble.assistant {
   padding: var(--cb-space-3) var(--cb-space-4) 16px !important;
+}
+/* `ChatRoot`: the chat's type and colour for widgets placed in a host's own
+   layout — no frame, no background, and none of `.cb-chat-container`'s
+   fade-in, which hid a widget until something added `.cb-open` by hand. */
+.cb-root {
+  font-family: var(--cb-font-family);
+  color: var(--cb-text-primary);
 }

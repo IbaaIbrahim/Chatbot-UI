@@ -21,6 +21,61 @@ export interface ConversationSummary {
     title: string;
     created_at: string;
     updated_at: string;
+    /**
+     * When the user starred it, or `null` when not starred. Absent altogether
+     * from a Gateway that predates starring — which is how the sidebar knows
+     * not to offer it.
+     */
+    starred_at?: string | null;
+}
+
+/** Narrows `GET /v1/user/conversations`. Both are optional and combine. */
+export interface ConversationListFilters {
+    /**
+     * Case-insensitive match on the title or on anything the user wrote in the
+     * conversation (never on a prompt one agent wrote for another).
+     */
+    query?: string;
+    /** `true` for starred only, `false` for unstarred only. */
+    starred?: boolean;
+}
+
+/** One live allowance grant: from the user's plan, or from a top-up. */
+export interface CreditGrant {
+    source: 'plan' | 'topup';
+    credit_cap: number;
+    consumed: number;
+    /** Clamped at zero; an overdraft shows as `consumed > credit_cap`. */
+    remaining: number;
+    /** ISO 8601; `null` = never lapses. */
+    valid_until: string | null;
+}
+
+/** Whose limit stops the user from starting a job — a party, never its figures. */
+export type CreditBlock = 'no_plan' | 'provider_account' | 'organization_allowance' | 'user_allowance';
+
+/**
+ * The signed-in user's own credits, from `GET /v1/user/credits`.
+ *
+ * A user holds no credits of their own: the platform bills the partner, and
+ * what a user holds is allowance — grants capping how much their work may
+ * spend. The organisation's and the partner's figures are never included.
+ */
+export interface UserCredits {
+    allowance: {
+        /** `false`: no personal limit, and the totals are zero. */
+        limited: boolean;
+        credit_cap: number;
+        consumed: number;
+        remaining: number;
+        grants: CreditGrant[];
+    };
+    /** Credits charged for the user's work since `month_started_at`, with or without a limit. */
+    used_this_month: number;
+    month_started_at: string;
+    /** Whether a job submitted now would be admitted. */
+    can_run: boolean;
+    blocked_by: CreditBlock | null;
 }
 
 export interface ConversationAttachment {

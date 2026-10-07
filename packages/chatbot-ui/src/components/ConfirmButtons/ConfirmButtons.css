@@ -1,38 +1,47 @@
+/* The approval card for a held tool call.
+ *
+ * Coloured from the theme tokens only. It used white-alpha literals throughout
+ * — a lift on near-black — so on the light theme the tool's name, the
+ * description and the Cancel button were white on white, and the card was a
+ * blank box with a Confirm button under it. The status tints stay literal
+ * alphas of their status colour, which read the same over either background;
+ * the text on them takes the status token, which each theme sets for contrast.
+ */
 .cb-confirm-buttons {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    padding: 16px;
-    margin: 8px 0;
+    background: var(--cb-surface-raised);
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-lg);
+    padding: var(--cb-space-4);
+    margin: var(--cb-space-2) 0;
 }
 
 .cb-confirm-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
+    gap: var(--cb-space-2);
+    margin-bottom: var(--cb-space-2);
 }
 
 .cb-tool-icon {
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--cb-text-secondary);
 }
 
 .cb-tool-label {
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 14px;
+    color: var(--cb-text-primary);
+    font-size: var(--cb-text-sm);
 }
 
 .cb-confirm-description {
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--cb-text-secondary);
     font-size: 13px;
-    margin: 0 0 12px 0;
+    margin: 0 0 var(--cb-space-3) 0;
     line-height: 1.4;
 }
 
 .cb-confirm-actions {
     display: flex;
-    gap: 8px;
+    gap: var(--cb-space-2);
 }
 
 :root .cb-btn-confirm,
@@ -40,43 +49,49 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 16px;
-    border-radius: 8px;
+    padding: var(--cb-space-2) var(--cb-space-4);
+    border-radius: var(--cb-radius-md);
+    font-family: inherit;
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
-    border: none;
+    transition: var(--cb-transition-state);
 }
 
-.cb-btn-confirm {
-    background: rgba(34, 197, 94, 0.2);
-    color: rgb(34, 197, 94);
-    border: 1px solid rgba(34, 197, 94, 0.3);
+:root .cb-btn-confirm {
+    background: rgba(34, 197, 94, 0.15);
+    color: var(--cb-status-success);
+    border: 1px solid rgba(34, 197, 94, 0.35);
 }
 
-.cb-btn-confirm:hover {
-    background: rgba(34, 197, 94, 0.3);
-    border-color: rgba(34, 197, 94, 0.5);
+:root .cb-btn-confirm:hover {
+    background: rgba(34, 197, 94, 0.25);
+    border-color: rgba(34, 197, 94, 0.55);
 }
 
-.cb-btn-reject {
-    background: rgba(255, 255, 255, 0.05);
-    color: rgba(255, 255, 255, 0.7);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+:root .cb-btn-reject {
+    background: var(--cb-surface-raised);
+    color: var(--cb-text-secondary);
+    border: 1px solid var(--cb-border-strong);
 }
 
-.cb-btn-reject:hover {
-    background: rgba(239, 68, 68, 0.2);
-    color: rgb(239, 68, 68);
-    border-color: rgba(239, 68, 68, 0.3);
+:root .cb-btn-reject:hover {
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--cb-status-failed);
+    border-color: rgba(239, 68, 68, 0.35);
+}
+
+:root .cb-btn-confirm:focus-visible,
+:root .cb-btn-reject:focus-visible {
+    outline: 2px solid var(--cb-border-focus);
+    outline-offset: 2px;
 }
 
 /* Status states */
 .cb-confirm-status {
-    padding: 12px 16px;
-    border-radius: 8px;
-    margin: 8px 0;
+    padding: var(--cb-space-3) var(--cb-space-4);
+    border-radius: var(--cb-radius-md);
+    margin: var(--cb-space-2) 0;
 }
 
 .cb-confirm-status-confirmed,
@@ -84,36 +99,32 @@
 .cb-confirm-status-rejected {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--cb-space-2);
     font-size: 13px;
+    border-radius: var(--cb-radius-md);
+    padding: 10px 14px;
 }
 
 .cb-confirm-status-confirmed {
-    color: rgb(34, 197, 94);
+    color: var(--cb-status-success);
     background: rgba(34, 197, 94, 0.1);
-    border-radius: 8px;
-    padding: 10px 14px;
 }
 
 .cb-confirm-status-executing {
-    color: rgb(59, 130, 246);
+    color: var(--cb-status-running);
     background: rgba(59, 130, 246, 0.1);
-    border-radius: 8px;
-    padding: 10px 14px;
 }
 
 .cb-confirm-status-rejected {
-    color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 8px;
-    padding: 10px 14px;
+    color: var(--cb-text-tertiary);
+    background: var(--cb-surface-raised);
 }
 
 .cb-confirm-spinner {
     width: 14px;
     height: 14px;
     border: 2px solid rgba(59, 130, 246, 0.3);
-    border-top-color: rgb(59, 130, 246);
+    border-top-color: var(--cb-status-running);
     border-radius: 50%;
     animation: cb-spin 1s linear infinite;
 }

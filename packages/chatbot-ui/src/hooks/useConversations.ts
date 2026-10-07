@@ -1,9 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GatewayStreamClient } from '../api/GatewayStreamClient';
-import { ConversationDetail, ConversationJob, ConversationStep, ConversationSummary, PendingApproval, UsageFigures, ContextFigures, RunUsage, TreeFigures } from '../api/types';
+import {
+    ConversationDetail,
+    ConversationJob,
+    ConversationListFilters,
+    ConversationListResponse,
+    ConversationStep,
+    ConversationSummary,
+    PendingApproval,
+    UsageFigures,
+    ContextFigures,
+    RunUsage,
+    TreeFigures,
+} from '../api/types';
 import { MessageProps, MessageStep } from '../components/MessageBubble/MessageBubble';
 import { describeApprovalRequest } from './useStreamChat';
 import { resolveToolDisplayName } from '../common/toolConfig';
+import type { ConversationSearch } from '../store/types';
 
 function extractTextFromContentBlocks(responsePayload: any): string {
     if (!responsePayload || typeof responsePayload !== 'object') return '';
@@ -422,13 +435,68 @@ export function findPendingClientToolCalls(
 }
 
 const PAGE_SIZE = 20;
+const STARRED_PAGE_SIZE = 50;
+const SEARCH_PAGE_SIZE = 50;
+
+const NO_SEARCH: ConversationSearch = { query: '', results: [], isSearching: false };
+
+/** The slice of a client this hook needs; a plain `StreamClient` has none of it. */
+interface ConversationListClient {
+    getConversations: (
+        offset?: number,
+        limit?: number,
+        filters?: ConversationListFilters
+    ) => Promise<ConversationListResponse>;
+    getConversationDetail: (id: string) => Promise<ConversationDetail>;
+    setConversationId: (id: string | null) => void;
+    setConversationStarred?: (id: string, starred: boolean) => Promise<ConversationSummary>;
+    deleteConversation?: (id: string) => Promise<void>;
+}
+
+function canListConversations(client: unknown): client is ConversationListClient {
+    return Boolean(client) && typeof (client as ConversationListClient).getConversations === 'function';
+}
+
+const isStarred = (summary: ConversationSummary): boolean => Boolean(summary.starred_at);
+
+/** Newest activity first — the order the Gateway lists them in. */
+const byRecency = (left: ConversationSummary, right: ConversationSummary): number =>
+    new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
+
+/**
+ * Whether this Gateway knows about starring. One that predates it ignores the
+ * `starred` filter and omits `starred_at`, so its "starred" page would hold
+ * every thread. `null` while there is nothing to tell from.
+ */
+function detectStarring(...pages: ConversationSummary[][]): boolean | null {
+    const sample = pages.flat()[0];
+    return sample ? Object.prototype.hasOwnProperty.call(sample, 'starred_at') : null;
+}
+
+/**
+ * Narrow a search page to the titles that match, but only when the Gateway
+ * ignored `q`. A Gateway that searches matches what the user wrote anywhere in
+ * the conversation, not just the title, so filtering its results by title would
+ * throw real matches away. One that predates search returns every thread
+ * unfiltered — it also predates `starred_at`, which shipped with search, and
+ * that absence is how it is recognised.
+ */
+function keepMatches(items: ConversationSummary[], query: string): ConversationSummary[] {
+    if (detectStarring(items) !== false) return items;
+    const needle = query.toLowerCase();
+    return items.filter(summary => (summary.title || '').toLowerCase().includes(needle));
+}
 
 export interface UseConversationsResult {
+    /** Recent conversations: the unstarred ones when starring is supported, otherwise all. */
     conversations: ConversationSummary[];
+    starredConversations: ConversationSummary[];
+    starringSupported: boolean;
     isLoading: boolean;
     isLoadingMore: boolean;
     hasMore: boolean;
     activeConversationId: string | null;
+    search: ConversationSearch;
     fetchConversations: () => Promise<void>;
     loadMore: () => Promise<void>;
     /**
@@ -444,7 +512,12 @@ export interface UseConversationsResult {
         id: string
     ) => Promise<{ messages: MessageProps[]; detail: ConversationDetail } | null>;
     newChat: () => void;
+    /** Rejects when the server refuses, and then removes nothing. */
     deleteConversation: (id: string) => Promise<void>;
+    /** Moves the thread between Starred and Recents at once, and back if the server refuses. */
+    setStarred: (id: string, starred: boolean) => Promise<void>;
+    /** Searches titles on the server; an empty query ends the search. */
+    searchConversations: (query: string) => void;
 }
 
 export function useConversations(
@@ -452,38 +525,51 @@ export function useConversations(
     storageApiUrl?: string
 ): UseConversationsResult {
     const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+    const [starredConversations, setStarredConversations] = useState<ConversationSummary[]>([]);
+    const [starringDetected, setStarringDetected] = useState<boolean | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [offset, setOffset] = useState(0);
     const [total, setTotal] = useState(0);
     const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+    const [search, setSearch] = useState<ConversationSearch>(NO_SEARCH);
     // Which load is the current one. See selectConversation.
     const requestSeq = useRef(0);
+    const searchSeq = useRef(0);
 
+    const listClient = canListConversations(client) ? client : null;
+    const clientCanStar = typeof listClient?.setConversationStarred === 'function';
+    const starringSupported = clientCanStar && starringDetected !== false;
     const hasMore = conversations.length < total;
 
     const fetchConversations = useCallback(async () => {
-        if (!client) return;
+        if (!listClient) return;
         setIsLoading(true);
         setOffset(0);
         try {
-            const resp = await client.getConversations(0, PAGE_SIZE);
-            setConversations(resp.items);
-            setTotal(resp.pagination.total);
+            const [recentPage, starredPage] = await Promise.all([
+                listClient.getConversations(0, PAGE_SIZE, { starred: false }),
+                listClient.getConversations(0, STARRED_PAGE_SIZE, { starred: true }),
+            ]);
+            const detected = detectStarring(recentPage.items, starredPage.items);
+            if (detected !== null) setStarringDetected(detected);
+            setConversations(recentPage.items.filter(summary => !isStarred(summary)));
+            setStarredConversations(detected ? starredPage.items.filter(isStarred) : []);
+            setTotal(recentPage.pagination.total);
         } catch (e) {
             console.error('[useConversations] failed to fetch conversations:', e);
         } finally {
             setIsLoading(false);
         }
-    }, [client]);
+    }, [listClient]);
 
     const loadMore = useCallback(async () => {
-        if (!client || isLoadingMore || !hasMore) return;
+        if (!listClient || isLoadingMore || !hasMore) return;
         setIsLoadingMore(true);
         const nextOffset = offset + PAGE_SIZE;
         try {
-            const resp = await client.getConversations(nextOffset, PAGE_SIZE);
-            setConversations(prev => [...prev, ...resp.items]);
+            const resp = await listClient.getConversations(nextOffset, PAGE_SIZE, { starred: false });
+            setConversations(prev => [...prev, ...resp.items.filter(summary => !isStarred(summary))]);
             setOffset(nextOffset);
             setTotal(resp.pagination.total);
         } catch (e) {
@@ -491,12 +577,12 @@ export function useConversations(
         } finally {
             setIsLoadingMore(false);
         }
-    }, [client, isLoadingMore, hasMore, offset]);
+    }, [listClient, isLoadingMore, hasMore, offset]);
 
     const selectConversation = useCallback(async (
         id: string
     ): Promise<{ messages: MessageProps[]; detail: ConversationDetail } | null> => {
-        if (!client) return null;
+        if (!listClient) return null;
         // Two quick clicks in the drawer are two concurrent loads, and without a
         // guard the slower one wins whatever it finishes last — leaving the
         // client pointed at one thread while the screen shows another, so the
@@ -504,10 +590,10 @@ export function useConversations(
         const seq = ++requestSeq.current;
         setIsLoading(true);
         try {
-            const detail: ConversationDetail = await client.getConversationDetail(id);
+            const detail: ConversationDetail = await listClient.getConversationDetail(id);
             if (seq !== requestSeq.current) return null;
             setActiveConversationId(id);
-            client.setConversationId(id);
+            listClient.setConversationId(id);
             return {
                 messages: jobsToMessageProps(detail.jobs, storageApiUrl),
                 detail,
@@ -518,26 +604,96 @@ export function useConversations(
         } finally {
             if (seq === requestSeq.current) setIsLoading(false);
         }
-    }, [client, storageApiUrl]);
+    }, [listClient, storageApiUrl]);
 
     const newChat = useCallback(() => {
         setActiveConversationId(null);
-        client?.setConversationId(null);
-    }, [client]);
+        listClient?.setConversationId(null);
+    }, [listClient]);
+
+    /**
+     * Put a summary where its starred state says it belongs, everywhere it is
+     * shown. The Recents total moves with it because the server counts the
+     * unstarred set, whether or not that thread had been paged in yet.
+     */
+    const placeConversation = useCallback((summary: ConversationSummary, wasStarred: boolean) => {
+        const starredNow = isStarred(summary);
+        setStarredConversations(prev => {
+            const others = prev.filter(c => c.uuid !== summary.uuid);
+            return starredNow ? [summary, ...others].sort(byRecency) : others;
+        });
+        setConversations(prev => {
+            const others = prev.filter(c => c.uuid !== summary.uuid);
+            return starredNow ? others : [summary, ...others].sort(byRecency);
+        });
+        if (starredNow !== wasStarred) {
+            setTotal(prev => Math.max(0, prev + (starredNow ? -1 : 1)));
+        }
+        setSearch(prev => ({
+            ...prev,
+            results: prev.results.map(c => (c.uuid === summary.uuid ? summary : c)),
+        }));
+    }, []);
+
+    const findSummary = useCallback(
+        (id: string): ConversationSummary | undefined =>
+            [...starredConversations, ...conversations, ...search.results].find(c => c.uuid === id),
+        [starredConversations, conversations, search.results]
+    );
+
+    const setStarred = useCallback(async (id: string, starred: boolean) => {
+        if (!listClient?.setConversationStarred) return;
+        const current = findSummary(id);
+        if (!current || isStarred(current) === starred) return;
+
+        const previous = current;
+        placeConversation({ ...current, starred_at: starred ? new Date().toISOString() : null }, isStarred(previous));
+        try {
+            const updated = await listClient.setConversationStarred(id, starred);
+            placeConversation({ ...previous, ...updated }, starred);
+        } catch (e) {
+            placeConversation(previous, starred);
+            throw e;
+        }
+    }, [listClient, findSummary, placeConversation]);
 
     const deleteConversation = useCallback(async (id: string) => {
-        try {
-            if (client && 'deleteConversation' in client && typeof (client as any).deleteConversation === 'function') {
-                await (client as any).deleteConversation(id);
-            }
-        } catch (e) {
-            console.error('[useConversations] deleteConversation failed:', e);
+        if (!listClient?.deleteConversation) {
+            throw new Error('This client cannot delete conversations.');
         }
+        await listClient.deleteConversation(id);
+        const removed = findSummary(id);
         setConversations(prev => prev.filter(c => c.uuid !== id));
+        setStarredConversations(prev => prev.filter(c => c.uuid !== id));
+        setSearch(prev => ({ ...prev, results: prev.results.filter(c => c.uuid !== id) }));
+        if (removed && !isStarred(removed)) {
+            setTotal(prev => Math.max(0, prev - 1));
+        }
         if (activeConversationId === id) {
             newChat();
         }
-    }, [client, activeConversationId, newChat]);
+    }, [listClient, findSummary, activeConversationId, newChat]);
+
+    const searchConversations = useCallback((query: string) => {
+        const trimmed = query.trim();
+        const seq = ++searchSeq.current;
+        if (!trimmed || !listClient) {
+            setSearch(NO_SEARCH);
+            return;
+        }
+        setSearch(prev => ({ query: trimmed, results: prev.query ? prev.results : [], isSearching: true }));
+        listClient
+            .getConversations(0, SEARCH_PAGE_SIZE, { query: trimmed })
+            .then(page => {
+                if (seq !== searchSeq.current) return;
+                setSearch({ query: trimmed, results: keepMatches(page.items, trimmed), isSearching: false });
+            })
+            .catch(e => {
+                if (seq !== searchSeq.current) return;
+                console.error('[useConversations] conversation search failed:', e);
+                setSearch({ query: trimmed, results: [], isSearching: false });
+            });
+    }, [listClient]);
 
     useEffect(() => {
         fetchConversations();
@@ -545,14 +701,19 @@ export function useConversations(
 
     return {
         conversations,
+        starredConversations,
+        starringSupported,
         isLoading,
         isLoadingMore,
         hasMore,
         activeConversationId,
+        search,
         fetchConversations,
         loadMore,
         selectConversation,
         newChat,
         deleteConversation,
+        setStarred,
+        searchConversations,
     };
 }

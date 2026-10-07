@@ -16,3 +16,14 @@
     flex-direction: column;
     position: relative;
 }
+
+.cb-main-chat-thinking {
+    padding-left: var(--cb-space-4);
+}
+
+/* Says why a turn cannot finish, without competing with the transcript. */
+.cb-stale-client-call {
+    padding: var(--cb-space-2) var(--cb-space-4);
+    font-size: var(--cb-text-xs);
+    color: var(--cb-text-secondary);
+}

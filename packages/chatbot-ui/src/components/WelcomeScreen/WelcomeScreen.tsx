@@ -1,58 +1,72 @@
 import React from 'react';
-import { ChatbotUIConfig, DEFAULT_CHATBOT_CONFIG } from '../../common/chatbotConfig';
-import { ChatMode } from '../ChatContainer/ChatContainer';
+import type { FeatureCardItem, QuickActionItem, QuickActionPrompt } from '../../common/chatbotConfig';
+import { useStableId } from '../../common/useStableId';
+import { useChatActions, useChatState, useIcons, useLabels } from '../../store/hooks';
+import { useChatPresentation } from '../ChatContainer/presentation';
 import './WelcomeScreen.css';
 
-export interface QuickAction {
-    id: string;
-    label: string;
-    icon?: React.ReactNode;
-    onClick: () => void;
-}
-
 export interface WelcomeScreenProps {
-    userName?: string;
-    config?: ChatbotUIConfig;
-    mode?: ChatMode;
-    onSelectSuggestion?: (prompt: string) => void;
+    /** The composer, centred under the greeting in fullscreen. */
     composer?: React.ReactNode;
-    actions?: QuickAction[]; // For backward compatibility
 }
 
-export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
-    userName = 'User',
-    config,
-    mode = 'sidebar',
-    onSelectSuggestion,
-    composer,
-    actions = [],
-}) => {
-    // Merge provided config with default fallback
-    const effectiveConfig = React.useMemo(() => {
-        return {
-            greeting: {
-                ...DEFAULT_CHATBOT_CONFIG.greeting,
-                ...config?.greeting,
-            },
-            contextSelector: {
-                ...DEFAULT_CHATBOT_CONFIG.contextSelector,
-                ...config?.contextSelector,
-            },
-            suggestions: config?.suggestions ?? DEFAULT_CHATBOT_CONFIG.suggestions ?? [],
-            quickActions: config?.quickActions ?? DEFAULT_CHATBOT_CONFIG.quickActions ?? [],
-            featureCards: config?.featureCards ?? DEFAULT_CHATBOT_CONFIG.featureCards ?? [],
-        };
-    }, [config]);
+/** A host-supplied icon is drawn as given; a string picks one of the built-ins. */
+const isCustomIcon = (icon: React.ReactNode): boolean => icon !== undefined && icon !== null && typeof icon !== 'string';
 
-    const greetingTitle = React.useMemo(() => {
-        let raw = effectiveConfig.greeting?.title || 'What would you like to do?';
-        if (raw.includes('{name}')) raw = raw.replace('{name}', userName);
-        if (raw.includes('{userName}')) raw = raw.replace('{userName}', userName);
-        return raw;
-    }, [effectiveConfig.greeting?.title, userName]);
+/**
+ * What an empty conversation shows: the greeting, and the prompts the host
+ * offers in `config` — suggestion rows when compact, quick-action pills and
+ * feature cards when fullscreen. Choosing one sends its prompt.
+ */
+export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ composer }) => {
+    const greeting = useChatState(s => s.config.greeting);
+    const suggestions = useChatState(s => s.config.suggestions);
+    const quickActions = useChatState(s => s.config.quickActions);
+    const featureCards = useChatState(s => s.config.featureCards);
+    const userName = useChatState(s => s.userName);
+    const actions = useChatActions();
+    const labels = useLabels();
+    const icons = useIcons();
+    const { mode } = useChatPresentation();
+    const promptListId = useStableId('cb-quick-action-prompts');
+    const [openCategoryId, setOpenCategoryId] = React.useState<string | null>(null);
 
-    const privacyBadges = effectiveConfig.greeting?.privacyBadges || [];
+    const greetingTitle = (greeting.title || labels.greetingTitle).replace(/\{(name|userName)\}/g, userName);
+    const privacyBadges = greeting.privacyBadges ?? [];
     const isCompactMode = mode === 'sidebar' || mode === 'floating';
+    const openCategory = quickActions.find(action => action.id === openCategoryId && (action.prompts?.length ?? 0) > 0);
+
+    // A list left open closes on Escape, as any disclosure does.
+    React.useEffect(() => {
+        if (!openCategory) return undefined;
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setOpenCategoryId(null);
+        };
+        document.addEventListener('keydown', onKeyDown);
+        return () => document.removeEventListener('keydown', onKeyDown);
+    }, [openCategory]);
+
+    const selectPrompt = (prompt: string) => {
+        void actions.sendMessage(prompt);
+    };
+
+    const choosePill = (action: QuickActionItem) => {
+        if (action.prompts && action.prompts.length > 0) {
+            setOpenCategoryId(current => (current === action.id ? null : action.id));
+            return;
+        }
+        selectPrompt(action.prompt || action.label);
+    };
+
+    const chooseCategoryPrompt = (item: QuickActionPrompt) => {
+        const text = item.prompt || item.label;
+        setOpenCategoryId(null);
+        if (item.behavior === 'insert') {
+            actions.setComposerText(text);
+            return;
+        }
+        selectPrompt(text);
+    };
 
     const renderBadgeIcon = (icon?: string) => {
         switch (icon) {
@@ -85,7 +99,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         }
     };
 
-    const renderSuggestionIcon = (icon?: string) => {
+    const renderSuggestionIcon = (icon?: React.ReactNode) => {
+        if (isCustomIcon(icon)) return icon;
         switch (icon) {
             case 'pin':
                 return (
@@ -117,7 +132,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         }
     };
 
-    const renderQuickActionIcon = (icon?: string) => {
+    const renderQuickActionIcon = (icon?: React.ReactNode) => {
+        if (isCustomIcon(icon)) return icon;
         switch (icon) {
             case 'clock':
                 return (
@@ -235,10 +251,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         }
     };
 
-    const getFeatureCardVariant = (card: NonNullable<ChatbotUIConfig['featureCards']>[number]) =>
+    const getFeatureCardVariant = (card: FeatureCardItem) =>
         (card.icon || card.id || 'default').replace(/[^a-z0-9-]/gi, '-').toLowerCase();
 
-    const renderFeatureCardMedia = (card: NonNullable<ChatbotUIConfig['featureCards']>[number]) => {
+    const renderFeatureCardMedia = (card: FeatureCardItem) => {
         const variant = getFeatureCardVariant(card);
 
         if (card.image) {
@@ -322,14 +338,14 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             {/* Compact / Sidebar Mode: Suggestion Question Cards (Image 3) */}
             {isCompactMode ? (
                 <div className="cb-welcome-suggestions-list">
-                    {effectiveConfig.suggestions.map((item) => (
+                    {suggestions.map((item) => (
                         <button
                             key={item.id}
                             type="button"
                             className="cb-welcome-suggestion-row"
-                            onClick={() => onSelectSuggestion?.(item.prompt || item.text)}
+                            onClick={() => selectPrompt(item.prompt || item.text)}
                         >
-                            <div className={`cb-suggestion-icon-badge cb-icon-${item.icon || 'pin'}`}>
+                            <div className={`cb-suggestion-icon-badge cb-icon-${typeof item.icon === 'string' ? item.icon : isCustomIcon(item.icon) ? 'custom' : 'pin'}`}>
                                 {renderSuggestionIcon(item.icon)}
                             </div>
                             <span className="cb-suggestion-text">{item.text}</span>
@@ -340,31 +356,54 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 /* Fullscreen / Embedded Mode: Quick Action Pills + Feature Cards (Image 1) */
                 <div className="cb-welcome-expanded-content">
                     {/* Quick action pills row */}
-                    {effectiveConfig.quickActions.length > 0 && (
+                    {quickActions.length > 0 && (
                         <div className="cb-welcome-quick-actions">
-                            {effectiveConfig.quickActions.map((action) => (
+                            {quickActions.map((action) => {
+                                const isCategory = (action.prompts?.length ?? 0) > 0;
+                                const isOpen = openCategory?.id === action.id;
+                                return (
+                                    <button
+                                        key={action.id}
+                                        type="button"
+                                        className={`cb-welcome-quick-action-pill${isOpen ? ' is-open' : ''}`}
+                                        onClick={() => choosePill(action)}
+                                        aria-expanded={isCategory ? isOpen : undefined}
+                                        aria-controls={isOpen ? promptListId : undefined}
+                                    >
+                                        {renderQuickActionIcon(action.icon)}
+                                        <span>{action.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {/* An open category's prompts, between the pills and the cards. */}
+                    {openCategory?.prompts && (
+                        <div className="cb-welcome-prompt-list" id={promptListId} role="group" aria-label={openCategory.label}>
+                            {openCategory.prompts.map(item => (
                                 <button
-                                    key={action.id}
+                                    key={item.id}
                                     type="button"
-                                    className="cb-welcome-quick-action-pill"
-                                    onClick={() => onSelectSuggestion?.(action.prompt || action.label)}
+                                    className="cb-welcome-prompt-row"
+                                    onClick={() => chooseCategoryPrompt(item)}
                                 >
-                                    {renderQuickActionIcon(action.icon)}
-                                    <span>{action.label}</span>
+                                    <span className="cb-welcome-prompt-text">{item.label}</span>
+                                    <span className="cb-welcome-prompt-chevron" aria-hidden="true">{icons.promptRow}</span>
                                 </button>
                             ))}
                         </div>
                     )}
 
                     {/* Feature cards 2x2 grid */}
-                    {effectiveConfig.featureCards.length > 0 && (
+                    {featureCards.length > 0 && (
                         <div className="cb-welcome-feature-cards-grid">
-                            {effectiveConfig.featureCards.map((card) => (
+                            {featureCards.map((card) => (
                                 <button
                                     key={card.id}
                                     type="button"
                                     className="cb-welcome-feature-card"
-                                    onClick={() => onSelectSuggestion?.(card.prompt || card.title)}
+                                    onClick={() => selectPrompt(card.prompt || card.title)}
                                 >
                                     {renderFeatureCardMedia(card)}
                                     <div className="cb-feature-card-body">
@@ -383,18 +422,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                             ))}
                         </div>
                     )}
-                </div>
-            )}
-
-            {/* Legacy actions fallback if provided and no suggestions/quickActions */}
-            {actions.length > 0 && effectiveConfig.suggestions.length === 0 && effectiveConfig.quickActions.length === 0 && (
-                <div className="cb-quick-actions-grid">
-                    {actions.map((action) => (
-                        <button key={action.id} className="cb-quick-action-card" onClick={action.onClick}>
-                            <div className="cb-action-icon">{action.icon}</div>
-                            <span className="cb-action-label">{action.label}</span>
-                        </button>
-                    ))}
                 </div>
             )}
         </div>

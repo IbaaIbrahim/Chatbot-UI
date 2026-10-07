@@ -1,6 +1,6 @@
 import { StreamChatClient, StreamEvent, StreamOutcome } from './StreamClient';
 import { ConversationClient } from './ConversationClient';
-import { ConversationDetail, ConversationListResponse } from './types';
+import { ConversationDetail, ConversationListFilters, ConversationListResponse, ConversationSummary, UserCredits } from './types';
 import { parseToolOutput } from './toolOutput';
 import { createUuid } from '../common/uuid';
 import { netFetch } from '../common/localNetwork';
@@ -693,8 +693,17 @@ export class GatewayStreamClient implements StreamChatClient {
         }
     }
 
-    async getConversations(offset?: number, limit?: number): Promise<ConversationListResponse> {
-        return this.conversationClient.getConversations(limit, offset);
+    async getConversations(
+        offset?: number,
+        limit?: number,
+        filters?: ConversationListFilters
+    ): Promise<ConversationListResponse> {
+        return this.conversationClient.getConversations(limit, offset, filters);
+    }
+
+    /** Star or unstar a conversation; resolves to the updated summary. */
+    async setConversationStarred(id: string, starred: boolean): Promise<ConversationSummary> {
+        return this.conversationClient.setConversationStarred(id, starred);
     }
 
     async getConversationDetail(id: string): Promise<ConversationDetail> {
@@ -707,6 +716,11 @@ export class GatewayStreamClient implements StreamChatClient {
 
     async deleteConversation(id: string): Promise<void> {
         return this.conversationClient.deleteConversation(id);
+    }
+
+    /** The signed-in user's own allowance — what the "Credit usage" view shows. */
+    async getCredits(): Promise<UserCredits> {
+        return this.conversationClient.getCredits();
     }
 
     async sendMessage(

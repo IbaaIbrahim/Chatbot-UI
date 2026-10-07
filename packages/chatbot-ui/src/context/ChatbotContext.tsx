@@ -1,5 +1,4 @@
 import React from 'react';
-const { createContext, useContext, useState, useEffect, useRef, useMemo, useCallback } = React;
 import { netFetch, configureLocalNetworkAccess, warnIfLocalNetworkUrl } from '../common/localNetwork';
 import { StreamClient, StreamChatClient } from '../api/StreamClient';
 import { GatewayStreamClient, EnablableTool } from '../api/GatewayStreamClient';
@@ -11,16 +10,28 @@ import {
 } from '../hooks/useConversations';
 import { isClientTool } from '../common/toolConfig';
 import type { ToolConfig } from '../common/toolConfig';
-import { AttachedFile, ConversationDetail, ConversationSummary } from '../api/types';
-import { summarizeUsage, TurnUsageSummary } from '../common/usageSummary';
-import type { ChatbotUIConfig } from '../common/chatbotConfig';
+import type { AttachedFile, ConversationDetail, UserCredits } from '../api/types';
+import { summarizeUsage } from '../common/usageSummary';
+import { resolveChatbotConfig } from '../common/chatbotConfig';
+import type { ChatbotConfig } from '../common/chatbotConfig';
 import type { QuestionSpec } from '../components/Questionnaire/QuestionnaireForm';
 import type { AgentSidebarItem } from '../components/AgentSidebar/AgentSidebar';
-import type { ChatMode, ChatTheme } from '../components/ChatContainer/ChatContainer';
-import type { MessageProps } from '../components/MessageBubble/MessageBubble';
-import type { ComposerHandle } from '../components/Composer/Composer';
+import type { ChatMode } from '../components/ChatContainer/presentation';
+import { createChatStore, shallowEqual } from '../store/createChatStore';
+import { createEventBus } from '../store/eventBus';
+import { ChatRuntimeContext } from '../store/hooks';
+import type {
+    ChatActions,
+    ChatRuntime,
+    ChatServices,
+    ChatSnapshot,
+    ComposerControl,
+} from '../store/types';
+
+const { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } = React;
 
 const TOOL_SELECTION_STORAGE_PREFIX = 'chatbot-ui:enabled-tools:';
+const NO_AGENTS: AgentSidebarItem[] = [];
 
 function toolSelectionKey(agentId?: string | null): string {
     return `${TOOL_SELECTION_STORAGE_PREFIX}${agentId ?? '__agentless__'}`;
@@ -44,174 +55,125 @@ function writeStoredToolIds(agentId: string | null | undefined, toolIds: string[
     }
 }
 
-export interface ChatbotContextValue {
-    // Clients & Configuration
-    client: StreamChatClient | GatewayStreamClient | null;
-    storageApiUrl: string;
-    accessToken?: string | null;
-    mode: ChatMode;
-    theme: ChatTheme;
-    config?: ChatbotUIConfig;
-    userName: string;
-    allowLocalNetworkAccess?: boolean;
+const CONFIG_GROUPS = ['labels', 'icons', 'header', 'composer', 'sidebar', 'greeting'] as const;
+const CONFIG_LISTS = ['suggestions', 'quickActions', 'featureCards'] as const;
 
-    // Authenticated resource helpers (backward compatible)
-    fetchAuthenticatedUrl: (url: string) => Promise<string>;
-    getFileDownloadUrl: (fileIdOrDownloadUrl: string) => Promise<string>;
-
-    // Chat / Stream state & actions
-    messages: MessageProps[];
-    isThinking: boolean;
-    isResuming: boolean;
-    isStopping: boolean;
-    sendMessage: (text: string, attachedFiles?: AttachedFile[], contextIds?: string[]) => Promise<void>;
-    stopTurn: () => Promise<void>;
-    retryTurn: () => Promise<void>;
-    continueTurn: () => Promise<void>;
-    reset: () => void;
-    loadConversation: (messages: MessageProps[], approvalJobs?: Map<string, string>) => void;
-    confirmApproval: (approvalUuid: string) => void;
-    rejectApproval: (approvalUuid: string) => void;
-    usageSummary: TurnUsageSummary | null;
-
-    // Interactive questionnaire & stale turn state
-    pendingQuestionnaire: { questions: QuestionSpec[]; resolve: (formatted: string) => void } | null;
-    handleQuestionnaireSubmit: (formatted: string) => void;
-    staleClientCall: boolean;
-    focusComposer: () => void;
-    composerRef: React.RefObject<ComposerHandle>;
-
-    // Conversation history state & actions
-    conversations: ConversationSummary[];
-    activeConversationId: string | null;
-    isLoadingConversations: boolean;
-    isLoadingMore: boolean;
-    hasMore: boolean;
-    fetchConversations: () => void;
-    loadMore: () => void;
-    selectConversation: (id: string) => Promise<boolean>;
-    newChat: () => void;
-    deleteConversation: (id: string) => Promise<void>;
-    copyConversationId: () => void;
-
-    // Tools & Agents
-    registeredTools: Record<string, ToolConfig>;
-    enablableTools: EnablableTool[];
-    enabledToolIds: string[];
-    handledToolSlugs: string[];
-    handleToolSelectionChange: (next: string[]) => void;
-    agents?: AgentSidebarItem[];
-    agentId: string | null;
-    agentsLoading?: boolean;
-    onAgentChange?: (agentId: string | null) => void;
-    setAgentId: (agentId: string | null) => void;
-
-    // Layout / Drawer state
-    isDrawerOpen: boolean;
-    setIsDrawerOpen: (open: boolean) => void;
-    isOpen: boolean;
-    onClose?: () => void;
-    onOpen?: () => void;
-    onSwitchMode?: (mode: ChatMode) => void;
-    onShare?: () => void;
-
-    // Composer & Agent display toggles
-    showAgentSwitcher?: boolean;
-    show_agent_switcher?: boolean;
-    showBottomSection?: boolean;
-    show_bottom_section?: boolean;
+/**
+ * Whether two override layers say the same thing, so re-registering an equal
+ * layer — a literal rebuilt on every render — changes nothing downstream.
+ */
+function layersEqual(left: ChatbotConfig, right: ChatbotConfig): boolean {
+    return CONFIG_GROUPS.every(group => shallowEqual(left[group], right[group]))
+        && CONFIG_LISTS.every(list => Object.is(left[list], right[list]));
 }
 
-const ChatbotContext = createContext<ChatbotContextValue | null>(null);
+interface OverrideLayer {
+    owner: string;
+    layer: ChatbotConfig;
+}
 
 export interface ChatbotProviderProps {
     children: React.ReactNode;
     client?: StreamChatClient | GatewayStreamClient | null;
+    /** Builds a plain `StreamClient` when no `client` is given. */
     streamUrl?: string;
     streamHeaders?: Record<string, string>;
     storageApiUrl?: string;
-    /** Alias for storageApiUrl for backward compatibility */
-    apiBaseUrl?: string;
     accessToken?: string | null;
-    mode?: ChatMode;
-    theme?: ChatTheme;
-    isOpen?: boolean;
-    onClose?: () => void;
-    onOpen?: () => void;
     userName?: string;
     onEvent?: UseStreamChatOptions['onEvent'];
     allowLocalNetworkAccess?: boolean;
     agents?: AgentSidebarItem[];
-    tools?: Record<string, ToolConfig>;
+    /** Controlled agent selection. Omit to let the chat keep its own. */
     agentId?: string | null;
     agentsLoading?: boolean;
     onAgentChange?: (agentId: string | null) => void;
-    show_tool_toggles?: boolean;
-    showAgentSwitcher?: boolean;
-    show_agent_switcher?: boolean;
-    showBottomSection?: boolean;
-    show_bottom_section?: boolean;
-    config?: ChatbotUIConfig;
-    onContextChange?: (contexts: string[]) => void;
+    tools?: Record<string, ToolConfig>;
+    /** Labels, icons, which controls exist and the welcome content. See `ChatbotConfig`. */
+    config?: ChatbotConfig;
+
+    /**
+     * Whether the chat is open. Pass it to own the state (a host that persists
+     * it, or must navigate when the chat closes); omit it and the chat keeps its
+     * own, starting from `defaultOpen`. Either way `onOpenChange` hears every
+     * request, including `useChatActions().close()` from anywhere in the app.
+     */
+    open?: boolean;
+    defaultOpen?: boolean;
+    onOpenChange?: (open: boolean) => void;
+
+    /** The conversation sidebar, on the same terms as `open`. */
+    sidebarOpen?: boolean;
+    defaultSidebarOpen?: boolean;
+    onSidebarOpenChange?: (open: boolean) => void;
+
+    /** Enables the header's "Switch view" item. */
     onSwitchMode?: (mode: ChatMode) => void;
+    /** Enables the header's share button. */
     onShare?: () => void;
 }
 
+/**
+ * The chat itself: its client, its conversations, the turn in progress and
+ * every action on them, for everything rendered below.
+ *
+ * Mount it once, high enough that every part of the host that wants to drive
+ * the chat is inside it — then any component can open the chat, send a
+ * message or toggle the sidebar with `useChatActions()`, and read any part of
+ * it with `useChatState()`. The widgets (`ChatApp`, `ChatContainer`,
+ * `MainChat`, `Composer`, `ChatHeader`, `ConversationSidebar`) read from it and
+ * can be placed anywhere under it, portals included.
+ *
+ * State is published through an external store rather than as the context
+ * value, so a component re-renders when the slice it reads changes — not on
+ * every streamed token.
+ */
 export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     children,
     client: clientProp,
     streamUrl,
     streamHeaders,
-    storageApiUrl: storageApiUrlProp,
-    apiBaseUrl,
-    accessToken,
-    mode = 'floating',
-    theme = 'system',
-    isOpen = true,
-    onClose,
-    onOpen,
+    storageApiUrl = '',
+    accessToken = null,
     userName = 'User',
     onEvent,
     allowLocalNetworkAccess = false,
     agents,
-    tools,
     agentId,
     agentsLoading = false,
     onAgentChange,
-    show_tool_toggles = true,
-    showAgentSwitcher: showAgentSwitcherProp,
-    show_agent_switcher: show_agent_switcherProp,
-    showBottomSection: showBottomSectionProp,
-    show_bottom_section: show_bottom_sectionProp,
+    tools,
     config,
-    onContextChange: _onContextChange,
+    open: openProp,
+    defaultOpen = true,
+    onOpenChange,
+    sidebarOpen: sidebarOpenProp,
+    defaultSidebarOpen = false,
+    onSidebarOpenChange,
     onSwitchMode,
     onShare,
 }) => {
-    const storageApiUrl = storageApiUrlProp || apiBaseUrl || '';
-
-    const effectiveShowAgentSwitcher = showAgentSwitcherProp !== undefined
-        ? showAgentSwitcherProp
-        : (show_agent_switcherProp !== undefined ? show_agent_switcherProp : true);
-
-    const effectiveShowBottomSection = showBottomSectionProp !== undefined
-        ? showBottomSectionProp
-        : (show_bottom_sectionProp !== undefined ? show_bottom_sectionProp : true);
-
-    // Configure Local Network Access early
+    // Before any child effect can issue a request.
     configureLocalNetworkAccess({ enabled: allowLocalNetworkAccess });
     warnIfLocalNetworkUrl('ChatbotProvider streamUrl', streamUrl);
     warnIfLocalNetworkUrl('ChatbotProvider storageApiUrl', storageApiUrl);
 
+    const streamHeadersKey = JSON.stringify(streamHeaders ?? {});
     const internalClient = useMemo(
-        () => (streamUrl ? new StreamClient({ baseUrl: streamUrl, headers: streamHeaders }) : null),
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [streamUrl, JSON.stringify(streamHeaders)]
+        () => (streamUrl ? new StreamClient({ baseUrl: streamUrl, headers: JSON.parse(streamHeadersKey) }) : null),
+        [streamUrl, streamHeadersKey]
+    );
+    const activeClient = clientProp !== undefined ? clientProp : internalClient;
+    const gateway = activeClient as GatewayStreamClient | null;
+
+    // --- Configuration: the provider's `config`, then each screen's layer ---
+    const [overrideLayers, setOverrideLayers] = useState<OverrideLayer[]>([]);
+    const resolvedConfig = useMemo(
+        () => resolveChatbotConfig([config, ...overrideLayers.map(entry => entry.layer)]),
+        [config, overrideLayers]
     );
 
-    const activeClient = clientProp !== undefined ? clientProp : internalClient;
-
-    // Cache for blob URLs to avoid refetching
+    // --- Authenticated storage access ---
     const blobCacheRef = useRef<Map<string, string>>(new Map());
 
     const fetchAuthenticatedUrl = useCallback(
@@ -285,7 +247,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         };
     }, []);
 
-    // Questionnaire handling
+    // --- The built-in questionnaire tool ---
     const [pendingQuestionnaire, setPendingQuestionnaire] = useState<{
         questions: QuestionSpec[];
         resolve: (formatted: string) => void;
@@ -298,7 +260,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         });
     }, []);
 
-    const handleQuestionnaireSubmit = useCallback((formatted: string) => {
+    const submitQuestionnaire = useCallback((formatted: string) => {
         setPendingQuestionnaire(prev => {
             prev?.resolve(formatted);
             return null;
@@ -316,9 +278,25 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         }
     }, [activeClient, registeredTools]);
 
-    // Enablable tools
+    // --- Agents ---
+    const [internalAgentId, setInternalAgentId] = useState<string | null>(null);
+    const effectiveAgentId = agentId !== undefined ? agentId : internalAgentId;
+
+    const setAgentId = useCallback(
+        (id: string | null) => {
+            setInternalAgentId(id);
+            onAgentChange?.(id);
+            if (activeClient && 'setAgentId' in activeClient) {
+                (activeClient as GatewayStreamClient).setAgentId(id);
+            }
+        },
+        [activeClient, onAgentChange]
+    );
+
+    // --- Tools the user may switch on per conversation ---
     const [enablableTools, setEnablableTools] = useState<EnablableTool[]>([]);
     const [enabledToolIds, setEnabledToolIds] = useState<string[]>([]);
+    const toolsMenuEnabled = resolvedConfig.composer.tools;
 
     const handledToolSlugs = useMemo(
         () =>
@@ -329,18 +307,17 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     );
 
     useEffect(() => {
-        if (!show_tool_toggles || !activeClient || !('listEnablableTools' in activeClient)) {
+        if (!toolsMenuEnabled || !activeClient || !('listEnablableTools' in activeClient)) {
             return;
         }
         let cancelled = false;
-        const gateway = activeClient as GatewayStreamClient;
-        gateway
-            .listEnablableTools(agentId)
+        (activeClient as GatewayStreamClient)
+            .listEnablableTools(effectiveAgentId)
             .then(listed => {
                 if (cancelled) return;
                 setEnablableTools(listed);
                 const allowed = new Set(listed.map(t => t.uuid));
-                setEnabledToolIds(readStoredToolIds(agentId).filter(id => allowed.has(id)));
+                setEnabledToolIds(readStoredToolIds(effectiveAgentId).filter(id => allowed.has(id)));
             })
             .catch(error => {
                 if (cancelled) return;
@@ -350,7 +327,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         return () => {
             cancelled = true;
         };
-    }, [activeClient, agentId, show_tool_toggles]);
+    }, [activeClient, effectiveAgentId, toolsMenuEnabled]);
 
     useEffect(() => {
         if (activeClient && 'setEnabledToolIds' in activeClient) {
@@ -358,15 +335,15 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         }
     }, [activeClient, enabledToolIds]);
 
-    const handleToolSelectionChange = useCallback(
+    const changeEnabledToolIds = useCallback(
         (next: string[]) => {
             setEnabledToolIds(next);
-            writeStoredToolIds(agentId, next);
+            writeStoredToolIds(effectiveAgentId, next);
         },
-        [agentId]
+        [effectiveAgentId]
     );
 
-    // Stream Chat
+    // --- The turn ---
     const {
         messages,
         isThinking,
@@ -393,23 +370,58 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         [messages, isThinking, isResuming]
     );
 
-    // Conversations
+    // --- Conversations ---
     const {
         conversations,
+        starredConversations,
+        starringSupported,
         isLoading: isLoadingConversations,
         isLoadingMore,
         hasMore,
         activeConversationId,
+        search,
         fetchConversations,
         loadMore,
         selectConversation,
         newChat,
         deleteConversation,
-    } = useConversations(activeClient as GatewayStreamClient | null, storageApiUrl);
+        setStarred,
+        searchConversations,
+    } = useConversations(gateway, storageApiUrl);
 
-    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [staleClientCall, setStaleClientCall] = useState(false);
-    const composerRef = useRef<ComposerHandle>(null);
+
+    // --- Presence: open and sidebar, controlled or not ---
+    const [internalOpen, setInternalOpen] = useState(defaultOpen);
+    const isOpen = openProp ?? internalOpen;
+    const [internalSidebarOpen, setInternalSidebarOpen] = useState(defaultSidebarOpen);
+    const isSidebarOpen = resolvedConfig.sidebar.enabled && (sidebarOpenProp ?? internalSidebarOpen);
+
+    const setOpen = useCallback((next: boolean) => {
+        if (next === isOpen) return;
+        if (openProp === undefined) setInternalOpen(next);
+        onOpenChange?.(next);
+    }, [isOpen, openProp, onOpenChange]);
+
+    const setSidebarOpen = useCallback((next: boolean) => {
+        if (next === isSidebarOpen) return;
+        if (sidebarOpenProp === undefined) setInternalSidebarOpen(next);
+        onSidebarOpenChange?.(next);
+    }, [isSidebarOpen, sidebarOpenProp, onSidebarOpenChange]);
+
+    // --- Credit usage: the user's own allowance, read when the dialog opens ---
+    const [isCreditUsageOpen, setCreditUsageOpen] = useState(false);
+    const canShowCredits = Boolean(activeClient && 'getCredits' in activeClient);
+
+    const fetchCredits = useCallback((): Promise<UserCredits> => {
+        if (!activeClient || !('getCredits' in activeClient)) {
+            return Promise.reject(new Error('This client cannot read credit usage.'));
+        }
+        return (activeClient as GatewayStreamClient).getCredits();
+    }, [activeClient]);
+
+    // --- The composer, which registers itself when it mounts ---
+    const composerRef = useRef<ComposerControl | null>(null);
 
     const focusComposer = useCallback(() => {
         window.setTimeout(() => {
@@ -429,7 +441,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     }, [isThinking, isResuming, focusComposer]);
 
     const sendMessage = useCallback(
-        async (text: string, attachedFiles?: AttachedFile[], _contextIds?: string[]) => {
+        async (text: string, attachedFiles?: AttachedFile[]) => {
             await sendStreamMessage(text, attachedFiles);
             fetchConversations();
         },
@@ -438,7 +450,6 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
 
     const answerPendingCall = useCallback(
         async (call: { jobUuid: string; stepUuid: string; toolSlug: string; toolInput: any }) => {
-            const gateway = activeClient as GatewayStreamClient | null;
             const cfg = registeredTools[call.toolSlug];
             const run = cfg && isClientTool(cfg) ? cfg.run : null;
             if (!gateway?.submitClientToolResult || !run) {
@@ -462,12 +473,11 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
                 else console.error('[ChatbotProvider] answering pending call failed', error);
             }
         },
-        [activeClient, registeredTools]
+        [gateway, registeredTools]
     );
 
     const applyLoadedConversation = useCallback(
         async (id: string, detail: ConversationDetail) => {
-            const gateway = activeClient as GatewayStreamClient | null;
             if (gateway?.hasLiveTurn?.(id)) {
                 const jobId = gateway.getLiveJobId?.(id);
                 if (jobId) {
@@ -479,12 +489,11 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
             if (pending.length === 0) return;
             await answerPendingCall(pending[0]);
         },
-        [activeClient, resumeTurn, answerPendingCall]
+        [gateway, resumeTurn, answerPendingCall]
     );
 
     const handleSelectConversation = useCallback(
         async (id: string): Promise<boolean> => {
-            const gateway = activeClient as GatewayStreamClient | null;
             const departing = gateway?.getConversationId?.() ?? null;
 
             const loaded = await selectConversation(id);
@@ -497,11 +506,10 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
             setStaleClientCall(false);
 
             loadConversation(loaded.messages, collectPendingApprovals(loaded.detail.jobs));
-            setIsDrawerOpen(false);
             await applyLoadedConversation(id, loaded.detail);
             return true;
         },
-        [activeClient, selectConversation, loadConversation, applyLoadedConversation]
+        [gateway, selectConversation, loadConversation, applyLoadedConversation]
     );
 
     const handleNewChat = useCallback(() => {
@@ -509,37 +517,21 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         reset();
         setPendingQuestionnaire(null);
         setStaleClientCall(false);
-        setIsDrawerOpen(false);
         focusComposer();
     }, [newChat, reset, focusComposer]);
 
     const didRestoreRef = useRef(false);
     useEffect(() => {
         if (didRestoreRef.current || activeConversationId) return;
-        const restored = (activeClient as GatewayStreamClient | null)?.getConversationId?.();
+        const restored = gateway?.getConversationId?.();
         if (!restored) return;
         didRestoreRef.current = true;
         void handleSelectConversation(restored).then(ok => {
             if (!ok) didRestoreRef.current = false;
         });
-    }, [activeClient, activeConversationId, handleSelectConversation]);
+    }, [gateway, activeConversationId, handleSelectConversation]);
 
-    const [internalAgentId, setInternalAgentId] = useState<string | null>(null);
-    const effectiveAgentId = agentId !== undefined ? agentId : internalAgentId;
-
-    const setAgentId = useCallback(
-        (id: string | null) => {
-            setInternalAgentId(id);
-            onAgentChange?.(id);
-            if (activeClient && 'setAgentId' in activeClient) {
-                (activeClient as any).setAgentId(id);
-            }
-        },
-        [activeClient, onAgentChange]
-    );
-
-    const currentConversationId =
-        activeConversationId || (activeClient as GatewayStreamClient | null)?.getConversationId?.() || null;
+    const currentConversationId = activeConversationId || gateway?.getConversationId?.() || null;
 
     const copyConversationId = useCallback(() => {
         if (currentConversationId && navigator.clipboard) {
@@ -550,211 +542,211 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     const handleDeleteConversation = useCallback(
         async (id: string) => {
             await deleteConversation(id);
-            if (activeConversationId === id || currentConversationId === id) {
+            if (currentConversationId === id) {
                 handleNewChat();
             }
         },
-        [deleteConversation, activeConversationId, currentConversationId, handleNewChat]
+        [deleteConversation, currentConversationId, handleNewChat]
     );
 
-    const value: ChatbotContextValue = useMemo(
-        () => ({
-            client: activeClient,
-            storageApiUrl,
-            accessToken,
-            mode,
-            theme,
-            config,
-            userName,
-            allowLocalNetworkAccess,
+    // --- What the store publishes ---
+    const snapshot: ChatSnapshot = {
+        client: activeClient,
+        storageApiUrl,
+        accessToken,
+        userName,
+        config: resolvedConfig,
 
-            fetchAuthenticatedUrl,
-            getFileDownloadUrl,
+        isOpen,
+        isSidebarOpen,
+        hostHandlesOpenChange: Boolean(onOpenChange),
+        canSwitchMode: Boolean(onSwitchMode),
+        canShare: Boolean(onShare),
+        canStop: Boolean(activeClient && 'cancelTurn' in activeClient),
+        canShowCredits,
+        isCreditUsageOpen: canShowCredits && isCreditUsageOpen,
 
-            messages,
-            isThinking,
-            isResuming,
-            isStopping,
-            sendMessage,
-            stopTurn,
-            retryTurn,
-            continueTurn,
-            reset,
-            loadConversation,
-            confirmApproval,
-            rejectApproval,
-            usageSummary,
+        messages,
+        isThinking,
+        isResuming,
+        isStopping,
+        usageSummary,
+        pendingQuestions: pendingQuestionnaire?.questions ?? null,
+        staleClientCall,
 
-            pendingQuestionnaire,
-            handleQuestionnaireSubmit,
-            staleClientCall,
-            focusComposer,
-            composerRef,
+        activeConversationId: currentConversationId,
+        conversations,
+        starredConversations,
+        starringSupported,
+        isLoadingConversations,
+        isLoadingMore,
+        hasMore,
+        search,
 
-            conversations,
-            activeConversationId: currentConversationId,
-            isLoadingConversations,
-            isLoadingMore,
-            hasMore,
-            fetchConversations,
-            loadMore,
-            selectConversation: handleSelectConversation,
-            newChat: handleNewChat,
-            deleteConversation: handleDeleteConversation,
-            copyConversationId,
-
-            registeredTools,
-            enablableTools,
-            enabledToolIds,
-            handledToolSlugs,
-            handleToolSelectionChange,
-            agents,
-            agentId: effectiveAgentId,
-            agentsLoading,
-            onAgentChange,
-            setAgentId,
-
-            isDrawerOpen,
-            setIsDrawerOpen,
-            isOpen,
-            onClose,
-            onOpen,
-            onSwitchMode,
-            onShare,
-
-            showAgentSwitcher: effectiveShowAgentSwitcher,
-            show_agent_switcher: effectiveShowAgentSwitcher,
-            showBottomSection: effectiveShowBottomSection,
-            show_bottom_section: effectiveShowBottomSection,
-        }),
-        [
-            activeClient,
-            storageApiUrl,
-            accessToken,
-            mode,
-            theme,
-            config,
-            userName,
-            allowLocalNetworkAccess,
-            fetchAuthenticatedUrl,
-            getFileDownloadUrl,
-            messages,
-            isThinking,
-            isResuming,
-            isStopping,
-            sendMessage,
-            stopTurn,
-            retryTurn,
-            continueTurn,
-            reset,
-            loadConversation,
-            confirmApproval,
-            rejectApproval,
-            usageSummary,
-            pendingQuestionnaire,
-            handleQuestionnaireSubmit,
-            staleClientCall,
-            focusComposer,
-            composerRef,
-            conversations,
-            currentConversationId,
-            isLoadingConversations,
-            isLoadingMore,
-            hasMore,
-            fetchConversations,
-            loadMore,
-            handleSelectConversation,
-            handleNewChat,
-            handleDeleteConversation,
-            copyConversationId,
-            registeredTools,
-            enablableTools,
-            enabledToolIds,
-            handledToolSlugs,
-            handleToolSelectionChange,
-            agents,
-            effectiveAgentId,
-            agentsLoading,
-            onAgentChange,
-            setAgentId,
-            isDrawerOpen,
-            isOpen,
-            onClose,
-            onOpen,
-            onSwitchMode,
-            onShare,
-            effectiveShowAgentSwitcher,
-            effectiveShowBottomSection,
-        ]
-    );
-
-    return <ChatbotContext.Provider value={value}>{children}</ChatbotContext.Provider>;
-};
-
-export const useChatbot = (): ChatbotContextValue | null => {
-    return useContext(ChatbotContext);
-};
-
-export const useChatbotContext = (): ChatbotContextValue | null => {
-    return useContext(ChatbotContext);
-};
-
-export const useChatMessages = () => {
-    const ctx = useChatbot();
-    return {
-        messages: ctx?.messages ?? [],
-        isThinking: ctx?.isThinking ?? false,
-        isResuming: ctx?.isResuming ?? false,
-        isStopping: ctx?.isStopping ?? false,
-        sendMessage: ctx?.sendMessage,
-        stopTurn: ctx?.stopTurn,
-        retryTurn: ctx?.retryTurn,
-        continueTurn: ctx?.continueTurn,
-        reset: ctx?.reset,
-        confirmApproval: ctx?.confirmApproval,
-        rejectApproval: ctx?.rejectApproval,
+        registeredTools,
+        enablableTools,
+        enabledToolIds,
+        handledToolSlugs,
+        agents: agents ?? NO_AGENTS,
+        agentId: effectiveAgentId,
+        agentsLoading,
     };
+
+    // --- What the actions do, as of this render ---
+    const [events] = useState(createEventBus);
+
+    const actionsNow: ChatActions = {
+        open: () => setOpen(true),
+        close: () => setOpen(false),
+        toggleOpen: () => setOpen(!isOpen),
+        openSidebar: () => setSidebarOpen(true),
+        closeSidebar: () => setSidebarOpen(false),
+        toggleSidebar: () => setSidebarOpen(!isSidebarOpen),
+        switchMode: (mode) => onSwitchMode?.(mode),
+        share: () => onShare?.(),
+        openCreditUsage: () => setCreditUsageOpen(true),
+        closeCreditUsage: () => setCreditUsageOpen(false),
+
+        sendMessage: async (text, attachedFiles) => {
+            events.emit('message.sent', { text });
+            await sendMessage(text, attachedFiles);
+        },
+        stopTurn,
+        retryTurn,
+        continueTurn,
+        confirmApproval,
+        rejectApproval,
+        submitQuestionnaire,
+
+        newChat: () => {
+            handleNewChat();
+            events.emit('conversation.created', {});
+        },
+        selectConversation: async (conversationId) => {
+            const selected = await handleSelectConversation(conversationId);
+            if (selected) events.emit('conversation.selected', { conversationId });
+            return selected;
+        },
+        deleteConversation: async (conversationId) => {
+            await handleDeleteConversation(conversationId);
+            events.emit('conversation.deleted', { conversationId });
+        },
+        setConversationStarred: async (conversationId, starred) => {
+            await setStarred(conversationId, starred);
+            events.emit('conversation.starred', { conversationId, starred });
+        },
+        searchConversations,
+        refreshConversations: fetchConversations,
+        loadMoreConversations: loadMore,
+        copyConversationId,
+
+        setAgentId,
+        setEnabledToolIds: changeEnabledToolIds,
+
+        focusComposer,
+        setComposerText: (text) => {
+            composerRef.current?.setText(text);
+            composerRef.current?.focus();
+        },
+    };
+    const servicesNow: ChatServices = { fetchAuthenticatedUrl, getFileDownloadUrl, fetchCredits };
+
+    // Read through refs by the stable runtime below, so a caller holding an
+    // action from an earlier render still acts on the current state.
+    const latestActions = useRef(actionsNow);
+    const latestServices = useRef(servicesNow);
+    useLayoutEffect(() => {
+        latestActions.current = actionsNow;
+        latestServices.current = servicesNow;
+    });
+
+    const [runtime] = useState<ChatRuntime>(() => ({
+        store: createChatStore(snapshot),
+        actions: delegateActions(latestActions),
+        events,
+        services: {
+            fetchAuthenticatedUrl: url => latestServices.current.fetchAuthenticatedUrl(url),
+            getFileDownloadUrl: fileIdOrUrl => latestServices.current.getFileDownloadUrl(fileIdOrUrl),
+            fetchCredits: () => latestServices.current.fetchCredits(),
+        },
+        overrides: {
+            register: (owner, layer) =>
+                setOverrideLayers(prev => {
+                    const index = prev.findIndex(entry => entry.owner === owner);
+                    if (index === -1) return [...prev, { owner, layer }];
+                    if (layersEqual(prev[index].layer, layer)) return prev;
+                    const next = [...prev];
+                    next[index] = { owner, layer };
+                    return next;
+                }),
+            unregister: owner =>
+                setOverrideLayers(prev =>
+                    prev.some(entry => entry.owner === owner) ? prev.filter(entry => entry.owner !== owner) : prev
+                ),
+        },
+        registerComposer: control => {
+            composerRef.current = control;
+            return () => {
+                if (composerRef.current === control) composerRef.current = null;
+            };
+        },
+    }));
+
+    // Publish after commit. Children render from the store, so between the
+    // provider's render and this effect they still show the previous snapshot —
+    // never a torn mix of two — and re-render before the browser paints.
+    useLayoutEffect(() => {
+        runtime.store.setState(snapshot);
+    });
+
+    // Report state changes as events, whoever made them: an action, or a host
+    // flipping a controlled prop.
+    useStateChangeEvents(isOpen, open => events.emit(open ? 'chat.opened' : 'chat.closed', {}));
+    useStateChangeEvents(isSidebarOpen, open => events.emit(open ? 'sidebar.opened' : 'sidebar.closed', {}));
+
+    return <ChatRuntimeContext.Provider value={runtime}>{children}</ChatRuntimeContext.Provider>;
 };
 
-export const useChatConversations = () => {
-    const ctx = useChatbot();
-    return {
-        conversations: ctx?.conversations ?? [],
-        activeConversationId: ctx?.activeConversationId ?? null,
-        isLoading: ctx?.isLoadingConversations ?? false,
-        isLoadingMore: ctx?.isLoadingMore ?? false,
-        hasMore: ctx?.hasMore ?? false,
-        selectConversation: ctx?.selectConversation,
-        newChat: ctx?.newChat,
-        deleteConversation: ctx?.deleteConversation,
-        fetchConversations: ctx?.fetchConversations,
-        loadMore: ctx?.loadMore,
-    };
-};
+function useStateChangeEvents(value: boolean, onChange: (value: boolean) => void): void {
+    const previous = useRef(value);
+    useEffect(() => {
+        if (previous.current === value) return;
+        previous.current = value;
+        onChange(value);
+    });
+}
 
-export const useChatComposer = () => {
-    const ctx = useChatbot();
+/** The stable action object: every call goes to the latest implementation. */
+function delegateActions(latest: React.MutableRefObject<ChatActions>): ChatActions {
     return {
-        sendMessage: ctx?.sendMessage,
-        focusComposer: ctx?.focusComposer,
-        composerRef: ctx?.composerRef,
-        isThinking: ctx?.isThinking ?? false,
-        isResuming: ctx?.isResuming ?? false,
-        isStopping: ctx?.isStopping ?? false,
-        stopTurn: ctx?.stopTurn,
-        usageSummary: ctx?.usageSummary ?? null,
-        tools: ctx?.enablableTools ?? [],
-        enabledToolIds: ctx?.enabledToolIds ?? [],
-        onToolsChange: ctx?.handleToolSelectionChange,
-        handledToolSlugs: ctx?.handledToolSlugs ?? [],
-        agents: ctx?.agents ?? [],
-        agentId: ctx?.agentId ?? null,
-        setAgentId: ctx?.setAgentId,
-        storageApiUrl: ctx?.storageApiUrl ?? '',
-        accessToken: ctx?.accessToken ?? null,
-        showAgentSwitcher: ctx?.showAgentSwitcher ?? true,
-        show_agent_switcher: ctx?.show_agent_switcher ?? true,
-        showBottomSection: ctx?.showBottomSection ?? true,
-        show_bottom_section: ctx?.show_bottom_section ?? true,
+        open: () => latest.current.open(),
+        close: () => latest.current.close(),
+        toggleOpen: () => latest.current.toggleOpen(),
+        openSidebar: () => latest.current.openSidebar(),
+        closeSidebar: () => latest.current.closeSidebar(),
+        toggleSidebar: () => latest.current.toggleSidebar(),
+        switchMode: mode => latest.current.switchMode(mode),
+        share: () => latest.current.share(),
+        openCreditUsage: () => latest.current.openCreditUsage(),
+        closeCreditUsage: () => latest.current.closeCreditUsage(),
+        sendMessage: (text, attachedFiles) => latest.current.sendMessage(text, attachedFiles),
+        stopTurn: () => latest.current.stopTurn(),
+        retryTurn: () => latest.current.retryTurn(),
+        continueTurn: () => latest.current.continueTurn(),
+        confirmApproval: approvalUuid => latest.current.confirmApproval(approvalUuid),
+        rejectApproval: approvalUuid => latest.current.rejectApproval(approvalUuid),
+        submitQuestionnaire: formatted => latest.current.submitQuestionnaire(formatted),
+        newChat: () => latest.current.newChat(),
+        selectConversation: id => latest.current.selectConversation(id),
+        deleteConversation: id => latest.current.deleteConversation(id),
+        setConversationStarred: (id, starred) => latest.current.setConversationStarred(id, starred),
+        searchConversations: query => latest.current.searchConversations(query),
+        refreshConversations: () => latest.current.refreshConversations(),
+        loadMoreConversations: () => latest.current.loadMoreConversations(),
+        copyConversationId: () => latest.current.copyConversationId(),
+        setAgentId: id => latest.current.setAgentId(id),
+        setEnabledToolIds: ids => latest.current.setEnabledToolIds(ids),
+        focusComposer: () => latest.current.focusComposer(),
+        setComposerText: text => latest.current.setComposerText(text),
     };
-};
+}
