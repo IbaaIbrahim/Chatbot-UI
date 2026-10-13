@@ -6,8 +6,14 @@
     margin-left: 8px;
 }
 
-.cb-conversation-item:hover .cb-sidebar-item-actions {
+.cb-conversation-item:hover .cb-sidebar-item-actions,
+.cb-conversation-item.is-menu-open .cb-sidebar-item-actions {
     opacity: 1;
+}
+
+/* The row anchors its menu. */
+.cb-conversation-item {
+    position: relative;
 }
 
 :root .cb-sidebar-delete-btn {
@@ -195,4 +201,95 @@
 .cb-conversation-item .cb-conversation-title {
     flex: 1;
     min-width: 0;
+}
+
+/* --- Row actions: the "more" button and its menu --------------------------- */
+
+:root .cb-sidebar-row-menu-btn {
+    background: transparent;
+    border: none;
+    color: var(--cb-text-tertiary);
+    cursor: pointer;
+    padding: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--cb-transition-state);
+}
+
+:root .cb-sidebar-row-menu-btn:hover,
+.cb-conversation-item.is-menu-open .cb-sidebar-row-menu-btn {
+    color: var(--cb-text-primary);
+    background: var(--cb-surface-hover);
+}
+
+.cb-sidebar-row-menu-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* The header's dropdown, smaller, under the row's end — or above it when the
+   row is near the bottom of the list, whose overflow would otherwise hide it. */
+.cb-sidebar-row-menu {
+    position: absolute;
+    top: calc(100% + 2px);
+    right: 4px;
+    z-index: 20;
+    min-width: 172px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px;
+    background-color: var(--cb-bg-elevated, #ffffff);
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-md, 8px);
+    box-shadow: var(--cb-shadow-lg, 0 10px 25px -5px rgba(0, 0, 0, 0.15));
+    animation: cb-fade-in 0.15s ease-out;
+    cursor: default;
+}
+
+.cb-sidebar-row-menu.opens-upward {
+    top: auto;
+    bottom: calc(100% + 2px);
+}
+
+.cb-sidebar-row-menu .cb-header-menu-item {
+    padding: 7px 10px;
+    font-size: 13px;
+}
+
+.cb-sidebar-row-menu .cb-header-menu-item.is-starred svg {
+    color: #f59e0b;
+}
+
+/* The second click's state: the entry itself is the question. */
+.cb-header-menu-item.cb-header-menu-item-danger.is-confirming {
+    background-color: rgba(239, 68, 68, 0.1);
+    font-weight: 600;
+}
+
+/* --- Renaming in place ------------------------------------------------------ */
+
+.cb-conversation-item.is-renaming {
+    padding-top: 4px;
+    padding-bottom: 4px;
+    cursor: default;
+}
+
+.cb-conversation-rename-input {
+    flex: 1;
+    min-width: 0;
+    height: 26px;
+    padding: 0 8px;
+    border: 1px solid var(--cb-accent-primary, #6366f1);
+    border-radius: var(--cb-radius-sm, 6px);
+    background: var(--cb-bg-primary);
+    color: var(--cb-text-primary);
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
 }

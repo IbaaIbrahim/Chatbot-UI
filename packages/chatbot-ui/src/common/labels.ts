@@ -23,9 +23,15 @@ export interface ChatLabels {
     viewFullscreen: string;
     /** The menu entry and the dialog's title. */
     creditUsage: string;
+    /** Shown instead of the link entry when the host builds no links. */
     copyConversationId: string;
     copiedConversationId: string;
+    /** The menu entry when the provider has `conversationLink`. */
+    copyConversationLink: string;
+    copiedConversationLink: string;
     deleteThread: string;
+    /** The same entry after one click, asking for the second. */
+    confirmDeleteThread: string;
     closeChat: string;
     openChat: string;
 
@@ -40,7 +46,14 @@ export interface ChatLabels {
     noSearchResults: string;
     star: string;
     unstar: string;
+    /** A row's menu: the button that opens it, and its entries. */
+    conversationActions: string;
+    renameConversation: string;
+    /** The rename field's accessible name. */
+    conversationTitle: string;
     deleteConversation: string;
+    /** The delete entry after one click, asking for the second. */
+    confirmDeleteConversation: string;
     untitledConversation: string;
     loadMore: string;
     loading: string;
@@ -77,12 +90,13 @@ export interface ChatLabels {
     stopping: string;
     disclaimer: string;
 
-    // Agents
-    agentAuto: string;
-    selectAgent: string;
-    switchAgent: string;
-
     // Messages
+    /**
+     * Who a live reply is from. A reloaded turn shows the name of the agent
+     * that ran it, from the conversation's history; no stream event names the
+     * agent, so the turn in progress shows this instead.
+     */
+    assistantName: string;
     copy: string;
     copied: string;
     reply: string;
@@ -110,6 +124,54 @@ export interface ChatLabels {
     executingTool: string;
     confirmedExecuting: string;
     cancelled: string;
+
+    // Meta-tool steps: how a central-mode run finds and loads tools and skills.
+    // Shown in place of the generic tool row; see `describeMetaTool`.
+    metaSearchingTools: string;
+    metaSearchedTools: string;
+    metaLoadingTools: string;
+    /** `{names}`: the loaded tools, comma-separated. */
+    metaLoadedTools: string;
+    metaSearchingSkills: string;
+    metaSearchedSkills: string;
+    metaLoadingSkill: string;
+    /** `{name}`: the skill's name, else its slug. */
+    metaLoadedSkill: string;
+    /** `{count}`: tools the platform would not load. Appended in brackets. */
+    metaRefused: string;
+
+    // The activity section: consecutive thinking, tool calls and sub-agent runs
+    // drawn as one collapsible row (`common/activity.ts`). Its finished header
+    // joins these phrases with `activitySeparator`, the first letter capitalised,
+    // so they are written lower-case: "Thought 4 times · ran List Inspections".
+    /** `{count}` thoughts. */
+    activityThoughtOne: string;
+    activityThoughtOther: string;
+    /** `{count}` tool and skill searches. */
+    activitySearchedOne: string;
+    activitySearchedOther: string;
+    /** `{count}` skills loaded. */
+    activityLoadedSkillOne: string;
+    activityLoadedSkillOther: string;
+    /** `{count}` `load_tool` calls. */
+    activityLoadedToolsOne: string;
+    activityLoadedToolsOther: string;
+    /** One call: `{name}`, the tool. */
+    activityRanOne: string;
+    /** One tool, `{count}` calls: `{name}`, `{count}`. */
+    activityRanRepeated: string;
+    /** `{count}` calls to several tools. */
+    activityRanOther: string;
+    /** One sub-agent: `{name}`. */
+    activityAgentOne: string;
+    /** `{count}` sub-agent runs. */
+    activityAgentOther: string;
+    /** A sub-agent still running, in the live header: `{name}`. */
+    activityAgentWorking: string;
+    /** `{count}` failed steps, last. */
+    activityFailed: string;
+    /** Between the phrases of a finished header. */
+    activitySeparator: string;
 
     // Attachment viewer
     close: string;
@@ -195,7 +257,10 @@ export const DEFAULT_LABELS: ChatLabels = {
     creditUsage: 'Credit usage',
     copyConversationId: 'Copy conversation ID',
     copiedConversationId: 'Copied ID!',
+    copyConversationLink: 'Copy conversation link',
+    copiedConversationLink: 'Link copied!',
     deleteThread: 'Delete thread',
+    confirmDeleteThread: 'Click again to delete',
     closeChat: 'Close chat',
     openChat: 'Open chat',
 
@@ -209,7 +274,11 @@ export const DEFAULT_LABELS: ChatLabels = {
     noSearchResults: 'No conversations match your search.',
     star: 'Star',
     unstar: 'Remove from starred',
-    deleteConversation: 'Delete conversation',
+    conversationActions: 'Conversation options',
+    renameConversation: 'Rename',
+    conversationTitle: 'Conversation title',
+    deleteConversation: 'Delete',
+    confirmDeleteConversation: 'Click again to delete',
     untitledConversation: 'Untitled conversation',
     loadMore: 'Load more',
     loading: 'Loading…',
@@ -242,12 +311,9 @@ export const DEFAULT_LABELS: ChatLabels = {
     waitingForUploads: 'Waiting for uploads…',
     stop: 'Stop generating',
     stopping: 'Stopping…',
-    disclaimer: 'Uses AI. Verify results.',
+    disclaimer: 'This is AI, and can make mistakes. Very results.',
 
-    agentAuto: 'Auto',
-    selectAgent: 'Select agent',
-    switchAgent: 'Switch agent',
-
+    assistantName: 'Assistant',
     copy: 'Copy',
     copied: 'Copied!',
     reply: 'Reply',
@@ -275,6 +341,33 @@ export const DEFAULT_LABELS: ChatLabels = {
     executingTool: 'Executing {name}…',
     confirmedExecuting: 'Confirmed - executing…',
     cancelled: 'Cancelled',
+
+    metaSearchingTools: 'Searching tools…',
+    metaSearchedTools: 'Searched tools',
+    metaLoadingTools: 'Loading tools…',
+    metaLoadedTools: 'Loaded tools · {names}',
+    metaSearchingSkills: 'Searching skills…',
+    metaSearchedSkills: 'Searched skills',
+    metaLoadingSkill: 'Loading skill…',
+    metaLoadedSkill: 'Loaded skill · {name}',
+    metaRefused: '{count} refused',
+
+    activityThoughtOne: 'thought once',
+    activityThoughtOther: 'thought {count} times',
+    activitySearchedOne: 'searched once',
+    activitySearchedOther: 'searched {count} times',
+    activityLoadedSkillOne: 'loaded a skill',
+    activityLoadedSkillOther: 'loaded {count} skills',
+    activityLoadedToolsOne: 'loaded tools',
+    activityLoadedToolsOther: 'loaded tools {count} times',
+    activityRanOne: 'ran {name}',
+    activityRanRepeated: 'ran {name} {count} times',
+    activityRanOther: 'ran {count} tools',
+    activityAgentOne: 'used {name}',
+    activityAgentOther: 'used {count} agents',
+    activityAgentWorking: '{name} is working…',
+    activityFailed: '{count} failed',
+    activitySeparator: ' · ',
 
     close: 'Close',
     closeAttachment: 'Close attachment',

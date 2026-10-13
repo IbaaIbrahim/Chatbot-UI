@@ -4,7 +4,6 @@ import type { AttachedFile, ConversationSummary, UserCredits } from '../api/type
 import type { ChatbotConfig, ResolvedChatbotConfig } from '../common/chatbotConfig';
 import type { ToolConfig } from '../common/toolConfig';
 import type { TurnUsageSummary } from '../common/usageSummary';
-import type { AgentSidebarItem } from '../components/AgentSidebar/AgentSidebar';
 import type { ChatMode } from '../components/ChatContainer/presentation';
 import type { MessageProps } from '../components/MessageBubble/MessageBubble';
 import type { QuestionSpec } from '../components/Questionnaire/QuestionnaireForm';
@@ -45,6 +44,8 @@ export interface ChatSnapshot {
     /** A provider `onSwitchMode` exists, so "Switch view" has something to call. */
     canSwitchMode: boolean;
     canShare: boolean;
+    /** A provider `conversationLink` exists, so the menu copies a link rather than an id. */
+    canCopyConversationLink: boolean;
     /** The client can cancel a turn on the server, not only stop reading it. */
     canStop: boolean;
     /** The client can read the user's own allowance, so "Credit usage" has something to show. */
@@ -69,19 +70,18 @@ export interface ChatSnapshot {
     starredConversations: ConversationSummary[];
     /** The Gateway reports `starred_at`, so starring will persist. */
     starringSupported: boolean;
+    /** The client can rename conversations. */
+    renamingSupported: boolean;
     isLoadingConversations: boolean;
     isLoadingMore: boolean;
     hasMore: boolean;
     search: ConversationSearch;
 
-    // --- Tools and agents ---
+    // --- Tools ---
     registeredTools: Record<string, ToolConfig>;
     enablableTools: EnablableTool[];
     enabledToolIds: string[];
     handledToolSlugs: string[];
-    agents: AgentSidebarItem[];
-    agentId: string | null;
-    agentsLoading: boolean;
 }
 
 /**
@@ -119,13 +119,16 @@ export interface ChatActions {
     /** Rejects when the server refuses; the row is removed only once it accepted. */
     deleteConversation: (conversationId: string) => Promise<void>;
     setConversationStarred: (conversationId: string, starred: boolean) => Promise<void>;
+    /** Rejects when the server refuses, and the old title is shown again. */
+    renameConversation: (conversationId: string, title: string) => Promise<void>;
     /** An empty query ends the search. */
     searchConversations: (query: string) => void;
     refreshConversations: () => Promise<void>;
     loadMoreConversations: () => Promise<void>;
     copyConversationId: () => void;
+    /** Copies the provider's `conversationLink` for the open conversation; nothing without one. */
+    copyConversationLink: () => void;
 
-    setAgentId: (agentId: string | null) => void;
     setEnabledToolIds: (toolIds: string[]) => void;
 
     focusComposer: () => void;
@@ -145,6 +148,7 @@ export interface ChatEventMap {
     'conversation.created': NoPayload;
     'conversation.selected': { conversationId: string };
     'conversation.starred': { conversationId: string; starred: boolean };
+    'conversation.renamed': { conversationId: string; title: string };
     'conversation.deleted': { conversationId: string };
 }
 

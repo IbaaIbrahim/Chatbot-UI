@@ -7,7 +7,7 @@ import type { ChatLabels } from '../../common/labels';
 import { useChatActions, useChatState, useIcons, useLabels } from '../../store/hooks';
 import { useChatPresentation } from '../ChatContainer/presentation';
 
-const { useEffect, useMemo, useState } = React;
+const { useEffect, useLayoutEffect, useMemo, useRef, useState } = React;
 
 const SEARCH_DEBOUNCE_MS = 250;
 const DAY_MS = 86400000;
@@ -50,73 +50,222 @@ interface ConversationRowProps {
     conversation: ConversationSummary;
     isActive: boolean;
     canStar: boolean;
+    canRename: boolean;
     canDelete: boolean;
     labels: ChatLabels;
     icons: ChatIcons;
     onSelect: (id: string) => void;
     onToggleStar: (conversation: ConversationSummary) => void;
+    onRename: (conversation: ConversationSummary, title: string) => void;
     onDelete: (id: string) => void;
 }
 
+/** Roughly the open menu's height: less room than this below a row opens it upwards. */
+const ROW_MENU_HEIGHT_PX = 140;
+
+/**
+ * One conversation in the list, with its actions behind a "more" button.
+ *
+ * Star, rename and delete share one menu rather than a button each: three
+ * icons on hover left the title a few characters in a 260px column.
+ *
+ * Renaming edits the title in place — Enter or leaving the field saves,
+ * Escape cancels. Deleting takes two clicks, the first turning the entry into
+ * the question, so a stray click cannot lose a thread.
+ */
 const ConversationRow: React.FC<ConversationRowProps> = ({
     conversation,
     isActive,
     canStar,
+    canRename,
     canDelete,
     labels,
     icons,
     onSelect,
     onToggleStar,
+    onRename,
     onDelete,
 }) => {
     const title = conversation.title || labels.untitledConversation;
     const isStarred = Boolean(conversation.starred_at);
+    const hasActions = canStar || canRename || canDelete;
+
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [opensUpward, setOpensUpward] = useState(false);
+    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+    const [isRenaming, setIsRenaming] = useState(false);
+    const [draft, setDraft] = useState(title);
+    const rowRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
+    // Enter saves and unmounts the field, and a browser may then report the
+    // field's blur as well: the second save must find nothing to do.
+    const isRenamingRef = useRef(false);
+
+    useEffect(() => {
+        if (!isMenuOpen) {
+            setIsConfirmingDelete(false);
+            return undefined;
+        }
+        const closeOnOutsidePointer = (event: MouseEvent) => {
+            if (rowRef.current && !rowRef.current.contains(event.target as Node)) setIsMenuOpen(false);
+        };
+        document.addEventListener('mousedown', closeOnOutsidePointer);
+        return () => document.removeEventListener('mousedown', closeOnOutsidePointer);
+    }, [isMenuOpen]);
+
+    useLayoutEffect(() => {
+        if (!isRenaming) return;
+        inputRef.current?.focus();
+        inputRef.current?.select();
+    }, [isRenaming]);
+
+    const openMenu = () => {
+        const row = rowRef.current;
+        const list = row?.closest('.cb-conversation-list');
+        if (row && list) {
+            const roomBelow = list.getBoundingClientRect().bottom - row.getBoundingClientRect().bottom;
+            setOpensUpward(roomBelow < ROW_MENU_HEIGHT_PX);
+        }
+        setIsMenuOpen(true);
+    };
+
+    const startRename = () => {
+        setIsMenuOpen(false);
+        setDraft(conversation.title || '');
+        isRenamingRef.current = true;
+        setIsRenaming(true);
+    };
+
+    const finishRename = (save: boolean) => {
+        if (!isRenamingRef.current) return;
+        isRenamingRef.current = false;
+        setIsRenaming(false);
+        const next = draft.trim();
+        if (save && next && next !== conversation.title) onRename(conversation, next);
+    };
+
+    const className = [
+        'cb-conversation-item',
+        isActive ? 'active' : '',
+        isMenuOpen ? 'is-menu-open' : '',
+        isRenaming ? 'is-renaming' : '',
+    ].filter(Boolean).join(' ');
 
     return (
         <div
-            className={`cb-conversation-item ${isActive ? 'active' : ''}`}
+            ref={rowRef}
+            className={className}
             role="button"
             tabIndex={0}
             aria-current={isActive ? 'true' : undefined}
-            onClick={() => onSelect(conversation.uuid)}
+            onClick={() => {
+                if (!isRenaming) onSelect(conversation.uuid);
+            }}
             onKeyDown={event => {
+                // Escape closes the menu here, before it reaches the chat's own
+                // Escape, which would close an overlay sidebar along with it.
+                if (event.key === 'Escape' && isMenuOpen) {
+                    event.stopPropagation();
+                    setIsMenuOpen(false);
+                    return;
+                }
+                // Only the row's own keys: Enter on a menu entry, or a space
+                // typed into the rename field, is not "open this conversation".
+                if (event.target !== event.currentTarget) return;
                 if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
                     onSelect(conversation.uuid);
                 }
             }}
-            title={title}
+            title={isRenaming ? undefined : title}
         >
-            <div className="cb-conversation-title">{title}</div>
-            {(canStar || canDelete) && (
+            {isRenaming ? (
+                <input
+                    ref={inputRef}
+                    className="cb-conversation-rename-input"
+                    value={draft}
+                    aria-label={labels.conversationTitle}
+                    maxLength={200}
+                    onChange={event => setDraft(event.target.value)}
+                    onClick={event => event.stopPropagation()}
+                    onBlur={() => finishRename(true)}
+                    onKeyDown={event => {
+                        if (event.key === 'Enter') {
+                            event.preventDefault();
+                            finishRename(true);
+                        } else if (event.key === 'Escape') {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            finishRename(false);
+                        }
+                    }}
+                />
+            ) : (
+                <div className="cb-conversation-title">{title}</div>
+            )}
+
+            {hasActions && !isRenaming && (
                 <div className="cb-sidebar-item-actions">
+                    <button
+                        type="button"
+                        className="cb-sidebar-row-menu-btn"
+                        title={labels.conversationActions}
+                        aria-label={labels.conversationActions}
+                        aria-haspopup="menu"
+                        aria-expanded={isMenuOpen}
+                        onClick={event => {
+                            event.stopPropagation();
+                            if (isMenuOpen) setIsMenuOpen(false);
+                            else openMenu();
+                        }}
+                    >
+                        {icons.more}
+                    </button>
+                </div>
+            )}
+
+            {isMenuOpen && (
+                <div
+                    className={`cb-sidebar-row-menu${opensUpward ? ' opens-upward' : ''}`}
+                    role="menu"
+                    onClick={event => event.stopPropagation()}
+                >
                     {canStar && (
                         <button
                             type="button"
-                            className={`cb-sidebar-star-btn${isStarred ? ' is-starred' : ''}`}
-                            title={isStarred ? labels.unstar : labels.star}
-                            aria-label={isStarred ? labels.unstar : labels.star}
-                            aria-pressed={isStarred}
-                            onClick={event => {
-                                event.stopPropagation();
+                            className={`cb-header-menu-item${isStarred ? ' is-starred' : ''}`}
+                            role="menuitem"
+                            onClick={() => {
+                                setIsMenuOpen(false);
                                 onToggleStar(conversation);
                             }}
                         >
                             {isStarred ? icons.starFilled : icons.star}
+                            <span>{isStarred ? labels.unstar : labels.star}</span>
+                        </button>
+                    )}
+                    {canRename && (
+                        <button type="button" className="cb-header-menu-item" role="menuitem" onClick={startRename}>
+                            {icons.rename}
+                            <span>{labels.renameConversation}</span>
                         </button>
                     )}
                     {canDelete && (
                         <button
                             type="button"
-                            className="cb-sidebar-delete-btn"
-                            title={labels.deleteConversation}
-                            aria-label={labels.deleteConversation}
-                            onClick={event => {
-                                event.stopPropagation();
+                            className={`cb-header-menu-item cb-header-menu-item-danger${isConfirmingDelete ? ' is-confirming' : ''}`}
+                            role="menuitem"
+                            onClick={() => {
+                                if (!isConfirmingDelete) {
+                                    setIsConfirmingDelete(true);
+                                    return;
+                                }
+                                setIsMenuOpen(false);
                                 onDelete(conversation.uuid);
                             }}
                         >
                             {icons.delete}
+                            <span>{isConfirmingDelete ? labels.confirmDeleteConversation : labels.deleteConversation}</span>
                         </button>
                     )}
                 </div>
@@ -136,8 +285,8 @@ const Spinner: React.FC = () => (
  * conversations and recent ones, with search over all of them.
  *
  * Starred appears only when the Gateway reports `starred_at` — on one that does
- * not, starring could not persist — and deleting only when the host enables it
- * in `config.sidebar`, since the AI-EcoSystem Gateway has no delete route.
+ * not, starring could not persist — and renaming only when the client can
+ * rename. Each is also a `config.sidebar` flag, as deleting is.
  */
 export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     embedded = false,
@@ -148,6 +297,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     const conversations = useChatState(s => s.conversations);
     const starredConversations = useChatState(s => s.starredConversations);
     const starringSupported = useChatState(s => s.starringSupported);
+    const renamingSupported = useChatState(s => s.renamingSupported);
     const activeConversationId = useChatState(s => s.activeConversationId);
     const isLoading = useChatState(s => s.isLoadingConversations);
     const isLoadingMore = useChatState(s => s.isLoadingMore);
@@ -195,6 +345,12 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         });
     };
 
+    const renameConversation = (conversation: ConversationSummary, title: string) => {
+        actions.renameConversation(conversation.uuid, title).catch(error => {
+            console.error('[ConversationSidebar] renaming failed', error);
+        });
+    };
+
     const deleteConversation = (id: string) => {
         actions.deleteConversation(id).catch(error => {
             console.error('[ConversationSidebar] deleting failed', error);
@@ -207,11 +363,13 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
             conversation={conversation}
             isActive={activeConversationId === conversation.uuid}
             canStar={showStarred}
+            canRename={sidebar.rename && renamingSupported}
             canDelete={sidebar.deleteConversation}
             labels={labels}
             icons={icons}
             onSelect={selectConversation}
             onToggleStar={toggleStar}
+            onRename={renameConversation}
             onDelete={deleteConversation}
         />
     );

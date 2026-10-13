@@ -12,7 +12,9 @@ import React from 'react';
 export interface ChatIcons {
     brand: React.ReactNode;
     launcher: React.ReactNode;
+    /** Opens the sidebar. One panel drawn twice with {@link sidebarCollapse}, the chevron reversed. */
     sidebarToggle: React.ReactNode;
+    /** Closes it: the same panel as {@link sidebarToggle}, so the pair reads as one control. */
     sidebarCollapse: React.ReactNode;
     newChat: React.ReactNode;
     search: React.ReactNode;
@@ -23,6 +25,8 @@ export interface ChatIcons {
     /** Trails each row of a quick-action category's prompt list. */
     promptRow: React.ReactNode;
     delete: React.ReactNode;
+    /** A sidebar row's "Rename". */
+    rename: React.ReactNode;
     more: React.ReactNode;
     share: React.ReactNode;
     viewFloating: React.ReactNode;
@@ -34,6 +38,8 @@ export interface ChatIcons {
     check: React.ReactNode;
     creditUsage: React.ReactNode;
     copy: React.ReactNode;
+    /** "Copy conversation link", when the host builds links (`conversationLink`). */
+    link: React.ReactNode;
     close: React.ReactNode;
     attach: React.ReactNode;
     tools: React.ReactNode;
@@ -71,16 +77,21 @@ export const DEFAULT_ICONS: ChatIcons = {
             <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z" fill="currentColor" />
         </svg>
     ),
+    // One panel, its chevron pointing the way the sidebar will move. These were
+    // a bare panel and a `«`, two unrelated drawings for one control's two
+    // states, side by side in fullscreen.
     sidebarToggle: (
         <svg width="18" height="18" viewBox="0 0 24 24" {...stroke} strokeWidth={1.8}>
             <rect x="3" y="3" width="18" height="18" rx="3" />
             <path d="M9 3v18" />
+            <path d="m14 9 3 3-3 3" />
         </svg>
     ),
     sidebarCollapse: (
-        <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}>
-            <path d="m11 17-5-5 5-5" />
-            <path d="m18 17-5-5 5-5" />
+        <svg width="18" height="18" viewBox="0 0 24 24" {...stroke} strokeWidth={1.8}>
+            <rect x="3" y="3" width="18" height="18" rx="3" />
+            <path d="M9 3v18" />
+            <path d="m16 15-3-3 3-3" />
         </svg>
     ),
     newChat: (
@@ -124,6 +135,12 @@ export const DEFAULT_ICONS: ChatIcons = {
         <svg width="13" height="13" viewBox="0 0 24 24" {...stroke}>
             <polyline points="3 6 5 6 21 6" />
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        </svg>
+    ),
+    rename: (
+        <svg width="14" height="14" viewBox="0 0 24 24" {...stroke}>
+            <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+            <path d="m15 5 4 4" />
         </svg>
     ),
     more: (
@@ -185,6 +202,12 @@ export const DEFAULT_ICONS: ChatIcons = {
         <svg width="16" height="16" viewBox="0 0 24 24" {...stroke}>
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+    ),
+    link: (
+        <svg width="16" height="16" viewBox="0 0 24 24" {...stroke}>
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
         </svg>
     ),
     close: (

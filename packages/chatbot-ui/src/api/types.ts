@@ -97,12 +97,16 @@ export interface ConversationStep {
     tool_output: any;
     /**
      * How this tool call is executed: ``kafka``/``inline`` run in a worker,
-     * ``client`` runs in this browser, ``sub_agent`` starts another agent.
+     * ``client`` runs in this browser, ``sub_agent`` starts another agent,
+     * ``harness`` is a central-mode meta-tool (``search_tools`` and the rest).
      *
      * Worth reading only in combination with ``status``: a ``client`` step still
      * ``running`` is a call *this page* has not answered, which is a different
      * situation from a worker call in flight even though both look identical
-     * without this field. ``null`` on every non-tool step.
+     * without this field. A ``harness`` step still ``running`` may be waiting
+     * on this browser too — for the answer to a host request — but that is not
+     * a call the transcript can answer: the platform times it out by itself and
+     * carries on with its own half. ``null`` on every non-tool step.
      */
     dispatch_mode?: string | null;
     input_tokens: number;

@@ -48,11 +48,21 @@ export interface ClientToolConfig extends ToolPresentation {
      */
     run: (input: any, context: ToolCallContext) => any | Promise<any>;
     /**
-     * Optional inline tool definition. When present it is sent to the gateway
-     * as a dynamic ``client_tools`` entry on each job, so no backend tool row
-     * is required — the agent can call it purely on the strength of this
-     * schema. Omit it for tools already registered in the backend (``run``
-     * still fires on ``client_tool_call``).
+     * Optional inline tool definition, so no backend tool row is required —
+     * the agent can call the tool purely on the strength of this schema. Omit
+     * it for tools already registered in the backend (``run`` still fires on
+     * ``client_tool_call``).
+     *
+     * How the platform learns it depends on the chat's mode:
+     *
+     *  - **Central mode** (no agent on the client): nothing is sent with the
+     *    message. The platform asks this browser for it when the model searches
+     *    for a tool or loads one (the host catalogue — platform ADR-018,
+     *    "Host catalogue and conversation-scoped loads"), and the client answers
+     *    from whatever is registered at that moment. A loaded tool stays loaded
+     *    for the conversation until it is compacted.
+     *  - **Agent-bound** (``agentId`` on the client): sent as a ``client_tools``
+     *    entry on each job, as before.
      */
     definition?: ClientToolDefinition;
     preview?: never;
@@ -151,11 +161,6 @@ export interface ToolPresentation {
      * this with {@link ServerToolConfig.autoRun}.
      */
     placement?: ToolActionPlacement;
-    /**
-     * If the tool is invoked multiple times in a turn, show only the last invocation
-     * in the chat transcript and hoisted action row. Default `false`.
-     */
-    showLastOnly?: boolean;
 }
 
 /** Where a tool's action control is offered. See {@link ToolPresentation.placement}. */
@@ -201,9 +206,14 @@ export interface ResultPreviewContext extends ToolCallContext {
 }
 
 /**
- * A dynamic ("bring-your-own") client tool definition sent to the gateway on
- * job creation. The agent sees these like any other tool; there is no backend
- * registration. The registration key (slug) becomes the tool ``name``.
+ * A dynamic ("bring-your-own") client tool definition. The agent sees these
+ * like any other tool; there is no backend registration. The registration key
+ * (slug) becomes the tool ``name``.
+ *
+ * An agent-bound chat sends every definition with each job (``client_tools``).
+ * A central-mode chat sends none: the platform reads them from this browser
+ * when the model searches for or loads a tool (see
+ * {@link ClientToolConfig.definition}).
  */
 export interface ClientToolDefinition {
     /** Optional display name for the tool. */
@@ -230,6 +240,81 @@ export interface ClientToolDefinition {
      * platform, or changes what the user is looking at.
      */
     requires_approval?: boolean;
+    /**
+     * Let a **delegated sub-agent** call this tool too (ADR-008).
+     *
+     * A sub-agent is its own job, and the tools on this request reach only the
+     * agent the user is talking to unless they are marked here. Share a tool a
+     * worker needs to check its own result (a validator, a lookup) so it can
+     * fix its work before handing it up. Leave it off for anything that shows
+     * the user something or acts for them: that is the parent's job, and an
+     * agent offered a tool will use it.
+     *
+     * The browser runs a sub-agent's call exactly like its parent's. A handoff
+     * sub-agent takes the turn over and receives every tool regardless.
+     */
+    share_with_sub_agents?: boolean;
+    /**
+     * @deprecated Meaningless since the host catalogue (platform ADR-018,
+     * "Host catalogue and conversation-scoped loads"); drop it.
+     *
+     * It kept a tool out of the model's context in central mode until
+     * ``load_tool`` or ``load_skill`` brought it in, at a time when a
+     * central-mode chat sent every definition with each message and loaded the
+     * rest from the first step. A central-mode chat now sends none: every host
+     * tool is found with ``search_tools`` and loaded on demand, so every tool
+     * is "deferred". Still sent with an agent-bound chat's ``client_tools``
+     * when set, where the platform has always ignored it (an agent's run
+     * offers its whole tool set).
+     */
+    defer_loading?: boolean;
+    /**
+     * Slugs of the skills that bring this tool: ``load_skill`` of any of them
+     * loads it (ADR-018) — a platform skill, or one of this application's own
+     * {@link ClientSkillDefinition client skills}. A platform skill's own tool
+     * bindings can only name tools registered on the platform, so a host tool
+     * declares its skills from this side. Each must look like a skill slug
+     * (``^[a-z0-9][a-z0-9_-]{0,99}$``); at most 16.
+     *
+     * A tool that names no skill is still reachable: ``search_tools`` finds it
+     * by name and description, and ``load_tool`` loads it.
+     */
+    skills?: string[];
+}
+
+/**
+ * A skill this application ships itself — a "client skill": instructions the
+ * model loads with ``load_skill`` when a conversation needs them, plus every
+ * host tool whose {@link ClientToolDefinition.skills} names this slug.
+ *
+ * Passed to the provider's ``skills`` prop (or `GatewayStreamClient.setSkills`)
+ * and never sent with a message. In central mode the platform asks this
+ * browser for them: ``search_skills`` ranks them beside the platform's skills
+ * (name and description only), and ``load_skill`` fetches the instructions
+ * and the member tools — so a skill that changes with a deploy of the host is
+ * current on the next load, with no sync step. When a platform skill has the
+ * same slug, a user's or tenant's own skill wins over this one, and this one
+ * wins over the partner's and the platform's (ADR-018).
+ *
+ * The platform checks each answer before the model sees it, so an entry
+ * outside these bounds is left out rather than failing the turn:
+ *
+ *  - ``slug``: ``^[a-z0-9][a-z0-9_-]{0,99}$``.
+ *  - ``name``, ``description``: non-empty, at most 1000 characters each.
+ *  - ``instructions``: 1 to 65 536 characters.
+ *
+ * Agent-bound chats never load skills (an agent's run offers its whole tool
+ * set and has no meta-tools), so there these are simply unused.
+ */
+export interface ClientSkillDefinition {
+    /** The key ``load_skill`` and {@link ClientToolDefinition.skills} name it by. */
+    slug: string;
+    /** What the model, and the "Loaded skill · …" row, call it. */
+    name: string;
+    /** When to load it — what ``search_skills`` ranks and shows the model. */
+    description: string;
+    /** What the model is told once the skill is loaded, as Markdown or plain text. */
+    instructions: string;
 }
 
 /**
@@ -282,6 +367,8 @@ export const DEFAULT_TOOL_NAMES: Record<string, string> = {
     find_on_page: 'Find on page',
     read_page_diagnostics: 'Read page diagnostics',
     validate_checklist: 'Validate checklist',
+    // Kept for transcripts from before 4.0, when the host offered this client
+    // tool; nothing calls it any more.
     switch_agent: 'Switch agent',
     checklist_read: 'Read checklist',
     checklist_apply_suggestions: 'Apply checklist suggestions',
@@ -290,6 +377,13 @@ export const DEFAULT_TOOL_NAMES: Record<string, string> = {
     show_step_output: 'Action Execution',
     find_conversation_artifacts: 'Search Conversation Artifacts',
     get_step_details: 'Step Details',
+    // The platform's meta-tools (central mode). A step of one renders as what
+    // it did — "Loaded skill · …" — unless the host names the tool itself; see
+    // common/metaTools.ts. These names are what the generic row falls back to.
+    search_tools: 'Search tools',
+    load_tool: 'Load tools',
+    search_skills: 'Search skills',
+    load_skill: 'Load skill',
 };
 
 /**
@@ -303,6 +397,19 @@ export const formatToolSlug = (slug: string): string => {
         .filter(Boolean)
         .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
         .join(' ');
+};
+
+/**
+ * Whether the host named this tool itself — a `name` or `displayName` on its
+ * entry or on the entry's `definition`. A meta-tool step keeps the host's name
+ * in the generic row rather than the built-in summary: a host that renamed it
+ * meant that name to be read.
+ */
+export const hasHostDisplayName = (slug: string, tools?: Record<string, ToolConfig>): boolean => {
+    const config = tools?.[slug];
+    return Boolean(
+        config?.name || config?.displayName || config?.definition?.name || config?.definition?.displayName
+    );
 };
 
 /**

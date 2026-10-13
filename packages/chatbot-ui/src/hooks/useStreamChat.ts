@@ -4,6 +4,8 @@ import { MessageProps, MessageStep } from '../components/MessageBubble/MessageBu
 import { AttachedFile, ContextFigures, RunUsage, UsageFigures, UsagePayload } from '../api/types';
 import { turnUsage } from '../common/usageSummary';
 import { resolveToolDisplayName } from '../common/toolConfig';
+import { isHostRequestSlug } from '../common/hostCatalogue';
+import { settledToolStatus } from '../api/toolOutput';
 import { StepPath, appendStepAt, appendTextAt, patchStepAt } from './subAgentSteps';
 import { resolveStorageAttachmentFileUrl } from '../common/attachmentUtils';
 
@@ -88,6 +90,11 @@ export function describeApprovalRequest(
  * `model_not_entitled` denial sends them round a loop that can never succeed.
  */
 const NON_RETRYABLE_ERROR_PATTERNS: RegExp[] = [
+    // The platform's own wording for a failure retrying cannot fix (its
+    // provider_error messages): an administrator has to act, or the thread is
+    // too long to continue.
+    /contact your administrator/i,
+    /start a new conversation/i,
     /not entitled/i,
     /no model available/i,
     /insufficient[\s_]credits/i,
@@ -102,7 +109,7 @@ const NON_RETRYABLE_ERROR_PATTERNS: RegExp[] = [
  * Turn a stream failure into something worth reading.
  *
  * The gateway and archiver already send a precise reason down the stream — e.g.
- * "Requested model gpt-5-mini is not entitled for partner plan 4 or tenant
+ * "Requested model claude-opus-5-5 is not entitled for partner plan 4 or tenant
  * plan 1". That used to be replaced wholesale with "Something went wrong.
  * Please try again.", which threw away the only actionable detail and then gave
  * advice that was wrong for this class of error.
@@ -499,7 +506,11 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                     // a delegated child answers on the same step uuid its
                     // anchor carries, so one handler settles both.
                     editSteps(steps => patchStepAt(steps, pathFor(event), step_uuid, {
-                        toolStatus: (status === 'completed' ? 'completed' : 'failed') as MessageStep['toolStatus'],
+                        // 'failed' too for a completed call whose body is an
+                        // error (settledToolStatus): it is not a result.
+                        toolStatus: (status === 'completed'
+                            ? settledToolStatus('completed', tool_output)
+                            : 'failed') as MessageStep['toolStatus'],
                         toolResult: tool_output,
                     }));
                 }
@@ -510,7 +521,14 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
             // 'completed'. Interactive tools that wait for user input (e.g.
             // ask_user_questions, whose form renders separately) stay 'running'
             // until the resume tool_result flips them to 'completed'.
-            if (event.type === 'client_tool_call') {
+            //
+            // A host request (the reserved ``__host_request`` slug) draws
+            // nothing: it is the platform asking this browser about its tools
+            // for a meta-tool whose row the ``tool_request`` above already drew
+            // — under the same step uuid, so a second row would also collide
+            // with it. A run's start-up fetch has no row at all. The client
+            // answers both by itself.
+            if (event.type === 'client_tool_call' && !isHostRequestSlug(event.data?.payload?.tool_slug)) {
                 const { step_uuid, tool_slug, tool_name, tool_input } = event.data?.payload ?? {};
                 console.debug('[useStreamChat] client_tool_call', { step_uuid, tool_slug, tool_input, hasHandler: Boolean(tools?.[tool_slug ?? '']) });
                 if (step_uuid && tool_slug) {

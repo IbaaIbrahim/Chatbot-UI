@@ -21,33 +21,6 @@
     gap: var(--cb-space-2);
 }
 
-.cb-composer-bottom-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 6px 12px;
-    background-color: var(--cb-surface-sunken);
-    border-top: 1px solid var(--cb-border-subtle);
-    border-bottom-left-radius: calc(var(--cb-radius-lg) - 1px);
-    border-bottom-right-radius: calc(var(--cb-radius-lg) - 1px);
-    min-height: 32px;
-    box-sizing: border-box;
-}
-
-.cb-composer-bottom-left {
-    display: flex;
-    align-items: center;
-    gap: var(--cb-space-2);
-    min-width: 0;
-}
-
-.cb-composer-bottom-right {
-    display: flex;
-    align-items: center;
-    gap: var(--cb-space-2);
-    margin-left: auto;
-}
-
 .cb-composer-textarea {
     background: transparent;
     border: none;
@@ -395,11 +368,13 @@
 /* === Compact density ===
  *
  * Once a conversation has messages the transcript is what the user reads, and
- * the comfortable composer — text, a row of buttons, the agent strip, about
- * 160px — left a short panel a few lines of answer. Compact puts the buttons on
- * the text's own row and the agent switcher in the footer line, and gives the
- * text the full width only once it needs a second line (`--multiline`, which
- * the component sets and keeps until the box is emptied).
+ * the comfortable composer — text above a row of buttons — left a short panel
+ * a few lines of answer. Compact puts the buttons on the text's own row, and
+ * gives the text the full width only once it needs a second line
+ * (`--multiline`, which the component sets and keeps until the box is
+ * emptied). (Until 4.0 the agent switcher sat in a strip under the
+ * comfortable box and at the start of the compact footer line; 4.0 removed
+ * the switcher, and the server picks the agent.)
  *
  * The row is 32px controls inside 7px of padding and a 1px border, 48px in all,
  * and the radius is half of that: the box's round ends and the round buttons
@@ -487,19 +462,5 @@
     column-gap: var(--cb-space-2);
     margin-top: 6px;
     padding: 0 var(--cb-space-1);
-}
-
-.cb-composer-footer-agent {
-    grid-column: 1;
-    justify-self: start;
-    display: flex;
-    min-width: 0;
-    max-width: 100%;
-}
-
-:root .cb-composer-footer-agent .cb-agent-switcher-trigger {
-    gap: var(--cb-space-1);
-    padding: 2px 6px;
-    font-size: 11px;
 }
 

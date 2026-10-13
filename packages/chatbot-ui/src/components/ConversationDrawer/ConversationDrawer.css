@@ -11,13 +11,17 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 16px;
+    /* The chat header's height, not padding around a heading: the two sit side
+       by side in fullscreen and their bottom borders have to meet. */
+    height: var(--cb-header-height);
+    flex-shrink: 0;
+    padding: 0 var(--cb-space-2) 0 var(--cb-space-4);
     border-bottom: 1px solid var(--cb-border-subtle);
 }
 
 .cb-drawer-header h3 {
     margin: 0;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--cb-text-primary);
 }
@@ -48,13 +52,18 @@
     border-color: var(--cb-border-medium);
 }
 
+/* The same box as the chat header's buttons, so the collapse control here and
+   the open control there are one control in two states. */
 :root .cb-drawer-close-btn {
     background: transparent;
     border: none;
-    color: var(--cb-text-tertiary);
+    color: var(--cb-text-secondary);
     cursor: pointer;
-    padding: 4px;
-    border-radius: 4px;
+    padding: 0;
+    width: var(--cb-control-sm);
+    height: var(--cb-control-sm);
+    flex-shrink: 0;
+    border-radius: var(--cb-radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;

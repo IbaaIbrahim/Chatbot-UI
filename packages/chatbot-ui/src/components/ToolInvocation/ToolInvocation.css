@@ -138,6 +138,20 @@
   opacity: var(--cb-dim);
 }
 
+/* A meta-tool step: plain text in place of the verb and the monospace name,
+   as in the step renderer (see .cb-modern-tool-call--meta). */
+.cb-tool-meta-text,
+.cb-tool-meta-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cb-tool-meta-detail {
+  opacity: var(--cb-dim);
+}
+
 /* Rotation lives here rather than inline so the chevron animates rather than
    snapping, which is what tells the user the panel is theirs to open. */
 .cb-tool-chevron svg {

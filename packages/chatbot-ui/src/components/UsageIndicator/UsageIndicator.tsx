@@ -27,6 +27,11 @@ function formatPercent(ratio: number): string {
 
 export interface UsageIndicatorProps {
     summary: TurnUsageSummary;
+    /**
+     * Whether a click opens the breakdown card. `false` draws the ring and the
+     * total alone, as a figure rather than a button (`config.composer.usageDetails`).
+     */
+    details?: boolean;
 }
 
 interface RingProps {
@@ -108,19 +113,23 @@ const MeterRow: React.FC<MeterRowProps> = ({ label, value, ratio, warn, note, su
 /**
  * The consumption indicator under the composer.
  *
- * At rest: a ring for the context window and the percentage beside it (or the
- * turn's credits when the model's window is not known). On click — and closed
- * only by a second click on the trigger, a click outside, or Escape — a card
- * with the context window against the model's limit, this turn's and
+ * At rest: a ring for the context window and, beside it, the conversation's
+ * total credits — the number that only grows, rather than the latest turn's,
+ * which read as the whole cost and dropped back with every new turn. On click —
+ * and closed only by a second click on the trigger, a click outside, or Escape —
+ * a card with the context window against the model's limit, this turn's and
  * this conversation's credits, the tokens, any waived free calls, and the
- * sub-agent tree against its ceiling when one is set.
+ * sub-agent tree against its ceiling when one is set. With `details` off there
+ * is no card and nothing to click: the ring and the total are the whole of it.
+ * *Until 3.1 the number was the window's percentage when the model's window was
+ * known, and the latest turn's credits otherwise.*
  *
  * The figures are what the orchestrator reports after every settled step — the
  * `usage` stream event, or the job's totals when the thread was loaded from
  * history. Cumulative values are replaced on each event, never summed here, so
  * a replayed stream cannot double-count.
  */
-export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary }) => {
+export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary, details = true }) => {
     const labels = useLabels();
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -130,7 +139,7 @@ export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary }) => {
     // click on it, a click outside the indicator, or Escape — never because
     // the pointer left, so the figures stay readable while the turn updates.
     useEffect(() => {
-        if (!open) return;
+        if (!open || !details) return;
 
         const handlePointerDown = (event: MouseEvent) => {
             if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -163,7 +172,7 @@ export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary }) => {
     const credits = (count: number) => formatCount(count, labels.creditsOne, labels.creditsOther);
     const limitUnknown = (tokens: number) => formatLabel(labels.usageLimitUnknown, { tokens: formatTokens(tokens) });
 
-    const atRestLabel = ratio !== null ? formatPercent(ratio) : credits(turn.credits_charged);
+    const atRestLabel = credits(conversationCredits);
     const summaryForScreenReader = formatLabel(
         ratio !== null && window !== null ? labels.usageSummaryWithWindow : labels.usageSummary,
         {
@@ -172,6 +181,23 @@ export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary }) => {
             conversationCredits: credits(conversationCredits),
         }
     );
+
+    if (!details) {
+        return (
+            <div className="cb-usage-indicator">
+                {/* A figure, not a control: the summary is its accessible name, and
+                    there is nothing to press. */}
+                <span
+                    role="img"
+                    className={`cb-usage-trigger cb-usage-trigger--static${pressured ? ' cb-usage-trigger--warn' : ''}`}
+                    aria-label={summaryForScreenReader}
+                >
+                    <Ring ratio={ratio} warn={pressured} live={live} />
+                    <span className="cb-usage-trigger-label">{atRestLabel}</span>
+                </span>
+            </div>
+        );
+    }
 
     return (
         <div className="cb-usage-indicator" ref={containerRef}>

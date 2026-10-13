@@ -131,8 +131,9 @@
 }
 
 .cb-chat-header {
-    height: 60px;
-    padding: 0 var(--cb-space-4);
+    /* Shared with `.cb-drawer-header`, so the two bars line up. */
+    height: var(--cb-header-height);
+    padding: 0 var(--cb-space-3);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -825,6 +826,26 @@
     width: 24px !important;
     height: 24px !important;
     flex-shrink: 0 !important;
+}
+
+/* The icon's box, whatever the host put in it (`launcherIcon` or
+   `config.icons.launcher`): centred, and sized for the kinds that do not size
+   themselves — an `<img>` would otherwise render at its file's own size, and a
+   font icon at the button's inherited font size. Restyle through this class. */
+.cb-launcher-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    font-size: 24px;
+    color: inherit;
+    pointer-events: none;
+}
+
+.cb-launcher-icon img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
 }
 
 @media (max-width: 640px) {

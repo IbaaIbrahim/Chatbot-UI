@@ -41,6 +41,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
     const hasMessages = useChatState(s => s.messages.length > 0);
     const activeConversationId = useChatState(s => s.activeConversationId);
     const canShare = useChatState(s => s.canShare);
+    const canCopyLink = useChatState(s => s.canCopyConversationLink);
     const canSwitchMode = useChatState(s => s.canSwitchMode);
     const canShowCredits = useChatState(s => s.canShowCredits);
     const hostHandlesOpenChange = useChatState(s => s.hostHandlesOpenChange);
@@ -51,7 +52,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
 
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isViewListOpen, setIsViewListOpen] = useState(false);
-    const [copiedId, setCopiedId] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -65,16 +67,20 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [isMenuOpen]);
 
-    // The list of views starts folded every time the menu opens.
+    // The list of views starts folded, and a delete unconfirmed, every time the
+    // menu opens.
     useEffect(() => {
-        if (!isMenuOpen) setIsViewListOpen(false);
+        if (!isMenuOpen) {
+            setIsViewListOpen(false);
+            setIsConfirmingDelete(false);
+        }
     }, [isMenuOpen]);
 
     useEffect(() => {
-        if (!copiedId) return undefined;
-        const timer = window.setTimeout(() => setCopiedId(false), COPIED_FEEDBACK_MS);
+        if (!copied) return undefined;
+        const timer = window.setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
         return () => window.clearTimeout(timer);
-    }, [copiedId]);
+    }, [copied]);
 
     if (!header.visible) return null;
 
@@ -134,7 +140,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
                         title={isSidebarOpen ? labels.closeSidebar : labels.openSidebar}
                         aria-expanded={isSidebarOpen}
                     >
-                        {icons.sidebarToggle}
+                        {isSidebarOpen ? icons.sidebarCollapse : icons.sidebarToggle}
                     </button>
                 )}
                 {brand}
@@ -231,18 +237,25 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
                                     </button>
                                 )}
 
+                                {/* The link when the host can build one (`conversationLink`):
+                                    an id alone opens nothing, and a link is what gets shared. */}
                                 {showCopyId && (
                                     <button
                                         type="button"
                                         className="cb-header-menu-item"
                                         onClick={() => {
-                                            actions.copyConversationId();
-                                            setCopiedId(true);
+                                            if (canCopyLink) actions.copyConversationLink();
+                                            else actions.copyConversationId();
+                                            setCopied(true);
                                         }}
                                         role="menuitem"
                                     >
-                                        {icons.copy}
-                                        <span>{copiedId ? labels.copiedConversationId : labels.copyConversationId}</span>
+                                        {canCopyLink ? icons.link : icons.copy}
+                                        <span>
+                                            {canCopyLink
+                                                ? (copied ? labels.copiedConversationLink : labels.copyConversationLink)
+                                                : (copied ? labels.copiedConversationId : labels.copyConversationId)}
+                                        </span>
                                     </button>
                                 )}
 
@@ -259,15 +272,18 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
                                     </button>
                                 ))}
 
+                                {/* Two clicks: the first asks, in place, and only the second
+                                    deletes — a whole thread is not something to lose to a
+                                    stray click on a menu. */}
                                 {showDeleteThread && (
                                     <button
                                         type="button"
-                                        className="cb-header-menu-item cb-header-menu-item-danger"
-                                        onClick={runMenuItem(deleteThread)}
+                                        className={`cb-header-menu-item cb-header-menu-item-danger${isConfirmingDelete ? ' is-confirming' : ''}`}
+                                        onClick={isConfirmingDelete ? runMenuItem(deleteThread) : () => setIsConfirmingDelete(true)}
                                         role="menuitem"
                                     >
                                         {icons.delete}
-                                        <span>{labels.deleteThread}</span>
+                                        <span>{isConfirmingDelete ? labels.confirmDeleteThread : labels.deleteThread}</span>
                                     </button>
                                 )}
                             </div>

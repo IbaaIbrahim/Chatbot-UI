@@ -29,6 +29,7 @@ export interface MainChatProps {
  */
 export const MainChat: React.FC<MainChatProps> = ({ emptyComposer, className = '', style }) => {
     const messages = useChatState(s => s.messages);
+    const activeConversationId = useChatState(s => s.activeConversationId);
     const isBusy = useChatState(s => s.isThinking || s.isResuming);
     const registeredTools = useChatState(s => s.registeredTools);
     const pendingQuestions = useChatState(s => s.pendingQuestions);
@@ -50,7 +51,6 @@ export const MainChat: React.FC<MainChatProps> = ({ emptyComposer, className = '
     const [isAtBottom, setIsAtBottom] = useState(true);
     const scrollRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
-    const scrollEndRef = useRef<HTMLDivElement>(null);
     const isProgrammaticScroll = useRef(false);
 
     const hasMessages = messages.length > 0;
@@ -64,9 +64,16 @@ export const MainChat: React.FC<MainChatProps> = ({ emptyComposer, className = '
         });
     };
 
+    // The transcript's own scroll position, and nothing else's. This used to be
+    // `scrollIntoView` on an element at the end, which scrolls *every*
+    // scrollable ancestor until that element is visible — inside a host page
+    // that includes the page itself, so jumping to the latest message pushed
+    // the host's whole layout up and left blank space under it.
     const scrollToBottomSmooth = () => {
+        const view = scrollRef.current;
+        if (!view) return;
         setIsAtBottom(true);
-        scrollEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        view.scrollTo({ top: view.scrollHeight, behavior: 'smooth' });
     };
 
     const handleScroll = () => {
@@ -78,6 +85,24 @@ export const MainChat: React.FC<MainChatProps> = ({ emptyComposer, className = '
             setIsAtBottom(distanceFromBottom < FOLLOW_THRESHOLD_PX);
         }
     };
+
+    // Another conversation, or a new empty one, is read from its own start: the
+    // scroll view is shared, so without this a new chat opened from the bottom
+    // of a long thread showed the welcome screen scrolled to *its* bottom, and a
+    // thread picked while reading back through the last one stayed unfollowed.
+    // A transcript starts following (the effect below then scrolls it to its
+    // end); the welcome screen starts at its top.
+    useLayoutEffect(() => {
+        setIsAtBottom(true);
+        setShowScrollBtn(false);
+        if (!hasMessages && scrollRef.current) {
+            isProgrammaticScroll.current = true;
+            scrollRef.current.scrollTop = 0;
+            requestAnimationFrame(() => {
+                isProgrammaticScroll.current = false;
+            });
+        }
+    }, [activeConversationId, hasMessages]);
 
     // Following applies to a transcript. The welcome screen grows too — a
     // quick-action category opening — and following it would scroll the
@@ -144,7 +169,6 @@ export const MainChat: React.FC<MainChatProps> = ({ emptyComposer, className = '
                         ) : (
                             <WelcomeScreen composer={emptyComposer} />
                         )}
-                        <div ref={scrollEndRef} />
                     </div>
                 </div>
                 <div className={`cb-scroll-shadow-bottom ${!isAtBottom ? 'visible' : ''}`} />

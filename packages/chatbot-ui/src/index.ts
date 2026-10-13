@@ -63,12 +63,6 @@ export type { ConversationDrawerProps } from './components/ConversationDrawer/Co
 export { QuestionnaireForm, formatAnswers } from './components/Questionnaire/QuestionnaireForm';
 export type { QuestionnaireFormProps, QuestionSpec, QuestionType } from './components/Questionnaire/QuestionnaireForm';
 
-// Agents
-export { AgentSidebar } from './components/AgentSidebar/AgentSidebar';
-export type { AgentSidebarProps, AgentSidebarItem } from './components/AgentSidebar/AgentSidebar';
-export { AgentSwitcher } from './components/AgentSwitcher/AgentSwitcher';
-export type { AgentSwitcherProps } from './components/AgentSwitcher/AgentSwitcher';
-
 // Attachment utilities
 export * from './common/attachmentUtils';
 
@@ -85,12 +79,20 @@ export type { TargetAddressSpace } from './common/localNetwork';
 export { StreamClient } from './api/StreamClient';
 export type { StreamClientConfig, StreamEvent, StreamChatClient, StreamOutcome } from './api/StreamClient';
 export { GatewayStreamClient } from './api/GatewayStreamClient';
-export type { GatewayStreamClientConfig, EnablableTool, ChatAgent } from './api/GatewayStreamClient';
+export type { GatewayStreamClientConfig, EnablableTool, ChatAgent, HostContext, HostContextValue, HostContextProvider } from './api/GatewayStreamClient';
 
 // The tool contract: what a host application declares per tool in the
 // provider's `tools` prop. One entry per tool; `run` handles a client-dispatched
 // call, `preview` a server-dispatched tool's output.
 export { isClientTool, isServerTool, DEFAULT_TOOL_NAMES, formatToolSlug, resolveToolDisplayName } from './common/toolConfig';
+// The platform's four meta-tools — how a central-mode run finds and loads
+// tools and skills — and the compact text their steps render as.
+export { META_TOOL_SLUGS, isMetaTool, describeMetaTool } from './common/metaTools';
+// The activity section: runs of thinking, tool calls and sub-agents drawn as one
+// collapsible row, with a live header and a finished count.
+export { groupActivity, summarizeActivity, describeLatestActivity, isActivityStep, isStepRunning } from './common/activity';
+export type { ActivityItem, ActivityLine, ActivityLabels } from './common/activity';
+export type { MetaToolSlug, MetaToolStatus, MetaToolDescription, MetaToolLabels } from './common/metaTools';
 export type {
     ToolConfig,
     ClientToolConfig,
@@ -101,8 +103,21 @@ export type {
     ToolCallContext,
     ResultPreviewContext,
     ClientToolDefinition,
+    ClientSkillDefinition,
 } from './common/toolConfig';
-export { parseToolOutput } from './api/toolOutput';
+// The host catalogue: how a central-mode run searches and loads this
+// application's tools and skills through the browser. The client answers on
+// its own; these are for a host that draws its own transcript or builds its
+// own client.
+export { HOST_REQUEST_SLUG, isHostRequestSlug, answerHostRequest } from './common/hostCatalogue';
+export type {
+    ClientToolSpec,
+    HostCatalogueTool,
+    HostCatalogueSkill,
+    HostRequest,
+    HostRequestAnswer,
+} from './common/hostCatalogue';
+export { parseToolOutput, settledToolStatus } from './api/toolOutput';
 export { AuthClient } from './api/AuthClient';
 export type { TokenResponse, Session, PersonaQuestion, RegisterPayload, LoginPayload } from './api/AuthClient';
 export {

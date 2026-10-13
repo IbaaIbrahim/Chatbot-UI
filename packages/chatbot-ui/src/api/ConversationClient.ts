@@ -88,6 +88,15 @@ export class ConversationClient {
         return data.conversation;
     }
 
+    /** Give the conversation a title of the user's own; resolves to the updated summary. */
+    async renameConversation(id: string, title: string): Promise<ConversationSummary> {
+        const data = await this._request<{ conversation: ConversationSummary }>(
+            `/v1/user/conversations/${id}`,
+            { method: 'PATCH', body: { title } }
+        );
+        return data.conversation;
+    }
+
     /** The signed-in user's own allowance. Rejects with `status` 404 on a Gateway without the route. */
     async getCredits(): Promise<UserCredits> {
         const data = await this._request<{ credits: UserCredits }>('/v1/user/credits');

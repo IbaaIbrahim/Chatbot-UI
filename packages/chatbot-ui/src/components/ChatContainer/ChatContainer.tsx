@@ -27,6 +27,13 @@ export interface ChatContainerProps {
     /** A flex child of the host's layout rather than a fixed overlay. */
     embedded?: boolean;
     noBackground?: boolean;
+    /**
+     * The floating button's icon, shown while a floating chat is closed. Any React
+     * node: an SVG, an icon component, a font icon or an `<img>`. Defaults to
+     * `config.icons.launcher` (the sparkle), so a host that sets the icon there
+     * for every instance needs nothing here.
+     */
+    launcherIcon?: React.ReactNode;
     /** Replaces the header; `null` removes it. Defaults to `<ChatHeader />`. */
     header?: React.ReactNode;
     /** Replaces the conversation sidebar; `null` removes it. Defaults to `<ConversationSidebar />`. */
@@ -52,6 +59,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     theme = 'system',
     embedded = false,
     noBackground = false,
+    launcherIcon,
     header,
     sidebar,
     footer,
@@ -104,7 +112,9 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                 onClick={actions.open}
                 aria-label={labels.openChat}
             >
-                <div className="cb-launcher-sparkle-icon">{icons.launcher}</div>
+                <div className="cb-launcher-icon cb-launcher-sparkle-icon" aria-hidden="true">
+                    {launcherIcon ?? icons.launcher}
+                </div>
             </button>
         );
     }

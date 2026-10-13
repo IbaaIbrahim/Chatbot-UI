@@ -19,10 +19,12 @@ changes — not on every streamed token.
 - [The conversation sidebar](#the-conversation-sidebar)
 - [What the Gateway must serve](#what-the-gateway-must-serve)
 - [Your own layout](#your-own-layout)
-- [The `agents` prop](#the-agents-prop)
+- [A fixed agent for one screen](#a-fixed-agent-for-one-screen)
+- [Meta-tool steps](#meta-tool-steps)
 - [The `tools` prop](#the-tools-prop)
 - [Theming](#theming)
 - [Developing against a linked host](#developing-against-a-linked-host)
+- [Migrating from 3.x](#migrating-from-3x)
 - [Migrating from 2.x](#migrating-from-2x)
 - [Migrating from 1.x](#migrating-from-1x)
 
@@ -86,7 +88,7 @@ call re-renders on every change unless it is paired with an equality function;
 | `client`, `storageApiUrl`, `accessToken`, `userName` | The session, as the provider was given it. |
 | `config` | The configuration in force, every override layer applied. |
 | `isOpen`, `isSidebarOpen` | Presence. |
-| `hostHandlesOpenChange`, `canSwitchMode`, `canShare`, `canStop` | Whether the provider has `onOpenChange` / `onSwitchMode` / `onShare`, and whether the client can cancel a turn on the server. |
+| `hostHandlesOpenChange`, `canSwitchMode`, `canShare`, `canCopyConversationLink`, `canStop` | Whether the provider has `onOpenChange` / `onSwitchMode` / `onShare` / `conversationLink`, and whether the client can cancel a turn on the server. |
 | `canShowCredits`, `isCreditUsageOpen` | Whether the client can read the user's own allowance, and whether the "Credit usage" dialog is open. |
 | `messages` | The transcript. Changes on every streamed token — read it only where you draw it. |
 | `isThinking`, `isResuming`, `isStopping` | The turn in progress. |
@@ -96,10 +98,10 @@ call re-renders on every change unless it is paired with an equality function;
 | `activeConversationId` | The conversation on screen, or `null` for a new one. |
 | `conversations`, `starredConversations` | Recents (the unstarred ones when starring is supported) and Starred. |
 | `starringSupported` | The Gateway reports `starred_at`, so a star will persist. |
+| `renamingSupported` | The client can rename conversations (`renameConversation`). |
 | `isLoadingConversations`, `isLoadingMore`, `hasMore` | The list's paging. |
 | `search` | `{ query, results, isSearching }` — the active search, if any. |
 | `registeredTools`, `enablableTools`, `enabledToolIds`, `handledToolSlugs` | Tools: the host's handlers, the user-switchable tools and which are on. |
-| `agents`, `agentId`, `agentsLoading` | The agent list and the selection. |
 
 ## Acting: `useChatActions`
 
@@ -122,11 +124,12 @@ closure to capture: every call acts on the current state.
 | `selectConversation(id)` | Loads a conversation; resolves to `false` if it could not. |
 | `deleteConversation(id)` | Rejects when the server refuses, and then removes nothing. |
 | `setConversationStarred(id, starred)` | Moves the conversation between Starred and Recents at once, and back if the server refuses. |
+| `renameConversation(id, title)` | Shows the new title at once, and the old one again if the server refuses. A blank title changes nothing. |
 | `searchConversations(query)` | Searches on the server; an empty query ends the search. |
 | `refreshConversations()`, `loadMoreConversations()` | The list. |
 | `copyConversationId()` | Copies the active conversation's id. |
-| `setAgentId(id \| null)` | Selects an agent (`null` = Auto). Calls `onAgentChange`. |
-| `setEnabledToolIds(ids)` | Switches user-enablable tools on or off. |
+| `copyConversationLink()` | Copies the provider's `conversationLink` for the active conversation; nothing without one. |
+| `setEnabledToolIds(ids)` | Switches user-enablable tools on or off. Saved in `localStorage` (`chatbot-ui:enabled-tools`); ids this screen does not list are kept as they were, so a screen with fewer tools cannot switch off the others. |
 | `focusComposer()` | Focuses the composer, unless the user is already typing somewhere. |
 | `setComposerText(text)` | Replaces the composer's text and focuses it — to prefill a prompt from a page button. |
 
@@ -149,6 +152,7 @@ other handlers.
 | `conversation.created` | — | `newChat` is called. |
 | `conversation.selected` | `{ conversationId }` | A conversation was loaded. |
 | `conversation.starred` | `{ conversationId, starred }` | The server accepted a star or unstar. |
+| `conversation.renamed` | `{ conversationId, title }` | The server accepted a rename. |
 | `conversation.deleted` | `{ conversationId }` | The server accepted a delete. |
 
 Use `useChatState` to render the current value of something, and `useChatEvent` to
@@ -178,15 +182,25 @@ or `useChatEvent('sidebar.opened', …)`. To *replace* the default, control
 | `streamUrl`, `streamHeaders` | — | Builds a plain `StreamClient` when no `client` is given. |
 | `storageApiUrl`, `accessToken` | `''`, `null` | Attachments and authenticated images. |
 | `userName` | `'User'` | Fills `{name}` in the greeting. |
-| `agents`, `agentId`, `agentsLoading`, `onAgentChange` | — | See [The `agents` prop](#the-agents-prop). Omit `agentId` to let the chat keep the selection. |
 | `tools` | — | See [The `tools` prop](#the-tools-prop). |
+| `skills` | — | This app's own skills, loaded on demand. See [Client skills and the host catalogue](#client-skills-and-the-host-catalogue). Memoise it; omit it to leave `client.setSkills` alone, `[]` clears. |
 | `config` | — | See [Configuration](#configuration). Memoise it. |
 | `open`, `defaultOpen`, `onOpenChange` | uncontrolled, `true` | Presence. |
 | `sidebarOpen`, `defaultSidebarOpen`, `onSidebarOpenChange` | uncontrolled, `false` | The conversation sidebar. |
 | `onSwitchMode` | — | Enables the built-in "Switch view" entry (see [Views](#views-the-switch-view-entry)). |
 | `onShare` | — | Enables the header's share button. |
+| `conversationLink` | — | `(conversationId) => url`: the host's URL that opens a conversation. The menu then offers "Copy conversation link" instead of "Copy conversation ID". |
 | `onEvent` | — | Every raw stream event, for hosts that need more than the hooks. |
 | `allowLocalNetworkAccess` | `false` | See [`LOCAL_NETWORK_ACCESS.md`](LOCAL_NETWORK_ACCESS.md). |
+
+**Opening a conversation from a link.** Point the client at it before the
+provider first sees the client — `client.setConversationId(id)` — and the
+provider opens it as it reopens the conversation a tab last had. A conversation
+that will not load (deleted, or someone else's link) is let go of rather than
+kept: the client's conversation is also where the next message goes, so keeping
+it would send that message into a thread the Gateway refuses. Once the chat is
+running, `useChatActions().selectConversation(id)` does the same and resolves to
+`false` when it could not.
 
 ## Placement: `ChatApp` and `ChatContainer`
 
@@ -200,6 +214,7 @@ same conversation can be floating on one screen and fullscreen on another.
 | `theme` | `'system'` | `'system'` | `'light'`, `'dark'`, or `'system'` (follows the OS). |
 | `embedded` | `false` | `false` | A flex child of the host's layout rather than a fixed overlay. |
 | `noBackground` | `false` | `false` | No frame or background, for native embedding. |
+| `launcherIcon` | `config.icons.launcher` | `config.icons.launcher` | The floating button's icon — any React node. See [The floating button's icon](#the-floating-buttons-icon). |
 
 `ChatContainer` also takes slots: `header` (defaults to `<ChatHeader />`, `null`
 removes it), `sidebar` (defaults to `<ConversationSidebar />`, `null` removes it),
@@ -210,6 +225,29 @@ A closed floating chat that is not embedded renders its launcher button, which
 reopens it. In fullscreen on a screen at least 960px wide the sidebar is a column
 beside the transcript; everywhere else it is an overlay that closes on Escape and
 after a pick.
+
+### The floating button's icon
+
+The round button a closed floating chat shows is a sparkle by default. Change it
+on the instance, or for every instance through the configuration:
+
+```tsx
+import { ChatApp } from 'iocloud-chatbot-library';
+import { ReactComponent as AssistantIcon } from './assistant.svg';
+
+// On this instance — any React node: an SVG, an icon component, a font icon, an <img>.
+<ChatApp mode="floating" launcherIcon={<AssistantIcon />} />
+<ChatApp mode="floating" launcherIcon={<img src="/logo.png" alt="" />} />
+
+// For every instance under the provider, or for one screen with useChatOverrides.
+<ChatbotProvider config={{ icons: { launcher: <AssistantIcon /> } }}>…</ChatbotProvider>
+```
+
+`launcherIcon` wins over `config.icons.launcher`, which wins over the default.
+The button stays a 56px circle on `--cb-accent-gradient` with a white
+(`currentColor`) icon: an SVG is drawn at 24px, an `<img>` at 28px, a font icon
+at `font-size: 24px`. Restyle the icon's box through `.cb-launcher-icon`, the
+button through `.cb-launcher-btn`. Its accessible name is `labels.openChat`.
 
 ## Configuration
 
@@ -223,7 +261,7 @@ const config: ChatbotConfig = {
   labels: { newChat: 'Neuer Chat', starred: 'Markiert' },   // every string; see DEFAULT_LABELS
   icons: { sidebarToggle: <MyPanelIcon /> },                // every icon; see DEFAULT_ICONS
   header: { close: false, switchView: false, actions: <MyHeaderButtons />, menuItems: [...] },
-  composer: { mic: true, onVoiceInput: startDictation, agentSwitcher: false },
+  composer: { mic: true, onVoiceInput: startDictation, usageDetails: false },
   sidebar: { items: [{ id: 'artifacts', label: 'Artifacts', icon: <Box />, onSelect: openArtifacts }] },
   greeting: { title: 'Hi {name}, what are we doing today?' },
   suggestions: [...], quickActions: [...], featureCards: [...],
@@ -254,8 +292,8 @@ const config: ChatbotConfig = {
 | `switchView` | `true` | A view other than the one in effect — see [Views](#views-the-switch-view-entry). |
 | `views`, `allowedViews` | — | See [Views](#views-the-switch-view-entry). |
 | `creditUsage` | `true` | The client can read the allowance (`GatewayStreamClient`) — see [Credit usage](#credit-usage). |
-| `copyConversationId` | `true` | A conversation is active. |
-| `deleteConversation` | `false` | A conversation is active, **and** the Gateway serves `DELETE /v1/user/conversations/{id}` — it does not today. |
+| `copyConversationId` | `true` | A conversation is active. Copies the provider's `conversationLink` when it has one ("Copy conversation link"), the id otherwise. |
+| `deleteConversation` | `true` | A conversation is active. Takes two clicks: the first asks, in place. |
 | `close` | `true` | The provider has `onOpenChange`, or the chat is floating and not embedded (its launcher can reopen it). |
 
 ### Views: the "Switch view" entry
@@ -322,20 +360,35 @@ organisation's or the provider's figures, which the Gateway does not send.
 | Key | Default | Shows when |
 | --- | --- | --- |
 | `attachments` | `true` | The attach button; uploading needs `storageApiUrl` and `accessToken`. |
-| `tools` | `true` | The tools menu, when the agent has user-switchable tools. `false` also skips fetching them. |
-| `agentSwitcher` | `true` | There are `agents`. |
-| `bottomSection` | `true` | Where the agent switcher sits: the strip under the input when comfortable, the start of the footer line when compact. `false` removes it from both. |
+| `tools` | `true` | The tools menu, when there are user-switchable tools (those the client's agent allows, when it has one). `false` also skips fetching them. |
 | `density` | `'auto'` | Not a control: how much room the composer takes — see below. |
-| `usage` | `true` | The consumption ring under the composer. |
-| `disclaimer` | `true` | "Uses AI. Verify results." (`labels.disclaimer`). |
+| `usage` | `true` | The consumption indicator under the composer: a ring for the context window, and the conversation's total credits beside it (*until 4.0, the window's percentage, or the latest turn's credits*). |
+| `usageDetails` | `true` | The breakdown card the indicator opens on click. `false` leaves the ring and the total with nothing to open: `config={{ composer: { usageDetails: false } }}`. |
+| `disclaimer` | `true` | "This is AI, and can make mistakes. Very results." (`labels.disclaimer`). |
 | `mic` | `true` | `onVoiceInput` is set — the library records no audio itself. |
 | `onVoiceInput` | — | Called by the mic button. |
 
-**Density.** `'comfortable'` is the roomy box: the text above a row of buttons,
-the agent switcher in a strip underneath. `'compact'` is a single 48px row —
-attach and tools on the left, mic and send on the right, the text between them —
-with the agent switcher moved to the start of the footer line, beside the
-disclaimer and the usage ring. `'auto'`, the default, is comfortable while the
+**The usage card** (`usageDetails`) reads the platform's per-step usage events,
+so every figure is what was metered — the same numbers as the credit ledger.
+What each row means, because two of them are easy to misread:
+
+| Row | What it is |
+| --- | --- |
+| **Context window** | The size of the agent's *last* prompt — everything sent on its latest model call — against the model's input window (`quota.models.max_input_tokens`). This is the figure that grows as a conversation gets longer, and the one the ring draws. **"limit unknown"** and an empty ring mean the model has no window configured: set it in the admin dashboard, or the platform can neither warn about nor automatically compact a long conversation. |
+| Sub-agent · *name* | The same for the sub-agent with the fullest prompt. Its context is its own and ends with its run. |
+| **This turn** | Credits, and tokens in / out / steps, summed over **every charged step** of the turn: each model call of the agent, and each tool that runs a model of its own. So **"in" is not a context size**: every model call re-sends the whole conversation and is counted again, and a tool such as web research adds what *its* model read. 1.1M in can be eight calls of 30–60k each plus one research call that read 600k of web pages. |
+| This agent / Sub-agents (n) | The turn split between the agent the user is talking to and the sub-agents it started; shown only when it started any. |
+| **Whole conversation** | Credits over every turn of the thread. |
+
+Credits are charged per step and **rounded up per step**, a tool's multiplied by its
+weight first: a model call worth 0.2 of a credit costs 1. "Steps" counts charged
+steps only — meta-tool calls, refusals and the sub-agent hand-off are free and not
+counted.
+
+**Density.** `'comfortable'` is the roomy box: the text above a row of buttons.
+`'compact'` is a single 48px row — attach and tools on the left, mic and send on
+the right, the text between them — with the disclaimer and the usage ring on the
+footer line beneath. `'auto'`, the default, is comfortable while the
 conversation is empty, where the composer is the page, and compact once it has
 messages, where the height belongs to the transcript.
 
@@ -367,7 +420,8 @@ it holds the Stop button for the run that asked.
 | `items` | `[]` | Navigation entries under "New chat": `{ id, label, icon?, onSelect, active?, badge? }` — an Artifacts or Tasks page, say. None by default. |
 | `starred` | `true` | The Starred section; shown only while the Gateway reports `starred_at`. |
 | `search` | `true` | The search box. |
-| `deleteConversation` | `false` | A delete button per row; needs the Gateway's `DELETE` route. |
+| `rename` | `true` | "Rename" in a row's menu; needs a client with `renameConversation`. |
+| `deleteConversation` | `true` | "Delete" in a row's menu; two clicks. |
 
 ### Welcome content
 
@@ -422,23 +476,34 @@ Every string the chat shows is a key of `ChatLabels`, with its English default i
 
 The keys, by area: header (`brandTitle`, `openSidebar`, `closeSidebar`, `newChat`,
 `newChatTitle`, `share`, `moreOptions`, `switchView`, `viewFloating`,
-`viewSidebar`, `viewFullscreen`, `creditUsage`, `copyConversationId`, `copiedConversationId`, `deleteThread`,
+`viewSidebar`, `viewFullscreen`, `creditUsage`, `copyConversationId`, `copiedConversationId`,
+`copyConversationLink`, `copiedConversationLink`, `deleteThread`, `confirmDeleteThread`,
 `closeChat`, `openChat`); sidebar (`sidebarTitle`, `collapseSidebar`,
 `searchPlaceholder`, `starred`, `starredEmpty`, `recents`, `searchResults`,
-`noSearchResults`, `star`, `unstar`, `deleteConversation`, `untitledConversation`,
+`noSearchResults`, `star`, `unstar`, `conversationActions`, `renameConversation`,
+`conversationTitle`, `deleteConversation`, `confirmDeleteConversation`, `untitledConversation`,
 `loadMore`, `loading`, `noHistoryTitle`, `noHistoryBody`, `today`, `yesterday`,
 `previous7Days`, `older`); transcript (`scrollToLatest`, `staleClientCall`,
 `greetingTitle`); composer (`composerPlaceholder`, `questionnairePlaceholder`,
 `dropFiles`, `addAttachment`, `attachmentsUnavailable`, `removeAttachment`,
 `uploadingFiles`, `unsupportedFileType`, `fileTooLarge`, `uploadNeedsStorageUrl`,
 `uploadNeedsToken`, `uploadFailed`, `tools`, `voiceInput`, `send`,
-`waitingForUploads`, `stop`, `stopping`, `disclaimer`); agents (`agentAuto`,
-`selectAgent`, `switchAgent`); messages (`copy`, `copied`, `reply`, `edit`,
-`retry`, `continue`, `thinking`, `thoughtBriefly`, `show`, `hide`, `toolCalling`,
-`toolUsed`, `toolRunning`, `toolFailed`, `toolRan`, `openResult`, `openPreview`,
+`waitingForUploads`, `stop`, `stopping`, `disclaimer`); messages
+(`assistantName`, `copy`, `copied`, `reply`, `edit`, `retry`, `continue`,
+`thinking`, `thoughtBriefly`, `show`, `hide`, `toolCalling`, `toolUsed`,
+`toolRunning`, `toolFailed`, `toolRan`, `openResult`, `openPreview`,
 `toolArguments`, `toolResult`, `searchResultsHeading`, `previousVersion`,
 `nextVersion`, `confirm`, `cancel`, `executingTool`, `confirmedExecuting`,
-`cancelled`); attachment viewer (`close`, `closeAttachment`, `attachmentLoadFailed`,
+`cancelled`); meta-tool steps (`metaSearchingTools`, `metaSearchedTools`,
+`metaLoadingTools`, `metaLoadedTools`, `metaSearchingSkills`,
+`metaSearchedSkills`, `metaLoadingSkill`, `metaLoadedSkill`, `metaRefused` —
+see [Meta-tool steps](#meta-tool-steps)); the activity section
+(`activityThoughtOne`/`Other`, `activitySearchedOne`/`Other`,
+`activityLoadedSkillOne`/`Other`, `activityLoadedToolsOne`/`Other`,
+`activityRanOne`, `activityRanRepeated`, `activityRanOther`,
+`activityAgentOne`/`Other`, `activityAgentWorking`, `activityFailed`,
+`activitySeparator` — see [The activity section](#the-activity-section));
+attachment viewer (`close`, `closeAttachment`, `attachmentLoadFailed`,
 `attachmentNoAuth`, `pdfLoadFailed`); questionnaire (`answerPlaceholder`,
 `otherOption`, `customAnswerPlaceholder`, `previousQuestion`, `nextQuestion`,
 `submit`, `submitted`); usage (`usageTitle`, `usageFootnote`, `usageUpdating`, `usageTrigger`,
@@ -461,11 +526,16 @@ Values are plain React nodes — a font icon, an `<img>` or another icon library
 component — and the defaults are drawn with `currentColor`, so they follow the
 theme.
 
-`brand`, `launcher`, `sidebarToggle`, `sidebarCollapse`, `newChat`, `search`,
+`brand`, `launcher` (also the `launcherIcon` prop — see [The floating button's icon](#the-floating-buttons-icon)), `sidebarToggle`, `sidebarCollapse`, `newChat`, `search`,
 `star`, `starFilled`, `sectionCollapsed`, `sectionExpanded`, `promptRow`, `delete`,
-`more`, `share`, `viewFloating`, `viewSidebar`, `viewFullscreen`, `switchView`,
-`check`, `creditUsage`, `copy`, `close`, `attach`, `tools`, `mic`, `send`, `stop`,
+`rename`, `more`, `share`, `viewFloating`, `viewSidebar`, `viewFullscreen`, `switchView`,
+`check`, `creditUsage`, `copy`, `link`, `close`, `attach`, `tools`, `mic`, `send`, `stop`,
 `scrollDown`.
+
+`sidebarToggle` and `sidebarCollapse` are one panel drawn twice, its chevron
+reversed: the header shows the first while the sidebar is closed and the second
+while it is open, and the sidebar's own collapse button shows the second.
+Replace them as a pair.
 
 ## Changing the chat on one screen: `useChatOverrides`
 
@@ -535,10 +605,18 @@ fullscreen column on a wide screen stays open.
   results are narrowed to matching titles on the client instead.
 - **Recents** are grouped Today / Yesterday / Previous 7 days / Older and paged
   20 at a time.
-- **Delete** is off (`sidebar.deleteConversation`, `header.deleteConversation`).
-  The AI-EcoSystem Gateway serves no `DELETE /v1/user/conversations/{id}`, and a
-  delete that cannot succeed must not be offered. When it can succeed, the row
-  is removed only after the server accepts.
+- Each row's **"more" menu** holds Star, Rename and Delete — one button rather
+  than three, which left a title a few characters in a 260px column.
+- **Rename** edits the title in place: Enter or leaving the field saves, Escape
+  cancels. The row shows the new title at once and the old one again if the
+  server refuses. A title the user chose is never overwritten by a generated one.
+- **Titles** are generated by the Gateway from a thread's first turn, after that
+  turn ends, so the list is read again a few seconds after a new thread's first
+  reply (3s and 8s) to pick the title up.
+- **Delete** takes two clicks — the first turns the entry into the question — and
+  the row is removed only after the server accepts. The Gateway hides a deleted
+  conversation and removes nothing (revision 011). *Until 4.0 delete was off by
+  default, because the Gateway served no `DELETE` route.*
 
 ## What the Gateway must serve
 
@@ -547,15 +625,16 @@ token:
 
 | Call | Used for |
 | --- | --- |
-| `POST jobs`, then the job's stream URL, `POST jobs/{id}/stream-token` | Sending a message and streaming the turn; re-minting an expired stream token. |
+| `POST jobs`, then the job's stream URL, `POST jobs/{id}/stream-token` | Sending a message and streaming the turn; re-minting an expired stream token. A job without `agent_id` carries `host_catalogue=true` (and no `client_tools`); one with an agent carries `client_tools`. |
 | `POST jobs/{id}/cancel` | Stop. |
-| `POST tools/jobs/{id}/tool-results`, `tool-approvals` | Answering a client tool call; approving or denying a held one. |
-| `GET agents`, `GET tools/enablable` | The agent switcher and the tools menu. |
+| `POST tools/jobs/{id}/tool-results`, `tool-approvals` | Answering a client tool call or a host request; approving or denying a held call. |
+| `GET tools/enablable` | The tools menu (`?agent_id=` when the client has an agent). |
+| `GET agents` | Only `listAgents()`, for a host that shows agents itself; the chat never calls it. |
 | `GET conversations?limit&offset&q&starred` | Recents, Starred and search. Items carry `starred_at` on a Gateway that supports starring. |
 | `GET conversations/{id}` | Opening a conversation. |
-| `PATCH conversations/{id}` `{ starred }` | Starring. |
+| `PATCH conversations/{id}` `{ starred }` or `{ title }` | Starring and renaming. |
 | `GET credits` | The "Credit usage" dialog: the user's own allowance, this month's charges, and whether a job can start now. |
-| `DELETE conversations/{id}` | Only when `deleteConversation` is enabled; not served by the AI-EcoSystem Gateway today. |
+| `DELETE conversations/{id}` | Deleting (204). |
 
 ## Your own layout
 
@@ -587,39 +666,288 @@ agree. Its ref is a `ComposerHandle`: `focus()`, `setText(text)`,
 reach the mounted composer from anywhere, prefer `useChatActions().focusComposer()`
 and `setComposerText(text)`.
 
-## The `agents` prop
+## A fixed agent for one screen
 
-The agent list renders as a compact selector **under the composer**, not in the
-sidebar. The drawer stays dedicated to conversation history (search on top,
-date-grouped threads), so switching agents never costs a trip through a menu
-that also lists chats.
+The chat offers no agent picker. A message sent without an agent runs the
+platform's **central mode**: the application's central agent starts with four
+meta-tools and loads the tools and skills the turn needs as it goes (see
+[Meta-tool steps](#meta-tool-steps)). A thread already bound to an agent on the
+server — started with one, or handed to one — keeps it either way.
 
-```tsx
-const [agents, setAgents] = useState<AgentSidebarItem[]>([]);
+A screen built around one specialist — Flowdit's "create a template with AI",
+say — binds that agent on its own client:
 
-<ChatApp
-  client={client}
-  agents={agents.map(a => ({
-    ...a,
-    active: a.id === activeAgentId,
-    onClick: () => setActiveAgentId(a.id),
-  }))}
-/>;
+```ts
+const client = new GatewayStreamClient({ gatewayUrl, token, agentId: CHECKLIST_AGENT_ID });
+
+// or, on a client you already have, before the provider first sees it:
+client.setAgentId(CHECKLIST_AGENT_ID);
 ```
 
-Each item's `onClick` is responsible for switching the active agent on the
-client — the library never does it. When `agents` is empty or omitted, the
-selector does not render and the header keeps the plain brand. The selector's
-menu opens upward from the footer composer and downward in the empty fullscreen
-state, where the composer sits mid-screen.
+- **Bind it before the provider first sees the client.** Every job then carries
+  `agent_id` and runs exactly that agent, as before 4.0, with every `tools` entry
+  that has a `definition` sent along as `client_tools` (an agent's run offers its
+  whole tool set, so it needs them up front). The tools menu is listed
+  once, for the agent the client has at that moment
+  (`GET tools/enablable?agent_id=…`); a later `setAgentId` changes what the next
+  job sends, not the list.
+- **Not persisted.** The client parks its conversation in `sessionStorage`
+  (`chatbot-ui.active-session`) so a remount continues the thread, but not the
+  agent. That key is per tab, shared by every client in it, and a restored agent
+  outlived the screen that chose it: the next screen's client picked it up and
+  silently bypassed central mode. Pass the agent each time the screen builds its
+  client. A value 3.x stored is ignored, and the next write removes it.
+- **Without one** no `agent_id` is sent and no definition either: the job carries
+  `host_catalogue=true` and the platform reads the app's tools and skills from the
+  browser when it needs them (see [Client skills and the host
+  catalogue](#client-skills-and-the-host-catalogue)). `setAgentId(null)` returns a
+  client to central mode.
+- `getAgentId()` reads the binding, and `listAgents()` (`GET /v1/user/agents`)
+  remains for a host that shows agents itself.
 
-While the agent list is still loading pass `agentsLoading` (with `agents`)
-rather than an empty array: an empty array renders no selector, but loading
-state disables the composer until the first agent id arrives, so the first
-message cannot go out agentless.
+## Telling the agent about the user: host context
 
-Memoise the list: it lands in the store, and a new array on every render
-re-renders everything that reads it.
+Your app knows things the platform does not — which of *your* permissions the
+user holds, the interface language, the page they are on and the record open on
+it. Give the client a function and it sends the result as `host_context` with
+every message:
+
+```ts
+import ability from './acl'
+
+const client = new GatewayStreamClient({
+    gatewayUrl,
+    hostContext: () => ({
+        'Can create, import and edit checklist templates': ability.can('call', 'CKL_MANAGE_TEMPLATES'),
+        'Interface language': currentLanguage(),
+        'Current page': window.location.pathname,
+        'Open template': openTemplate?.title,   // null/undefined is left out
+    }),
+});
+// or later: client.setHostContext(() => ({ ... }))   — null sends none
+```
+
+The platform shows it at the end of that turn's system prompt as a
+`<host_context>` block, framed as information rather than instructions (platform
+ADR-019), so the agent knows from its first step what not to offer.
+
+- **Computed at each send.** A function runs as the message goes out, so the facts
+  describe that moment; a plain object is sent as is.
+- **Never in the way.** A function that throws, or returns nothing, sends the
+  message without the field.
+- **It grants nothing.** The browser sends it, so the user could change it, and
+  nothing the platform enforces reads it. Enforce permissions in your own API;
+  use this so the agent does not *offer* what would fail.
+- **Small.** At most 30 facts, labels of 64 characters, values of 300, 4 KB in
+  all — the gateway refuses more with a 422. Booleans read as yes/no, lists are
+  joined. Leave heavy page content to an on-demand tool.
+- **Sub-agents** the turn starts are told the same.
+- **Phrase a missing permission as a "cannot".** The platform's header for the block
+  carries one rule: when a fact says the user cannot do something, the agent does
+  not offer or attempt it, even if its own instructions say to, and tells the user
+  it needs that permission. `'Can import checklists': false` (sent as "no") or
+  "User is not allowed to import checklists" both trigger it. The rule only narrows,
+  so a forged fact can never widen what the agent does.
+- **API.** `GatewayStreamClientConfig.hostContext` and `setHostContext(context | provider | null)`;
+  `resolveHostContext()` returns what the next job would carry (after the provider
+  runs and `null`/`undefined` facts are dropped) — handy in a test. Types:
+  `HostContext`, `HostContextValue`, `HostContextProvider`.
+
+## The activity section
+
+The agent's working between two pieces of its answer is drawn as **one
+collapsible row**. A run of consecutive thinking, tool calls and sub-agent runs —
+a central-mode turn is often think, search the skills, load one, think, run a
+tool, think — becomes a section, closed by default:
+
+| | Header |
+| --- | --- |
+| While the run goes on | the newest step in words, with a spinner: `Running List Inspections`, `Searching skills… “inspections list”`, the last line of the thought being written, `Checklist Builder is working…` |
+| Once done | a count of what happened: `Thought 4 times · searched 2 times · loaded a skill · ran List Inspections`, then `· 1 failed` if any step failed |
+| Opened | every step, drawn exactly as on its own (thinking, tool rows with their actions, sub-agent blocks) |
+
+- **What ends a run, and stays in view:** the answer's text, an approval waiting
+  for the user, an error with its button, a notice. Text the agent writes between
+  steps ("Let me check one more thing") splits the working into two sections.
+- **A run of one step** is drawn as that step: a section around one row adds
+  nothing.
+- **Live** means a step in it is running, or it is the turn's newest item while
+  the turn goes on (`isTurnComplete: false`). A thread loaded from history shows
+  every section finished.
+- An action placed on its step (`placement: 'step'`) is inside the section, one
+  click away; `'turn'` and `'turn-end'` actions are hoisted to the turn's row as
+  before, so a result the user must act on is never hidden.
+- The header's words are the `activity*` labels, joined by `activitySeparator`
+  with the first letter capitalised — so write them lower-case. One tool called
+  several times reads `activityRanRepeated` ("ran web_search 3 times"), several
+  tools `activityRanOther` ("ran 4 tools").
+- Restyle through `.cb-activity` (`.is-running`, `.is-finished`, `.has-failed`),
+  `.cb-activity-btn`, `.cb-activity-text`, `.cb-activity-detail` and
+  `.cb-activity-items`.
+- For a renderer of your own: `groupActivity(steps)` returns the items to draw
+  (`single` or `activity`), `summarizeActivity(steps, labels, toolName?)` the
+  finished header, `describeLatestActivity(steps, labels, toolName?)` the live one
+  as `{ text, detail? }`.
+
+## Meta-tool steps
+
+A central-mode run finds and loads what it needs with four tools —
+`search_tools`, `load_tool`, `search_skills`, `load_skill` — and their steps
+render as one line saying what happened, not "Ran Load tools":
+
+| Step | While it runs | Once done |
+| --- | --- | --- |
+| `search_tools` | Searching tools… “query” | Searched tools “query” |
+| `load_tool` | Loading tools… a, b | Loaded tools · Web search, Generate image (1 refused) |
+| `search_skills` | Searching skills… “query” | Searched skills “query” |
+| `load_skill` | Loading skill… audit-planning | Loaded skill · Audit planning |
+
+- They cover this app's own tools and skills as well as the platform's (see
+  [Client skills and the host catalogue](#client-skills-and-the-host-catalogue)).
+  When one has to ask the browser, the question rides on the meta-tool's own step,
+  so it adds no row.
+- "Loaded tools" lists what the platform loaded (`{ loaded, refused }`), named the
+  way every tool row is: the host's `tools[slug].name`, then
+  `DEFAULT_TOOL_NAMES`, then the slug title-cased. "Loaded skill" shows the
+  skill's name, else its slug, else the slug the model asked for
+  (`{ skill: { slug, name, source, uuid? }, tools_loaded, tools_unavailable }`;
+  `source` is `platform` or `host`, and an app's skill has no `uuid`). What a load
+  unloaded past the caps (`evicted`, `evicted_skills`) and a `note` that the app
+  did not answer are in the details, not the row.
+- **The generic row stays** for a failed call, for a load that loaded nothing,
+  and for a meta-tool whose `tools` entry carries its own `name`. The details —
+  arguments and result — expand on every row, meta or not.
+- Inside an [activity section](#the-activity-section) every meta step is its own
+  row, and it counts in the section's header ("searched 2 times · loaded a skill").
+- Restyle them through `.cb-modern-tool-call--meta` (`.cb-modern-tool-meta-text`,
+  `.cb-modern-tool-meta-detail`), or `.cb-tool-invocation--meta` on the legacy
+  `ToolInvocation`. The words are the `meta*` labels:
+  `metaLoadedTools: 'Loaded tools · {names}'`,
+  `metaLoadedSkill: 'Loaded skill · {name}'`, `metaRefused: '{count} refused'`
+  and the running/searched pairs.
+- For a renderer of your own, `describeMetaTool(slug, status, args, result,
+  labels, toolName?)` returns `{ text, detail? }`, or `null` where the generic
+  row belongs; `isMetaTool(slug)` and `META_TOOL_SLUGS` say which steps qualify.
+
+## Client skills and the host catalogue
+
+A chat with no agent (central mode) sends none of this app's tool definitions with
+a message. It sends `host_catalogue=true` instead, which tells the platform that
+the browser answers questions about the app's tools and skills on the
+conversation's stream. The model then finds and loads them with the same four
+meta-tools it uses for the platform's own (platform ADR-018, "Host catalogue and
+conversation-scoped loads"):
+
+- `search_tools` and `search_skills` rank the platform's entries and the app's in
+  one list — the app's by name and description only.
+- `load_tool` loads an app tool by name. `load_skill` loads an app skill (its
+  instructions) or a platform skill, and with either, every app tool whose
+  `definition.skills` names that slug.
+- **Loads belong to the conversation.** A later turn starts with what earlier
+  turns loaded, until the conversation is compacted. At most a few tools and
+  skills are loaded at once (platform configuration: `MAX_LOADED_TOOLS`,
+  `MAX_LOADED_SKILLS`); past a cap the least recently used is unloaded — the load's
+  result names it under `evicted` — and has to be loaded again to be used.
+
+A turn pays only for what it loads, so an app can offer many tools without every
+message carrying all of them.
+
+```tsx
+import type { ClientSkillDefinition } from 'iocloud-chatbot-library';
+
+const SKILLS: ClientSkillDefinition[] = [{
+  slug: 'manage_assets',
+  name: 'Manage assets',
+  description: 'Create, edit and retire the assets of a site. Load before changing one.',
+  instructions: '# Managing assets\n1. List the site\'s assets first…',
+}];
+
+<ChatbotProvider
+  client={client}
+  skills={SKILLS}                        // memoise it, like `tools`
+  tools={{
+    list_assets: {
+      run: ({ site }) => api.listAssets(site),
+      definition: {
+        description: 'List the assets of a site.',
+        input_schema: { type: 'object', properties: { site: { type: 'string' } } },
+        skills: ['manage_assets'],       // load_skill('manage_assets') loads it too
+      },
+    },
+  }}
+>
+```
+
+**A skill** (`ClientSkillDefinition`) is `slug` (`^[a-z0-9][a-z0-9_-]{0,99}$`),
+`name` and `description` (non-empty, at most 1000 characters each) and
+`instructions` (1 to 65 536 characters). The platform checks every answer and
+leaves out an entry outside these bounds rather than failing the turn. It ships
+with the app — a deploy changes it, with no sync step. When a platform skill has
+the same slug, a user's or tenant's own skill wins over the app's, and the app's
+wins over the partner's and the platform's. A tool's `definition.skills` may name
+a platform skill as well as one of these. `client.setSkills(list)` and
+`getSkills()` do the same without the prop.
+
+**How the browser answers.** A request is a `client_tool_call` under the reserved
+slug `__host_request` (`HOST_REQUEST_SLUG`), answered through the same
+`tool-results` POST as any client tool, with one of four operations as its input:
+
+| `tool_input` | Asked for | Answer |
+| --- | --- | --- |
+| `{ op: 'catalogue' }` | a turn's first search | `{ tools: [{ name, description, skills, requires_approval }], skills: [{ slug, name, description }] }` |
+| `{ op: 'definitions', names }` | `load_tool` | `{ tools: [spec…], missing: [name…] }` |
+| `{ op: 'skill', slug }` | `load_skill` | `{ skill: { slug, name, description, instructions } \| null, tools: [spec…] }` — `null` for a platform skill, whose app tools still come back |
+| `{ op: 'all_definitions', shared_only }` | a run that offers its whole tool set — a thread an agent already owns, a sub-agent — once, at its start | `{ tools: [spec…] }`; `shared_only` keeps the `share_with_sub_agents` ones |
+
+A spec is an agent-bound job's `client_tools` entry without `defer_loading`:
+`{ name, description, input_schema, requires_approval, share_with_sub_agents, skills }`.
+
+- **The client answers by itself.** There is nothing to wire. `answerHostRequest(input,
+  tools, skills)` is exported for a host that builds its own client.
+- **From what is registered now.** Each answer reads the `tools` and `skills` held
+  when the request arrives, so tools a page registers come and go with the page.
+- **It never runs a tool**, only describes them.
+- **It cannot be shadowed.** The reserved slug is checked before the `tools` map is
+  read, and the platform refuses it as a client tool's name (as it does the
+  meta-tools' names and `run_sub_agent`).
+- **No row**, live or after a reload: the meta-tool's own row shows the work. The
+  raw frame still reaches `onEvent`.
+- **When it cannot answer**, it posts `{ error }` instead: for an unknown operation,
+  a malformed input, or an answer over the Gateway's 2 MB tool-result cap. The size
+  is measured before sending, because the Gateway refuses a body that large
+  without reading it, and the browser may see only a reset connection. The
+  platform then goes on at once with its own half and tells the model the app did
+  not answer. No answer within the platform's timeout (`HOST_REQUEST_TIMEOUT_S`,
+  15 s by default) has the same effect. After a catalogue request goes
+  unanswered, that job does not ask for the catalogue again.
+- **While the user is in another conversation.** Switching away, or starting a new
+  chat, stops showing a turn but does not stop the run, which may still search and
+  load. A turn sent with `host_catalogue` keeps a *parked reader* on a connection
+  of its own, which answers that turn's host requests and nothing else. It adds no
+  row, opens no preview and runs no client tool. Those wait until the user comes
+  back and the turn is replayed, as before. At most three parked readers are kept;
+  when a fourth starts, the longest-parked one stops. A parked reader also stops at
+  the turn's end, or once its stream token is 30 minutes old. A turn left running
+  in another conversation when the page reloads gets no answers until that
+  conversation is opened again.
+- **On a replayed read** (after a reload, or on coming back to a conversation), a
+  request is held for a second in case its answer is further down the replay.
+  - A meta-tool's request is dropped when the meta-tool's result turns up.
+  - A run's start-up fetch (`all_definitions`) has no result frame, so after a
+    reload it is answered again. The Gateway refuses the duplicate with a harmless
+    `409`.
+  - A held client tool call waits for the whole replay to go quiet; a host request
+    does not. Other jobs streaming in the same turn could put that quiet off past
+    the platform's timeout.
+
+  Another device has nothing to answer: the platform times the request out.
+
+**A tool that is no longer there.** A tool loaded in an earlier turn stays loaded,
+but the page that registered it may be gone when the model calls it. A
+`client_tool_call` for a slug with no `run` here is answered
+`{ error: "No handler for '<slug>' is registered in this application right now." }`,
+so the model can say so — not, as before, a `{ status: 'previewed' }` success for a
+call that never ran.
 
 ## The `tools` prop
 
@@ -647,7 +975,8 @@ presents an action.
       ),
     },
 
-    // app-supplied — no backend row; the schema rides with each job
+    // app-supplied — no backend row; the platform loads the schema from the
+    // browser when the model needs the tool (sent with each job if agent-bound)
     query_customer_api: {
       run: ({ resource }) => fetchFromMyApi(resource),
       definition: {
@@ -681,7 +1010,12 @@ would simply never fire, and before these were one type that mistake compiled.
 
 A `run` may return a Promise that resolves once the user has acted — that is how an
 interactive tool works, and the job stays suspended until it settles. Returning
-nothing acks the call with a `{ status: 'previewed' }` placeholder.
+nothing acks the call with a `{ status: 'previewed' }` placeholder. A `run` that
+throws or rejects is answered
+`{ error: "'<slug>' failed in this application: <message>" }`, with the message cut
+to 500 characters, so the model learns that the call failed. A call for a
+slug with no `run` registered is answered with an error (see [A tool that is no
+longer there](#client-skills-and-the-host-catalogue)).
 
 ### Fields
 
@@ -689,12 +1023,21 @@ nothing acks the call with a `{ status: 'previewed' }` placeholder.
 | --- | --- | --- | --- |
 | `run` | client tools | — | Executes the call. `(input, context) => result` |
 | `preview` | server tools | — | Receives the output. `(output, context) => void` |
-| `definition` | client tools | — | `{ description, input_schema, requires_approval? }`, advertised as a `client_tools` entry on each job. Omit for a backend-registered tool |
+| `definition` | client tools | — | `{ description, input_schema, requires_approval?, share_with_sub_agents?, skills? }`. In central mode the platform reads it from the browser when the model searches for or loads the tool ([host catalogue](#client-skills-and-the-host-catalogue)); with an agent bound it is sent as a `client_tools` entry on each job. Omit for a backend-registered tool. `share_with_sub_agents: true` lets a delegated sub-agent call it too — share a tool a worker needs to check its own result (a validator), not one that shows the user something; a handoff sub-agent receives every tool regardless. `skills` names the skills (the app's or the platform's) whose `load_skill` loads it. `defer_loading` is deprecated and does nothing: every app tool now loads on demand |
 | `autoRun` | server tools | `true` | `false` makes the preview click-only |
 | `show` | both | `true` | `false` offers no action control |
 | `label` | both | `labels.openPreview` / `labels.openResult` | Button text. Ignored when `render` is given |
 | `render` | both | — | Your own control instead of the built-in button. It gets `{ onAction, payload, result, toolName, label }`: `payload` is what `onAction` passes, `result` the call's parsed result once there is one — so a control for an action that already happened can offer its outcome (open the checklist an import saved) instead of running it again |
 | `placement` | both | `'step'` | `'turn'` hoists the control out of a collapsed sub-agent block; `'turn-end'` also waits for the turn to finish |
+
+**Every call is shown.** A tool called several times in one turn — a retry, a
+fix pass, a second sub-agent run — renders every call, each with its own action
+bound to its own `step_uuid`, and the turn-level row offers one control per
+completed result. (Until 4.0, `showLastOnly` — on by default for one slug — hid
+all but the last call and, with it, whole sub-agent runs.) A call reported as
+completed whose result is an object with a set top-level `error` is drawn as
+**failed** and offers no action: it is not a result. `settledToolStatus(status,
+output)` is that rule, exported for a host that draws its own rows.
 
 `placement` governs the *button*. To stop a preview opening itself the moment the
 result lands, pair it with `autoRun: false` — including on a reload, where the
@@ -778,6 +1121,54 @@ Publishing: bump `version` in `package.json`, then `npm run release:chatbot` fro
 `frontend/` (build and publish). Bump the host's dependency only after the publish;
 before it, `yarn install` in the host fails to resolve the version.
 
+## Migrating from 3.x
+
+4.0 removes the agent picker: the server picks the agent (central mode) unless
+a screen binds one on its client. 3.1.0 was never published; its changes ship
+in 4.0.
+
+| 3.x | 4.0 |
+| --- | --- |
+| `agents` and `agentsLoading` on `ChatbotProvider` / `ChatApp` | none — the server picks |
+| `agentId` (controlled selection) and `onAgentChange` | none — the server picks. A screen that must use one agent: `new GatewayStreamClient({ agentId })` or `client.setAgentId(id)` before the provider first sees the client — see [A fixed agent for one screen](#a-fixed-agent-for-one-screen) |
+| `useChatActions().setAgentId(id)` | `client.setAgentId(id)`; it changes the jobs sent after it, not the tools menu |
+| `useChatState(s => s.agents)`, `s.agentId`, `s.agentsLoading` | none; `client.getAgentId()` reads the binding |
+| `AgentSwitcher`, `AgentSidebar` and their types (`AgentSwitcherProps`, `AgentSidebarProps`, `AgentSidebarItem`) | none — the server picks; a host that still lists agents builds its own from `client.listAgents()` |
+| `config.composer.agentSwitcher`, `config.composer.bottomSection` | none: nothing else sat in that strip or slot |
+| `labels.agentAuto`, `selectAgent`, `switchAgent` | none |
+| The hard-coded "Assistant" over a live reply | `labels.assistantName` |
+| `agentsLoading` holding the send button and turning a welcome prompt into composer text | none — nothing to wait for; prompts always send |
+| The agent restored from `sessionStorage` (`chatbot-ui.active-session`) | none — not persisted; bind it on each screen's client. A stored value is ignored and removed on the next write |
+| Tool switches stored per agent (`chatbot-ui:enabled-tools:<agent>` / `…:__agentless__`) | one key, `chatbot-ui:enabled-tools`; the agentless selection is read once and carried over |
+| `.cb-composer-bottom-row`, `.cb-composer-footer-agent`, `.cb-agent-switcher-*`, `.cb-agent-sidebar-*` | removed with the markup |
+| Meta-tool steps drawn as "Ran Search tools", "Ran Load skill" | compact rows — see [Meta-tool steps](#meta-tool-steps); new labels `meta*`, new exports `describeMetaTool`, `isMetaTool`, `META_TOOL_SLUGS` |
+| Consecutive tool calls folded into "Ran N commands" (`.cb-modern-tool-group`, `.cb-modern-group-*`), thinking and meta-tool steps each on a row of their own | one [activity section](#the-activity-section) per run of thinking, tool calls and sub-agents (`.cb-activity*`); new labels `activity*`, new exports `groupActivity`, `summarizeActivity`, `describeLatestActivity` |
+| `showLastOnly` on a tool entry (and its default for `generate_checklist`) | none — every call is shown, each action on its own step; drop the key. A completed call whose result has a top-level `error` is drawn as failed (`settledToolStatus`) |
+| Every `definition` sent as `client_tools` with every job | only when the client is bound to an agent. A central-mode job sends `host_catalogue=true` and the browser answers the platform's host requests — see [Client skills and the host catalogue](#client-skills-and-the-host-catalogue). Needs a platform that supports the host catalogue: an older Gateway ignores the flag, and its central-mode runs would see none of the app's tools |
+| A `client_tool_call` for a slug with no `run` acked `{ status: 'previewed' }` | answered `{ error: "No handler for '<slug>' is registered in this application right now." }` |
+| A `run` that threw or rejected acked `{ status: 'previewed' }` | answered `{ error: "'<slug>' failed in this application: <message>" }`, with the message cut to 500 characters |
+| Leaving a conversation (switching, or "New chat") stopped reading its turn | still nothing is shown, previewed or run there, but a turn sent with `host_catalogue` keeps one extra connection open, at most three in all, to answer its host requests — see [Client skills and the host catalogue](#client-skills-and-the-host-catalogue) |
+
+`GatewayStreamClient` keeps `agentId`, `setAgentId`, `getAgentId`,
+`listAgents()` and `ChatAgent`.
+
+New in 4.0, additive: `hostContext` / `setHostContext` (see [Telling the agent
+about the user](#telling-the-agent-about-the-user-host-context));
+`share_with_sub_agents` and `skills` on a client tool's `definition`; the
+provider's `skills` prop, `ClientSkillDefinition`, `client.setSkills` /
+`getSkills`, and for a host with its own client or transcript `HOST_REQUEST_SLUG`,
+`isHostRequestSlug`, `answerHostRequest` and their types (`ClientToolSpec`,
+`HostRequest`, `HostRequestAnswer`, `HostCatalogueTool`, `HostCatalogueSkill`).
+`defer_loading` on a `definition` is deprecated: with the host catalogue every app
+tool loads on demand.
+
+Fixed in 4.0:
+
+- **Legacy tool rows.** `MessageBubble`'s `toolInvocation` path handed
+  `ToolInvocation` the display name instead of the slug, so a web search there
+  never got its results view. It passes the slug now, which is also how a
+  meta-tool is recognised.
+
 ## Migrating from 2.x
 
 | 2.x | 3.0 |
@@ -787,14 +1178,13 @@ before it, `yarn install` in the host fails to resolve the version.
 | `isOpen`, `onOpen`, `onClose` | `open`, `defaultOpen`, `onOpenChange` |
 | `ChatContainer` `isDrawerOpen` / `onDrawerOpenChange` | provider `sidebarOpen` / `defaultSidebarOpen` / `onSidebarOpenChange` |
 | `headerActions`, `brand` | `config.header.actions`, `config.header.brand` |
-| `showAgentSwitcher` / `show_agent_switcher`, `showBottomSection` / `show_bottom_section` | `config.composer.agentSwitcher`, `config.composer.bottomSection` |
 | `show_tool_toggles` | `config.composer.tools` |
 | `onManageMemory`, `onViewUsage` | `config.header.menuItems` |
 | "Switch view" (cycled to the next mode) | one "Switch view" entry that lists the views in place; `config.header.views` / `allowedViews`; `labels.switchView`, `viewFloating` / `viewSidebar` / `viewFullscreen`, `icons.switchView`, `viewFloating` / `viewSidebar` / `viewFullscreen` |
 | `ChatbotUIConfig` | `ChatbotConfig`; the old name is a deprecated alias |
 | `contextSelector`, `onContextChange` | removed; nothing read them |
 | Built-in welcome prompts, cards and privacy badges | none by default; pass them in `config` |
-| `Composer` data props (`onSend`, `tools`, `agents`, `usage`, …) and `isRunning` | read from the provider; `disabled` and `placeholder` remain |
+| `Composer` data props (`onSend`, `tools`, `usage`, …) and `isRunning` | read from the provider; `disabled` and `placeholder` remain |
 | `MainChat` / `ConversationSidebar` / `ChatHeader` data props | read from the provider |
 | `<div class="cb-chat-container cb-open">` around a standalone widget | `<ChatRoot>` |
 | `apiBaseUrl` | `storageApiUrl` |

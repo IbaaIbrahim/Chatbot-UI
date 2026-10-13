@@ -194,27 +194,87 @@
     margin: 1em 0;
 }
 
+/*
+ * Tables: as wide as their content, scrolled inside the bubble when that is
+ * wider than the chat — never squeezed to fit it.
+ *
+ * `width: 100%` on a table in a 400px side panel, with the bubble's
+ * `word-break: break-word`, let the browser break inside every word to make
+ * eight columns fit, and the columns collapsed to one character a line.
+ * `display: block` with `max-content` is GitHub's approach: a small table
+ * stays compact, a wide one scrolls on its own and the transcript does not.
+ * Borders and the header come from the theme's tokens; the white-alpha values
+ * they had were invisible in the light theme.
+ */
 .cb-markdown-content table {
-    border-collapse: collapse;
-    width: 100%;
+    display: block;
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
+    border-collapse: separate;
+    border-spacing: 0;
     margin: 0 0 0.75em;
     font-size: 0.9em;
+    border: 1px solid var(--cb-border-medium);
+    border-radius: 6px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
 }
 
 .cb-markdown-content th,
 .cb-markdown-content td {
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    padding: 0.4em 0.75em;
+    border-bottom: 1px solid var(--cb-border-subtle);
+    border-inline-end: 1px solid var(--cb-border-subtle);
+    padding: 0.45em 0.75em;
     text-align: start;
+    vertical-align: top;
+    /* Whole words only: a column is at least as wide as its longest word, and
+       only a single over-long token (a URL, an id) wraps mid-word. */
+    word-break: normal;
+    overflow-wrap: break-word;
+}
+
+.cb-markdown-content td {
+    min-width: 6ch;
+    /* Long text wraps inside a readable width instead of stretching one
+       column across the screen. */
+    max-width: 36ch;
 }
 
 .cb-markdown-content th {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--cb-bg-tertiary);
+    color: var(--cb-text-primary);
     font-weight: 600;
+    white-space: nowrap;
 }
 
-.cb-markdown-content tr:nth-child(even) {
-    background: rgba(255, 255, 255, 0.02);
+.cb-markdown-content tr > :last-child {
+    border-inline-end: none;
+}
+
+.cb-markdown-content tbody tr:last-child > * {
+    border-bottom: none;
+}
+
+.cb-markdown-content tbody tr:nth-child(even) {
+    background: var(--cb-surface-sunken);
+}
+
+/* The first column stays in view while the rest scrolls, so a row keeps its
+   label. Opaque, or scrolled cells would show through it. */
+.cb-markdown-content th:first-child,
+.cb-markdown-content td:first-child {
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: 1;
+}
+
+.cb-markdown-content td:first-child {
+    background: var(--cb-bg-primary);
+}
+
+.cb-markdown-content tbody tr:nth-child(even) > td:first-child {
+    background: linear-gradient(var(--cb-surface-sunken), var(--cb-surface-sunken)), var(--cb-bg-primary);
 }
 
 /* === Attachment List (row of chips above message) === */
@@ -1270,6 +1330,39 @@
     border-radius: 4px;
 }
 
+/* A meta-tool step (central mode's searches and loads; see
+   common/metaTools.ts) is one line of plain text — "Loaded skill · Audit
+   planning" — rather than a verb and a code chip: it says what the run
+   reached for, not a command it ran. The text may be long (several tool
+   names), so it may shrink and ends in an ellipsis instead of pushing the
+   chevron off a narrow panel; the full text is in the details. */
+.cb-modern-tool-call--meta .cb-modern-tool-btn {
+    max-width: 100%;
+    min-width: 0;
+}
+
+.cb-modern-tool-call--meta .cb-modern-tool-label {
+    min-width: 0;
+}
+
+.cb-modern-tool-meta-text {
+    color: var(--cb-text-secondary);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.cb-modern-tool-meta-detail {
+    color: var(--cb-text-tertiary);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
 .cb-modern-tool-action {
     flex-shrink: 0;
 }
@@ -1286,52 +1379,75 @@
 }
 
 /* Group of 2+ commands: "Ran N commands ›" */
-.cb-modern-tool-group {
-    margin: 4px 0;
+/* The activity section: a run of thinking, tool calls and sub-agents as one
+   row (common/activity.ts). "Thought 4 times · ran List Inspections ›" once
+   done; the newest step, with a spinner, while it runs. */
+.cb-activity {
+    margin: 3px 0;
     display: flex;
     flex-direction: column;
     width: 100%;
 }
 
-:root .cb-modern-group-btn {
+:root .cb-activity-btn {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 4px 10px;
-    border-radius: var(--cb-radius-full, 9999px);
-    background: var(--cb-bg-secondary);
-    border: 1px solid var(--cb-border-subtle);
+    gap: 6px;
+    max-width: 100%;
+    padding: 2px 6px;
+    border-radius: var(--cb-radius-sm, 4px);
+    background: transparent;
+    border: none;
     color: var(--cb-text-secondary);
     font-size: 12px;
-    font-weight: 500;
     cursor: pointer;
-    text-align: left;
-    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+    text-align: start;
+    transition: color 0.15s, background-color 0.15s;
     width: fit-content;
     user-select: none;
 }
 
-.cb-modern-group-btn:hover {
-    background-color: var(--cb-bg-tertiary);
+.cb-activity-btn:hover {
     color: var(--cb-text-primary);
-    border-color: var(--cb-border-medium);
+    background: var(--cb-bg-secondary);
 }
 
-.cb-modern-group-icon {
+.cb-activity-icon {
     display: flex;
     align-items: center;
-    color: var(--cb-text-secondary);
+    flex-shrink: 0;
+    color: var(--cb-text-tertiary);
 }
 
-.cb-modern-group-label {
-    font-size: 12px;
+.cb-activity-label {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
 }
 
-.cb-modern-group-items {
+.cb-activity-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cb-activity.is-running .cb-activity-text {
+    font-style: italic;
+}
+
+.cb-activity-detail {
+    color: var(--cb-text-tertiary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cb-activity-items {
     margin-top: 4px;
-    margin-left: 10px;
-    padding-left: 10px;
-    border-left: 2px solid var(--cb-border-subtle);
+    margin-inline-start: 10px;
+    padding-inline-start: 10px;
+    border-inline-start: 2px solid var(--cb-border-subtle);
     display: flex;
     flex-direction: column;
     gap: 2px;

@@ -47,7 +47,12 @@ export default defineConfig(({ mode }) => {
         plugins: [
             react(),
             cssInjectedByJsPlugin(),
-            dts({ insertTypesEntry: true })
+            // The tests are in `src` for tsc's sake, not part of the package:
+            // without this every suite lands in `dist` as a declaration file.
+            dts({
+                insertTypesEntry: true,
+                exclude: ['node_modules/**', 'src/**/*.test.ts', 'src/**/*.test.tsx'],
+            })
         ]
     };
 });

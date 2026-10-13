@@ -5,7 +5,6 @@ import { netFetch } from '../../common/localNetwork';
 import { formatLabel } from '../../common/labels';
 import { ToolToggles, hasRunnableTools } from '../ToolToggles/ToolToggles';
 import { UsageIndicator } from '../UsageIndicator/UsageIndicator';
-import { AgentSwitcher } from '../AgentSwitcher/AgentSwitcher';
 import {
     resolveStorageUploadUrl,
     parseUploadedFileResponse,
@@ -25,8 +24,8 @@ export interface ComposerHandle {
 
 /**
  * Per-instance overrides only. Everything shared — whether a turn is running,
- * the tools, the agents, which controls exist — comes from the provider, so two
- * composers on one page agree about all of it.
+ * the tools, which controls exist — comes from the provider, so two composers
+ * on one page agree about all of it.
  */
 export interface ComposerProps {
     /** Overrides the chat's own busy state, for a host with work of its own in flight. */
@@ -71,7 +70,8 @@ const getFileIcon = (contentType?: string | null): string => {
  */
 const ComposerUsage: React.FC = () => {
     const usage = useChatState(s => s.usageSummary);
-    return usage ? <UsageIndicator summary={usage} /> : null;
+    const details = useChatState(s => s.config.composer.usageDetails);
+    return usage ? <UsageIndicator summary={usage} details={details} /> : null;
 };
 
 export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
@@ -91,8 +91,6 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     const canStop = useChatState(s => s.canStop);
     const hasPendingQuestions = useChatState(s => s.pendingQuestions !== null);
     const composerConfig = useChatState(s => s.config.composer);
-    const agents = useChatState(s => s.agents);
-    const agentId = useChatState(s => s.agentId);
     const hasMessages = useChatState(s => s.messages.length > 0);
     const actions = useChatActions();
     const { registerComposer } = useChatRuntime();
@@ -370,21 +368,8 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
         }
     }, [composerConfig.attachments, handleFileSelect]);
 
-    const showAgentSwitcher = composerConfig.agentSwitcher && composerConfig.bottomSection && agents.length > 0;
-    const agentSwitcher = showAgentSwitcher ? (
-        <AgentSwitcher
-            agents={agents}
-            activeAgentId={agentId}
-            onSelectAuto={() => actions.setAgentId(null)}
-            onSelectAgent={id => actions.setAgentId(id)}
-            menuPlacement={compact || toolMenuPlacement !== 'center' ? 'above' : 'below'}
-            menuAlign={compact ? 'left' : 'right'}
-        />
-    ) : null;
-
     const showMic = composerConfig.mic && Boolean(composerConfig.onVoiceInput);
-    const footerAgentSwitcher = compact ? agentSwitcher : null;
-    const showFooter = composerConfig.disclaimer || composerConfig.usage || Boolean(footerAgentSwitcher);
+    const showFooter = composerConfig.disclaimer || composerConfig.usage;
     const hasNotices = hasFiles || isUploading || Boolean(uploadError);
 
     const composerClasses = [
@@ -583,18 +568,10 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                         </div>
                     </div>
                 </div>
-
-                {!compact && agentSwitcher && (
-                    <div className="cb-composer-bottom-row">
-                        <div className="cb-composer-bottom-left" />
-                        <div className="cb-composer-bottom-right">{agentSwitcher}</div>
-                    </div>
-                )}
             </div>
 
             {showFooter && (
                 <div className="cb-composer-footer">
-                    {footerAgentSwitcher && <div className="cb-composer-footer-agent">{footerAgentSwitcher}</div>}
                     {composerConfig.disclaimer && <span className="cb-composer-footer-note">{labels.disclaimer}</span>}
                     {composerConfig.usage && <ComposerUsage />}
                 </div>

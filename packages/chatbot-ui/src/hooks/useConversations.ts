@@ -16,6 +16,8 @@ import {
 import { MessageProps, MessageStep } from '../components/MessageBubble/MessageBubble';
 import { describeApprovalRequest } from './useStreamChat';
 import { resolveToolDisplayName } from '../common/toolConfig';
+import { isHostRequestSlug } from '../common/hostCatalogue';
+import { settledToolStatus } from '../api/toolOutput';
 import type { ConversationSearch } from '../store/types';
 
 function extractTextFromContentBlocks(responsePayload: any): string {
@@ -93,6 +95,12 @@ function mapSteps(steps: ConversationStep[], subAgentJobs: ConversationJob[] = [
                             : 'failed',
             });
         } else if (step.step_type === 'tool_call') {
+            // A host request is the platform asking this browser about its
+            // tools, not a tool call: live it draws no row (its meta-tool's
+            // ``tool_request`` does), so a reload must not draw one either.
+            // The platform records none as its own step today; this keeps a
+            // transcript honest if one ever is.
+            if (isHostRequestSlug(step.tool_slug)) continue;
             messageSteps.push({
                 id: step.uuid,
                 type: 'tool-call',
@@ -104,13 +112,10 @@ function mapSteps(steps: ConversationStep[], subAgentJobs: ConversationJob[] = [
                 // completed/failed split was survivable only while the history
                 // read hid unfinished jobs: now that a live turn is returned,
                 // collapsing 'running' into 'failed' would draw every tool call
-                // in flight as a red error on reload.
-                toolStatus:
-                    step.status === 'completed'
-                        ? 'completed'
-                        : step.status === 'running'
-                            ? 'running'
-                            : 'failed',
+                // in flight as a red error on reload. A completed call whose
+                // body is an error is a failure too (settledToolStatus), as the
+                // live stream shows it.
+                toolStatus: settledToolStatus(step.status, step.tool_output),
             });
         } else if (step.step_type === 'llm_call' || step.step_type === 'final_synthesis') {
             // Thinking first, in the order it streamed: the model deliberates,
@@ -353,6 +358,9 @@ export function jobsToMessageProps(
             role: 'assistant',
             content: finalText,
             steps,
+            // The agent that ran this job, when the history names one. No
+            // stream event names the agent, so a live turn has no sender and
+            // shows `labels.assistantName` until the thread is reloaded.
             senderName: job.agent?.name,
             usage,
             context,
@@ -416,10 +424,16 @@ export function findPendingClientToolCalls(
     const found: PendingClientToolCall[] = [];
     for (const job of jobs) {
         for (const step of job.steps) {
+            // ``client`` only: a meta-tool waiting on a host request is a
+            // ``harness`` step, and a run's start-up fetch has no step at all —
+            // neither is a call the transcript could answer, and the platform
+            // times both out by itself. The slug check guards the same rule
+            // should a host request ever be recorded under the client mode.
             if (
                 step.step_type === 'tool_call'
                 && step.dispatch_mode === 'client'
                 && step.status === 'running'
+                && !isHostRequestSlug(step.tool_slug)
             ) {
                 found.push({
                     jobUuid: job.uuid,
@@ -450,6 +464,7 @@ interface ConversationListClient {
     getConversationDetail: (id: string) => Promise<ConversationDetail>;
     setConversationId: (id: string | null) => void;
     setConversationStarred?: (id: string, starred: boolean) => Promise<ConversationSummary>;
+    renameConversation?: (id: string, title: string) => Promise<ConversationSummary>;
     deleteConversation?: (id: string) => Promise<void>;
 }
 
@@ -492,6 +507,8 @@ export interface UseConversationsResult {
     conversations: ConversationSummary[];
     starredConversations: ConversationSummary[];
     starringSupported: boolean;
+    /** The client can rename, so a title the user types will persist. */
+    renamingSupported: boolean;
     isLoading: boolean;
     isLoadingMore: boolean;
     hasMore: boolean;
@@ -516,6 +533,12 @@ export interface UseConversationsResult {
     deleteConversation: (id: string) => Promise<void>;
     /** Moves the thread between Starred and Recents at once, and back if the server refuses. */
     setStarred: (id: string, starred: boolean) => Promise<void>;
+    /**
+     * Shows the new title at once, then the one the server stored, and the old
+     * one again if it refuses. A blank title, or the one it already has,
+     * changes nothing.
+     */
+    renameConversation: (id: string, title: string) => Promise<void>;
     /** Searches titles on the server; an empty query ends the search. */
     searchConversations: (query: string) => void;
 }
@@ -540,6 +563,7 @@ export function useConversations(
     const listClient = canListConversations(client) ? client : null;
     const clientCanStar = typeof listClient?.setConversationStarred === 'function';
     const starringSupported = clientCanStar && starringDetected !== false;
+    const renamingSupported = typeof listClient?.renameConversation === 'function';
     const hasMore = conversations.length < total;
 
     const fetchConversations = useCallback(async () => {
@@ -657,6 +681,32 @@ export function useConversations(
         }
     }, [listClient, findSummary, placeConversation]);
 
+    /** Give a thread a new title everywhere it is shown, leaving it where it is. */
+    const retitle = useCallback((id: string, title: string) => {
+        const apply = (list: ConversationSummary[]) =>
+            list.map(c => (c.uuid === id ? { ...c, title } : c));
+        setConversations(apply);
+        setStarredConversations(apply);
+        setSearch(prev => ({ ...prev, results: apply(prev.results) }));
+    }, []);
+
+    const renameConversation = useCallback(async (id: string, title: string) => {
+        if (!listClient?.renameConversation) {
+            throw new Error('This client cannot rename conversations.');
+        }
+        const next = title.trim();
+        const current = findSummary(id);
+        if (!next || current?.title === next) return;
+        retitle(id, next);
+        try {
+            const updated = await listClient.renameConversation(id, next);
+            retitle(id, updated.title);
+        } catch (e) {
+            if (current) retitle(id, current.title);
+            throw e;
+        }
+    }, [listClient, findSummary, retitle]);
+
     const deleteConversation = useCallback(async (id: string) => {
         if (!listClient?.deleteConversation) {
             throw new Error('This client cannot delete conversations.');
@@ -703,6 +753,7 @@ export function useConversations(
         conversations,
         starredConversations,
         starringSupported,
+        renamingSupported,
         isLoading,
         isLoadingMore,
         hasMore,
@@ -714,6 +765,7 @@ export function useConversations(
         newChat,
         deleteConversation,
         setStarred,
+        renameConversation,
         searchConversations,
     };
 }

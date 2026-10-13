@@ -25,3 +25,28 @@ export function parseToolOutput(output: any): any {
         return output;
     }
 }
+
+/**
+ * The status a tool step is shown with: its reported one, unless the output says
+ * otherwise.
+ *
+ * A worker can report a failure as a *completed* call whose body is
+ * `{ "error": ... }` — a checklist generator hitting its token limit did, six
+ * times in one run. Drawn as completed, each looked like a result, and its
+ * action (open, preview, import) acted on an error body. So a completed call
+ * whose parsed output is an object with a set top-level `error` is shown as
+ * failed and offers no action. The platform names the same calls failures when it
+ * tells a parent agent which step holds a sub-agent's result.
+ */
+export function settledToolStatus(
+    status: string | undefined | null,
+    output: any,
+): 'running' | 'completed' | 'failed' {
+    if (status === 'running') return 'running';
+    if (status !== 'completed') return 'failed';
+    const parsed = parseToolOutput(output);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.error) {
+        return 'failed';
+    }
+    return 'completed';
+}

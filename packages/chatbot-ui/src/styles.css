@@ -115,6 +115,11 @@
      icon is not square, came out 28x32 — three different boxes in one row once
      a host contributed its own. */
   --cb-control-sm: 28px;
+  /* One height for the chat's header and the sidebar's, which sit side by side
+     in fullscreen: sized separately (60px against the sidebar's padding) their
+     bottom borders missed each other by several pixels and read as two bars.
+     48px is the control above plus 10px of air on each side. */
+  --cb-header-height: 48px;
 
   --cb-radius-sm: 6px !important;
   --cb-radius-md: 8px !important;
@@ -300,9 +305,7 @@
    gesture to the host page, which then scrolls behind the chat. */
 .cb-scroll-view,
 .cb-drawer-content,
-.cb-agent-sidebar-scroll,
 .cb-tools-menu,
-.cb-agent-switcher-menu,
 .cb-questionnaire {
   overscroll-behavior: contain;
 }

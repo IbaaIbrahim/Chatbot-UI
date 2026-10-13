@@ -5,7 +5,9 @@ import './MessageBubble.css';
 import { parseToolOutput } from '../../api/toolOutput';
 import { netFetch } from '../../common/localNetwork';
 import { ToolInvocation, ToolActionControl } from '../ToolInvocation/ToolInvocation';
-import { resolveToolDisplayName, type ToolActionPlacement, type ToolConfig, type ToolPresentation } from '../../common/toolConfig';
+import { hasHostDisplayName, resolveToolDisplayName, type ToolActionPlacement, type ToolConfig, type ToolPresentation } from '../../common/toolConfig';
+import { describeMetaTool, isMetaTool } from '../../common/metaTools';
+import { describeLatestActivity, groupActivity, isStepRunning, summarizeActivity, type ActivityLine } from '../../common/activity';
 import { ConfirmButtons, ConfirmStatus } from '../ConfirmButtons/ConfirmButtons';
 import type { ContextFigures, RunUsage, TreeFigures, UsageFigures } from '../../api/types';
 import { AuthenticatedImage } from '../AuthenticatedImage/AuthenticatedImage';
@@ -104,9 +106,9 @@ export interface MessageProps {
      */
     embedded?: boolean;
     /**
-     * Who produced this message. Defaults to "Assistant". A conversation can
-     * change hands (a handoff), so the label is per message rather than a
-     * constant.
+     * Who produced this message. Defaults to `labels.assistantName`. A
+     * conversation can change hands (a handoff), so the label is per message
+     * rather than a constant.
      */
     senderName?: string;
     /**
@@ -438,46 +440,6 @@ const AttachmentList: React.FC<{ attachments: Attachment[] }> = ({ attachments }
     </div>
 );
 
-type RenderItem =
-    | { type: 'single'; step: MessageStep; originalIndex: number }
-    | { type: 'tool-group'; steps: MessageStep[]; originalIndex: number };
-
-function groupRenderSteps(renderSteps: MessageStep[]): RenderItem[] {
-    const items: RenderItem[] = [];
-    let currentToolGroup: MessageStep[] = [];
-    let firstIdxInGroup = 0;
-
-    for (let i = 0; i < renderSteps.length; i++) {
-        const step = renderSteps[i];
-        if (step.type === 'tool-call') {
-            if (currentToolGroup.length === 0) {
-                firstIdxInGroup = i;
-            }
-            currentToolGroup.push(step);
-        } else {
-            if (currentToolGroup.length > 0) {
-                if (currentToolGroup.length === 1) {
-                    items.push({ type: 'single', step: currentToolGroup[0], originalIndex: firstIdxInGroup });
-                } else {
-                    items.push({ type: 'tool-group', steps: currentToolGroup, originalIndex: firstIdxInGroup });
-                }
-                currentToolGroup = [];
-            }
-            items.push({ type: 'single', step, originalIndex: i });
-        }
-    }
-
-    if (currentToolGroup.length > 0) {
-        if (currentToolGroup.length === 1) {
-            items.push({ type: 'single', step: currentToolGroup[0], originalIndex: firstIdxInGroup });
-        } else {
-            items.push({ type: 'tool-group', steps: currentToolGroup, originalIndex: firstIdxInGroup });
-        }
-    }
-
-    return items;
-}
-
 const MessageBubbleView: React.FC<MessageProps> = (props) => {
     const { role, steps, shouldAnimate = true } = props;
     const labels = useLabels();
@@ -586,18 +548,23 @@ const MessageBubbleView: React.FC<MessageProps> = (props) => {
         // useStreamChat.updateAssistantContent) and persisted text arrives as
         // ``'text'`` steps via ``mapSteps`` in useConversations.ts, so the
         // natural ``steps`` array is the source of truth for ordering.
-        // For tools configured with showLastOnly (e.g. generate_checklist),
-        // we only display the last invocation if the agent tried multiple times.
-        const lastStepIds = findLastToolCallStepIds(steps, props.tools);
-        const renderSteps: MessageStep[] = filterStepsForDisplay(steps, props.tools, lastStepIds);
-        const groupedRenderItems = groupRenderSteps(renderSteps);
+        // Every step is shown, a repeated call and a sub-agent's earlier attempt
+        // included. Until 4.0 a `showLastOnly` option (on by default for one
+        // slug) hid all but the last call of a tool, and with it whole sub-agent
+        // runs — the work, and what it cost, vanished from the transcript. Each
+        // action is bound to its own step_uuid, so several cannot be confused.
+        //
+        // Runs of thinking, tool calls and sub-agents are drawn as one activity
+        // section each (common/activity.ts): the working between two pieces of
+        // the answer is one row, not one row per step.
+        const groupedRenderItems = groupActivity(steps);
 
         // Collected at this level only. A nested bubble renders the steps of one
         // sub-agent and knows nothing of the turn, so letting it build its own
         // row would put the same control on screen once per nesting level.
         const hoistedActions = props.embedded
             ? []
-            : collectHoistedActions(steps, props, props.isTurnComplete !== false, labels, lastStepIds);
+            : collectHoistedActions(steps, props, props.isTurnComplete !== false, labels);
 
         return (
             <div ref={bubbleRef} className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`}>
@@ -610,7 +577,7 @@ const MessageBubbleView: React.FC<MessageProps> = (props) => {
                 )}
 
                 <div className="cb-message-content-wrapper" style={{ width: '100%', position: 'relative' }}>
-                    {role === 'user' || props.embedded ? null : <div className="cb-sender-name">{props.senderName || 'Assistant'}</div>}
+                    {role === 'user' || props.embedded ? null : <div className="cb-sender-name">{props.senderName || labels.assistantName}</div>}
 
                     {props.branchPoint && props.branchCount && props.branchCount > 1 && (
                         <BranchNavigator
@@ -662,19 +629,23 @@ const MessageBubbleView: React.FC<MessageProps> = (props) => {
                         </div>
                     ) : (
                         <div className="cb-steps-container">
-                            {groupedRenderItems.map((item) => {
-                                const isLast = item.originalIndex === renderSteps.length - 1;
-
-                                if (item.type === 'tool-group') {
+                            {groupedRenderItems.map((item, itemIndex) => {
+                                if (item.type === 'activity') {
+                                    // Live while a step in it runs, or while it is
+                                    // the turn's latest item and the turn goes on.
+                                    const live = item.steps.some(isStepRunning)
+                                        || (props.isTurnComplete === false && itemIndex === groupedRenderItems.length - 1);
                                     return (
-                                        <ModernToolGroupRow
-                                            key={`group-${item.steps[0].id}`}
+                                        <ActivityGroup
+                                            key={`activity-${item.steps[0].id}`}
                                             steps={item.steps}
                                             props={props}
+                                            live={live}
                                         />
                                     );
                                 }
 
+                                const isLast = item.index === steps.length - 1;
                                 const step = item.step;
 
                                 if (step.type === 'thinking') {
@@ -920,84 +891,6 @@ function resolveStepAction(
     };
 }
 
-function isShowLastOnlyTool(
-    step: MessageStep,
-    tools?: Record<string, ToolConfig>
-): boolean {
-    const slug = step.toolSlug || step.toolName;
-    if (!slug) return false;
-    const config = tools?.[slug] || (step.toolName ? tools?.[step.toolName] : undefined);
-    if (config?.showLastOnly !== undefined) {
-        return Boolean(config.showLastOnly);
-    }
-    return slug === 'generate_checklist';
-}
-
-function findLastToolCallStepIds(
-    steps: MessageStep[],
-    tools?: Record<string, ToolConfig>
-): Map<string, string> {
-    const lastIdByTool = new Map<string, string>();
-
-    function walk(list: MessageStep[]) {
-        for (const s of list) {
-            if (s.subSteps && s.subSteps.length > 0) {
-                walk(s.subSteps);
-            }
-            if (s.type === 'tool-call') {
-                const slug = s.toolSlug || s.toolName;
-                if (slug && isShowLastOnlyTool(s, tools)) {
-                    lastIdByTool.set(slug, s.id);
-                }
-            }
-        }
-    }
-
-    walk(steps);
-    return lastIdByTool;
-}
-
-function filterStepsForDisplay(
-    steps: MessageStep[],
-    tools: Record<string, ToolConfig> | undefined,
-    lastStepIds: Map<string, string>
-): MessageStep[] {
-    const result: MessageStep[] = [];
-    for (const step of steps) {
-        if (step.type === 'tool-call') {
-            const slug = step.toolSlug || step.toolName;
-            if (slug && isShowLastOnlyTool(step, tools)) {
-                const lastId = lastStepIds.get(slug);
-                if (lastId && step.id !== lastId) {
-                    continue;
-                }
-            }
-            result.push(step);
-        } else if (step.type === 'sub-agent') {
-            const filteredSubSteps = step.subSteps
-                ? filterStepsForDisplay(step.subSteps, tools, lastStepIds)
-                : [];
-            const hadShowLastOnlyTool = step.subSteps?.some(s =>
-                s.type === 'tool-call' && isShowLastOnlyTool(s, tools)
-            );
-            const hasRemainingShowLastOnlyTool = filteredSubSteps.some(s =>
-                s.type === 'tool-call' && isShowLastOnlyTool(s, tools)
-            );
-            if (hadShowLastOnlyTool && !hasRemainingShowLastOnlyTool && step.toolStatus !== 'failed') {
-                // Entire sub-agent was an earlier superseded attempt of a showLastOnly tool
-                continue;
-            }
-            result.push({
-                ...step,
-                subSteps: filteredSubSteps,
-            });
-        } else {
-            result.push(step);
-        }
-    }
-    return result;
-}
-
 /**
  * Every completed action in this turn that asked to be hoisted, in depth-first
  * order.
@@ -1012,9 +905,7 @@ function collectHoistedActions(
     handlers: Pick<MessageProps, 'tools'>,
     isTurnComplete: boolean,
     labels: ActionLabels,
-    lastStepIds?: Map<string, string>,
 ): ResolvedStepAction[] {
-    const lastIds = lastStepIds ?? findLastToolCallStepIds(steps, handlers.tools);
     const found: ResolvedStepAction[] = [];
 
     function collect(list: MessageStep[]) {
@@ -1026,14 +917,6 @@ function collectHoistedActions(
             const resolved = resolveStepAction(step, handlers, labels);
             if (!resolved || resolved.placement === 'step') continue;
             if (resolved.placement === 'turn-end' && !isTurnComplete) continue;
-
-            const slug = step.toolSlug || step.toolName;
-            if (slug && isShowLastOnlyTool(step, handlers.tools)) {
-                const lastId = lastIds.get(slug);
-                if (lastId && step.id !== lastId) {
-                    continue;
-                }
-            }
 
             found.push(resolved);
         }
@@ -1213,6 +1096,20 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
     const isFailed = step.toolStatus === 'failed';
     const toolSlug = step.toolSlug || step.toolName || 'command';
     const toolName = resolveToolDisplayName(step.toolName || toolSlug, props.tools);
+    // A meta-tool step reads as what it did ("Loaded skill · …") rather than
+    // "Ran Load skill" — see common/metaTools.ts. Not when the host named the
+    // tool itself, and not when the summary has nothing true to say (a failed
+    // call, a load with nothing loaded): those keep the generic row.
+    const meta = isMetaTool(toolSlug) && !hasHostDisplayName(toolSlug, props.tools)
+        ? describeMetaTool(
+            toolSlug,
+            step.toolStatus ?? 'completed',
+            step.toolArgs,
+            step.toolResult,
+            labels,
+            name => resolveToolDisplayName(name, props.tools)
+        )
+        : null;
 
     const actionValue = React.useMemo(
         () => parseToolOutput(onStep?.payload ?? step.toolArgs ?? step.toolResult),
@@ -1222,7 +1119,7 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
     const isWebSearch = toolSlug === 'web_search' || toolSlug === 'search_web';
 
     return (
-        <div className={`cb-modern-tool-call ${step.toolStatus || 'completed'}`}>
+        <div className={`cb-modern-tool-call ${step.toolStatus || 'completed'}${meta ? ' cb-modern-tool-call--meta' : ''}`}>
             <div className="cb-modern-tool-header-row">
                 <button
                     type="button"
@@ -1244,12 +1141,19 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
                             </svg>
                         )}
                     </span>
-                    <span className="cb-modern-tool-label">
-                        <span className="cb-modern-tool-verb">
-                            {isRunning ? labels.toolRunning : isFailed ? labels.toolFailed : labels.toolRan}
+                    {meta ? (
+                        <span className="cb-modern-tool-label" title={toolSlug}>
+                            <span className="cb-modern-tool-meta-text">{meta.text}</span>
+                            {meta.detail && <span className="cb-modern-tool-meta-detail">{meta.detail}</span>}
                         </span>
-                        <code className="cb-modern-tool-code" title={toolSlug}>{toolName}</code>
-                    </span>
+                    ) : (
+                        <span className="cb-modern-tool-label">
+                            <span className="cb-modern-tool-verb">
+                                {isRunning ? labels.toolRunning : isFailed ? labels.toolFailed : labels.toolRan}
+                            </span>
+                            <code className="cb-modern-tool-code" title={toolSlug}>{toolName}</code>
+                        </span>
+                    )}
                     <svg
                         width="14"
                         height="14"
@@ -1308,51 +1212,49 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
     );
 };
 
-interface ModernToolGroupRowProps {
-    steps: MessageStep[];
-    props: MessageProps;
-}
-
-const ModernToolGroupRow: React.FC<ModernToolGroupRowProps> = ({ steps, props }) => {
-    const [groupExpanded, setGroupExpanded] = useState(false);
-    const anyRunning = steps.some(s => s.toolStatus === 'running');
-    const failedSteps = steps.filter(s => s.toolStatus === 'failed');
-
-    const groupLabel = React.useMemo(() => {
-        if (anyRunning) {
-            return `Running ${steps.length} commands...`;
-        }
-        if (failedSteps.length > 0) {
-            return `Ran ${steps.length} commands (${failedSteps.length} failed)`;
-        }
-        return `Ran ${steps.length} commands`;
-    }, [anyRunning, failedSteps.length, steps.length]);
+/**
+ * A run of thinking, tool calls and sub-agent runs, as one collapsible row.
+ *
+ * Closed by default. While the run is live its header is the newest step in
+ * words, with a spinner; once done, a count of what happened. Opened, every
+ * step renders exactly as it would on its own. See common/activity.ts.
+ */
+const ActivityGroup: React.FC<{ steps: MessageStep[]; props: MessageProps; live: boolean }> = ({ steps, props, live }) => {
+    const labels = useLabels();
+    const [open, setOpen] = useState(false);
+    const toolName = (name: string) => resolveToolDisplayName(name, props.tools);
+    const failed = steps.some(step => step.toolStatus === 'failed');
+    const header: ActivityLine = live
+        ? describeLatestActivity(steps, labels, toolName)
+        : { text: summarizeActivity(steps, labels, toolName) };
 
     return (
-        <div className={`cb-modern-tool-group ${anyRunning ? 'is-running' : ''}`}>
+        <div className={`cb-activity ${live ? 'is-running' : 'is-finished'}${failed && !live ? ' has-failed' : ''}`}>
             <button
                 type="button"
-                className="cb-modern-group-btn"
-                onClick={() => setGroupExpanded(!groupExpanded)}
-                aria-expanded={groupExpanded}
+                className="cb-activity-btn"
+                onClick={() => setOpen(!open)}
+                aria-expanded={open}
             >
-                <span className="cb-modern-group-icon">
-                    {anyRunning ? (
+                <span className="cb-activity-icon">
+                    {live ? (
                         <span className="cb-spinner-xs" />
-                    ) : failedSteps.length > 0 ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
+                    ) : failed ? (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
                             <circle cx="12" cy="12" r="10" />
                             <line x1="12" y1="8" x2="12" y2="12" />
                             <line x1="12" y1="16" x2="12.01" y2="16" />
                         </svg>
                     ) : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polyline points="4 17 10 11 4 5" />
-                            <line x1="12" y1="19" x2="20" y2="19" />
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="cb-modern-tool-check">
+                            <polyline points="20 6 9 17 4 12" />
                         </svg>
                     )}
                 </span>
-                <span className="cb-modern-group-label">{groupLabel}</span>
+                <span className="cb-activity-label" aria-live={live ? 'polite' : undefined}>
+                    <span className="cb-activity-text">{header.text}</span>
+                    {header.detail && <span className="cb-activity-detail">{header.detail}</span>}
+                </span>
                 <svg
                     width="14"
                     height="14"
@@ -1360,22 +1262,19 @@ const ModernToolGroupRow: React.FC<ModernToolGroupRowProps> = ({ steps, props })
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="2"
-                    className={`cb-modern-chevron ${groupExpanded ? 'cb-chevron-open' : ''}`}
+                    className={`cb-modern-chevron ${open ? 'cb-chevron-open' : ''}`}
                 >
                     <polyline points="9 18 15 12 9 6" />
                 </svg>
             </button>
 
-            {groupExpanded && (
-                <div className="cb-modern-group-items">
-                    {steps.map(step => (
-                        <ModernToolCallRow
-                            key={step.id}
-                            step={step}
-                            props={props}
-                            defaultExpanded={false}
-                        />
-                    ))}
+            {open && (
+                <div className="cb-activity-items">
+                    {steps.map(step => {
+                        if (step.type === 'thinking') return <ThinkingBlock key={step.id} step={step} />;
+                        if (step.type === 'sub-agent') return <SubAgentBlock key={step.id} step={step} handlers={props} />;
+                        return <ModernToolCallRow key={step.id} step={step} props={props} />;
+                    })}
                 </div>
             )}
         </div>
@@ -1513,6 +1412,7 @@ const TypewriterText = ({ content, shouldAnimate, onComplete }: { content: strin
 // Legacy path for simple content without steps
 const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
     const { role, content, attachments, toolInvocation, shouldAnimate = true } = props;
+    const labels = useLabels();
 
     const [displayContent, setDisplayContent] = useState('');
     const [isEditing, setIsEditing] = useState(false);
@@ -1663,7 +1563,10 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                 </div>
                 <div className="cb-message-content-wrapper">
                     <ToolInvocation
-                        toolName={resolveToolDisplayName(toolInvocation.toolName, props.tools)}
+                        // The slug, not its display name: ToolInvocation resolves
+                        // the name itself, and needs the slug to recognise a
+                        // meta-tool or a web search.
+                        toolName={toolInvocation.toolName}
                         args={toolInvocation.args}
                         status={toolInvocation.status}
                         result={toolInvocation.result}
@@ -1685,7 +1588,7 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
             )}
 
             <div className="cb-message-content-wrapper" style={{ position: 'relative' }}>
-                {role === 'user' ? null : <div className="cb-sender-name">{props.senderName || 'Assistant'}</div>}
+                {role === 'user' ? null : <div className="cb-sender-name">{props.senderName || labels.assistantName}</div>}
 
                 {props.branchPoint && props.branchCount && props.branchCount > 1 && (
                     <BranchNavigator

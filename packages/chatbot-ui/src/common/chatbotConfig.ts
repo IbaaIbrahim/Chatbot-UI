@@ -60,6 +60,10 @@ export interface HeaderConfig {
     views?: ChatViewOption[];
     /** Narrows the views offered to these ids, e.g. on one page. */
     allowedViews?: string[];
+    /**
+     * The menu's copy entry: "Copy conversation link" when the provider has a
+     * `conversationLink`, "Copy conversation ID" otherwise.
+     */
     copyConversationId?: boolean;
     /**
      * The "Credit usage" entry, which shows the user's own allowance. Shown
@@ -67,8 +71,9 @@ export interface HeaderConfig {
      */
     creditUsage?: boolean;
     /**
-     * Off by default: the AI-EcoSystem Gateway serves no
-     * `DELETE /v1/user/conversations/{id}`, so the item would delete nothing.
+     * "Delete thread" in the menu, for the open conversation. On by default
+     * since the Gateway serves `DELETE /v1/user/conversations/{id}`; a client
+     * without `deleteConversation` refuses, and nothing is removed on screen.
      */
     deleteConversation?: boolean;
     close?: boolean;
@@ -97,11 +102,10 @@ export interface HeaderMenuItem {
  * How much room the composer takes.
  *
  * `comfortable` is the roomy box an empty chat presents: the text above a row
- * of buttons, with the agent switcher in a strip underneath. `compact` is one
- * row — buttons beside the text, the agent switcher moved into the footer line —
- * that gives the text the full width only once it needs a second line. `auto`
- * is comfortable while the chat is empty and compact once it has messages,
- * when the height belongs to the transcript.
+ * of buttons. `compact` is one row — buttons beside the text — that gives the
+ * text the full width only once it needs a second line. `auto` is comfortable
+ * while the chat is empty and compact once it has messages, when the height
+ * belongs to the transcript.
  */
 export type ComposerDensity = 'auto' | 'comfortable' | 'compact';
 
@@ -109,15 +113,19 @@ export interface ComposerConfig {
     attachments?: boolean;
     /** `false` also skips fetching the user-enablable tools. */
     tools?: boolean;
-    agentSwitcher?: boolean;
-    /**
-     * Where the agent switcher sits: the row under the input when comfortable,
-     * the start of the footer line when compact. `false` removes it from both.
-     */
-    bottomSection?: boolean;
     /** Defaults to `'auto'`. */
     density?: ComposerDensity;
+    /**
+     * The usage indicator in the footer line: a ring for the context window and
+     * the conversation's total credits beside it. `false` removes it.
+     */
     usage?: boolean;
+    /**
+     * The breakdown card the usage indicator opens on click — context window,
+     * this turn, sub-agents, the whole conversation. `false` leaves the ring and
+     * the total credits, with nothing to open. On by default.
+     */
+    usageDetails?: boolean;
     disclaimer?: boolean;
     mic?: boolean;
     /** The mic button renders only when this is set: the library records no audio itself. */
@@ -133,7 +141,9 @@ export interface SidebarConfig {
     /** Shown only while the Gateway reports `starred_at` on conversations. */
     starred?: boolean;
     search?: boolean;
-    /** Off by default, for the reason given on {@link HeaderConfig.deleteConversation}. */
+    /** "Rename" in a row's menu. Needs a client with `renameConversation`. */
+    rename?: boolean;
+    /** "Delete" in a row's menu; see {@link HeaderConfig.deleteConversation}. */
     deleteConversation?: boolean;
 }
 
@@ -243,16 +253,15 @@ export const DEFAULT_CHATBOT_CONFIG: ResolvedChatbotConfig = {
         switchView: true,
         copyConversationId: true,
         creditUsage: true,
-        deleteConversation: false,
+        deleteConversation: true,
         close: true,
     },
     composer: {
         attachments: true,
         tools: true,
-        agentSwitcher: true,
-        bottomSection: true,
         density: 'auto',
         usage: true,
+        usageDetails: true,
         disclaimer: true,
         mic: true,
     },
@@ -262,7 +271,8 @@ export const DEFAULT_CHATBOT_CONFIG: ResolvedChatbotConfig = {
         items: [],
         starred: true,
         search: true,
-        deleteConversation: false,
+        rename: true,
+        deleteConversation: true,
     },
     greeting: { privacyBadges: [] },
     suggestions: [],

@@ -14,6 +14,12 @@ export interface ChatAppPresentationProps {
     theme?: ChatTheme;
     embedded?: boolean;
     noBackground?: boolean;
+    /**
+     * The floating button's icon — any React node (an SVG, an icon component, a
+     * font icon, an `<img>`). Defaults to `config.icons.launcher`. See
+     * `ChatContainerProps.launcherIcon`.
+     */
+    launcherIcon?: React.ReactNode;
 }
 
 /**
@@ -26,12 +32,18 @@ export interface ChatAppPresentationProps {
  */
 export type AppProps = ChatAppPresentationProps & Omit<ChatbotProviderProps, 'children'>;
 
-const ChatAppLayout: React.FC<Required<ChatAppPresentationProps>> = ({
+// Every placement prop decided by `App`'s defaults; the icon stays optional, so an
+// omitted one falls through to `config.icons.launcher`.
+type ChatAppLayoutProps = Required<Omit<ChatAppPresentationProps, 'launcherIcon'>>
+    & Pick<ChatAppPresentationProps, 'launcherIcon'>;
+
+const ChatAppLayout: React.FC<ChatAppLayoutProps> = ({
     mode,
     allowedModes,
     theme,
     embedded,
     noBackground,
+    launcherIcon,
 }) => {
     const isEmpty = useChatState(s => s.messages.length === 0);
     const isEmptyFullscreen = mode === 'fullscreen' && isEmpty;
@@ -49,6 +61,7 @@ const ChatAppLayout: React.FC<Required<ChatAppPresentationProps>> = ({
             theme={theme}
             embedded={embedded}
             noBackground={noBackground}
+            launcherIcon={launcherIcon}
             footer={isEmptyFullscreen ? null : composer}
         >
             <MainChat emptyComposer={isEmptyFullscreen ? composer : undefined} />
@@ -64,6 +77,7 @@ export const App: React.FC<AppProps> = ({
     theme = 'system',
     embedded = false,
     noBackground = false,
+    launcherIcon,
     ...providerProps
 }) => {
     const runtime = useOptionalChatRuntime();
@@ -87,6 +101,7 @@ export const App: React.FC<AppProps> = ({
             theme={theme}
             embedded={embedded}
             noBackground={noBackground}
+            launcherIcon={launcherIcon}
         />
     );
 

@@ -9,13 +9,13 @@ import {
     useConversations,
 } from '../hooks/useConversations';
 import { isClientTool } from '../common/toolConfig';
-import type { ToolConfig } from '../common/toolConfig';
+import type { ClientSkillDefinition, ToolConfig } from '../common/toolConfig';
+import { isHostRequestSlug } from '../common/hostCatalogue';
 import type { AttachedFile, ConversationDetail, UserCredits } from '../api/types';
 import { summarizeUsage } from '../common/usageSummary';
 import { resolveChatbotConfig } from '../common/chatbotConfig';
 import type { ChatbotConfig } from '../common/chatbotConfig';
 import type { QuestionSpec } from '../components/Questionnaire/QuestionnaireForm';
-import type { AgentSidebarItem } from '../components/AgentSidebar/AgentSidebar';
 import type { ChatMode } from '../components/ChatContainer/presentation';
 import { createChatStore, shallowEqual } from '../store/createChatStore';
 import { createEventBus } from '../store/eventBus';
@@ -30,16 +30,35 @@ import type {
 
 const { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } = React;
 
-const TOOL_SELECTION_STORAGE_PREFIX = 'chatbot-ui:enabled-tools:';
-const NO_AGENTS: AgentSidebarItem[] = [];
+/**
+ * Where the user's tool switches are kept, across page loads and screens.
+ *
+ * One key since 4.0. Until then it was one key per agent (`…:<agent uuid>`,
+ * `…:__agentless__` when none was picked), because the picker changed which
+ * tools a job could have. With no picker, almost every job is sent without an
+ * agent, so the agentless key is the selection the user actually made; it is
+ * read once, when the new key has never been written, and removed by the
+ * first write. The per-agent keys are left alone: they belong to a choice the
+ * user can no longer make.
+ */
+const TOOL_SELECTION_STORAGE_KEY = 'chatbot-ui:enabled-tools';
+const LEGACY_TOOL_SELECTION_STORAGE_KEY = 'chatbot-ui:enabled-tools:__agentless__';
 
-function toolSelectionKey(agentId?: string | null): string {
-    return `${TOOL_SELECTION_STORAGE_PREFIX}${agentId ?? '__agentless__'}`;
-}
+/**
+ * When to read the list again after a new thread's first turn, for its title.
+ *
+ * The Gateway names a thread from its first turn after that turn ends — the
+ * Orchestrator asks the model once the reply is complete, and the Archiver
+ * stores the answer — so the read made the moment the turn finishes still
+ * shows the six-word fallback. Two later reads cover a quick answer and a slow
+ * one; past the second the title appears on the next read anyway.
+ */
+const TITLE_REFRESH_DELAYS_MS = [3000, 8000];
 
-function readStoredToolIds(agentId?: string | null): string[] {
+function readStoredToolIds(): string[] {
     try {
-        const raw = window.localStorage.getItem(toolSelectionKey(agentId));
+        const raw = window.localStorage.getItem(TOOL_SELECTION_STORAGE_KEY)
+            ?? window.localStorage.getItem(LEGACY_TOOL_SELECTION_STORAGE_KEY);
         const parsed = raw ? JSON.parse(raw) : null;
         return Array.isArray(parsed) ? parsed.filter(id => typeof id === 'string') : [];
     } catch {
@@ -47,9 +66,22 @@ function readStoredToolIds(agentId?: string | null): string[] {
     }
 }
 
-function writeStoredToolIds(agentId: string | null | undefined, toolIds: string[]): void {
+/**
+ * Save the switches this page changed without forgetting the ones it cannot see.
+ *
+ * Pages do not all list the same tools: a screen whose client is bound to one
+ * agent lists only what that agent's policy allows, while a chat sent without
+ * one (central mode) lists every active user-enabled tool. With one key for
+ * both, writing `next` alone would let the narrower page wipe every selection
+ * outside its list the moment the user touched one switch, and the root chat
+ * would come back with its tools off after a visit to it. Only what this page
+ * lists is its to change; every stored id outside that list is kept as it was.
+ */
+function writeStoredToolIds(next: string[], listedIds: ReadonlySet<string>): void {
     try {
-        window.localStorage.setItem(toolSelectionKey(agentId), JSON.stringify(toolIds));
+        const keptUnseen = readStoredToolIds().filter(id => !listedIds.has(id) && !next.includes(id));
+        window.localStorage.setItem(TOOL_SELECTION_STORAGE_KEY, JSON.stringify([...next, ...keptUnseen]));
+        window.localStorage.removeItem(LEGACY_TOOL_SELECTION_STORAGE_KEY);
     } catch {
         // Storage full or unavailable
     }
@@ -83,12 +115,19 @@ export interface ChatbotProviderProps {
     userName?: string;
     onEvent?: UseStreamChatOptions['onEvent'];
     allowLocalNetworkAccess?: boolean;
-    agents?: AgentSidebarItem[];
-    /** Controlled agent selection. Omit to let the chat keep its own. */
-    agentId?: string | null;
-    agentsLoading?: boolean;
-    onAgentChange?: (agentId: string | null) => void;
     tools?: Record<string, ToolConfig>;
+    /**
+     * This application's own skills ("client skills"): instructions the model
+     * loads with `load_skill` when a conversation needs them, together with
+     * every tool whose `definition.skills` names the slug. Never sent with a
+     * message — in central mode the platform asks the browser for them on
+     * demand (platform ADR-018, "Host catalogue and conversation-scoped
+     * loads"). See `ClientSkillDefinition`.
+     *
+     * Memoise it. Omit it to leave the client's skills as they are (set with
+     * `client.setSkills`); pass `[]` to clear them.
+     */
+    skills?: ClientSkillDefinition[];
     /** Labels, icons, which controls exist and the welcome content. See `ChatbotConfig`. */
     config?: ChatbotConfig;
 
@@ -111,6 +150,13 @@ export interface ChatbotProviderProps {
     onSwitchMode?: (mode: ChatMode) => void;
     /** Enables the header's share button. */
     onShare?: () => void;
+    /**
+     * The URL that opens a conversation in the host, e.g.
+     * `id => \`${location.origin}/ai/assistant/${id}\``. With it the header's
+     * menu offers "Copy conversation link" instead of "Copy conversation ID":
+     * only the host knows its own routes, so the library cannot build one.
+     */
+    conversationLink?: (conversationId: string) => string;
 }
 
 /**
@@ -138,11 +184,8 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     userName = 'User',
     onEvent,
     allowLocalNetworkAccess = false,
-    agents,
-    agentId,
-    agentsLoading = false,
-    onAgentChange,
     tools,
+    skills,
     config,
     open: openProp,
     defaultOpen = true,
@@ -152,6 +195,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     onSidebarOpenChange,
     onSwitchMode,
     onShare,
+    conversationLink,
 }) => {
     // Before any child effect can issue a request.
     configureLocalNetworkAccess({ enabled: allowLocalNetworkAccess });
@@ -278,20 +322,16 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         }
     }, [activeClient, registeredTools]);
 
-    // --- Agents ---
-    const [internalAgentId, setInternalAgentId] = useState<string | null>(null);
-    const effectiveAgentId = agentId !== undefined ? agentId : internalAgentId;
-
-    const setAgentId = useCallback(
-        (id: string | null) => {
-            setInternalAgentId(id);
-            onAgentChange?.(id);
-            if (activeClient && 'setAgentId' in activeClient) {
-                (activeClient as GatewayStreamClient).setAgentId(id);
-            }
-        },
-        [activeClient, onAgentChange]
-    );
+    // Beside the tools and for the same reason: both are read when a host
+    // request arrives, and this effect is declared before the one that
+    // restores the tab's conversation — effects run in declaration order — so
+    // a request replayed by that restore is answered with the skills in place.
+    // Duck-typed like `setTools`: only the gateway client serves skills.
+    useEffect(() => {
+        if (skills !== undefined && activeClient && 'setSkills' in activeClient) {
+            (activeClient as GatewayStreamClient).setSkills(skills);
+        }
+    }, [activeClient, skills]);
 
     // --- Tools the user may switch on per conversation ---
     const [enablableTools, setEnablableTools] = useState<EnablableTool[]>([]);
@@ -306,18 +346,27 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         [registeredTools]
     );
 
+    /**
+     * The list follows the client's agent, read when this runs rather than held
+     * as state. Since 4.0 the agent is a binding the host makes on the client
+     * — `config.agentId` or `setAgentId()` before the provider first sees it —
+     * not a choice the user makes in the chat, so nothing in here changes it
+     * and there is nothing to re-list on. Without one (central mode) the
+     * Gateway lists every active user-enabled tool.
+     */
     useEffect(() => {
         if (!toolsMenuEnabled || !activeClient || !('listEnablableTools' in activeClient)) {
             return;
         }
         let cancelled = false;
-        (activeClient as GatewayStreamClient)
-            .listEnablableTools(effectiveAgentId)
+        const client = activeClient as GatewayStreamClient;
+        client
+            .listEnablableTools(client.getAgentId?.() ?? null)
             .then(listed => {
                 if (cancelled) return;
                 setEnablableTools(listed);
                 const allowed = new Set(listed.map(t => t.uuid));
-                setEnabledToolIds(readStoredToolIds(effectiveAgentId).filter(id => allowed.has(id)));
+                setEnabledToolIds(readStoredToolIds().filter(id => allowed.has(id)));
             })
             .catch(error => {
                 if (cancelled) return;
@@ -327,7 +376,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         return () => {
             cancelled = true;
         };
-    }, [activeClient, effectiveAgentId, toolsMenuEnabled]);
+    }, [activeClient, toolsMenuEnabled]);
 
     useEffect(() => {
         if (activeClient && 'setEnabledToolIds' in activeClient) {
@@ -338,9 +387,9 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     const changeEnabledToolIds = useCallback(
         (next: string[]) => {
             setEnabledToolIds(next);
-            writeStoredToolIds(effectiveAgentId, next);
+            writeStoredToolIds(next, new Set(enablableTools.map(tool => tool.uuid)));
         },
-        [effectiveAgentId]
+        [enablableTools]
     );
 
     // --- The turn ---
@@ -375,6 +424,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         conversations,
         starredConversations,
         starringSupported,
+        renamingSupported,
         isLoading: isLoadingConversations,
         isLoadingMore,
         hasMore,
@@ -386,6 +436,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         newChat,
         deleteConversation,
         setStarred,
+        renameConversation,
         searchConversations,
     } = useConversations(gateway, storageApiUrl);
 
@@ -440,16 +491,30 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         wasBusyRef.current = busy;
     }, [isThinking, isResuming, focusComposer]);
 
+    const titleRefreshTimers = useRef<number[]>([]);
+    useEffect(() => () => titleRefreshTimers.current.forEach(timer => window.clearTimeout(timer)), []);
+
     const sendMessage = useCallback(
         async (text: string, attachedFiles?: AttachedFile[]) => {
+            const startsThread = !(activeConversationId || gateway?.getConversationId?.());
             await sendStreamMessage(text, attachedFiles);
             fetchConversations();
+            if (startsThread) {
+                titleRefreshTimers.current = TITLE_REFRESH_DELAYS_MS.map(delay =>
+                    window.setTimeout(() => void fetchConversations(), delay)
+                );
+            }
         },
-        [sendStreamMessage, fetchConversations]
+        [sendStreamMessage, fetchConversations, activeConversationId, gateway]
     );
 
     const answerPendingCall = useCallback(
         async (call: { jobUuid: string; stepUuid: string; toolSlug: string; toolInput: any }) => {
+            // A host request is never a pending *client* step (it rides on the
+            // meta-tool's harness step, or on none), so the transcript cannot
+            // offer one; and a reserved slug must never reach a host tool of
+            // the same name. The platform times an unanswered one out itself.
+            if (isHostRequestSlug(call.toolSlug)) return;
             const cfg = registeredTools[call.toolSlug];
             const run = cfg && isClientTool(cfg) ? cfg.run : null;
             if (!gateway?.submitClientToolResult || !run) {
@@ -520,6 +585,18 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         focusComposer();
     }, [newChat, reset, focusComposer]);
 
+    /**
+     * Reopen the conversation the client points at — the one this tab last had
+     * open, or one the host named before handing the client over (a link to
+     * it, say).
+     *
+     * One that will not load is let go of rather than retried. The client's
+     * pointer is also where the *next message* goes, so keeping a pointer to a
+     * thread that was deleted, or that is someone else's (a link they were
+     * sent), filed that message into a conversation the Gateway refuses, and
+     * every send failed. Only if the pointer still names it: the user may have
+     * picked another thread while this one was loading, and that pick stands.
+     */
     const didRestoreRef = useRef(false);
     useEffect(() => {
         if (didRestoreRef.current || activeConversationId) return;
@@ -527,9 +604,9 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         if (!restored) return;
         didRestoreRef.current = true;
         void handleSelectConversation(restored).then(ok => {
-            if (!ok) didRestoreRef.current = false;
+            if (!ok && gateway?.getConversationId?.() === restored) handleNewChat();
         });
-    }, [gateway, activeConversationId, handleSelectConversation]);
+    }, [gateway, activeConversationId, handleSelectConversation, handleNewChat]);
 
     const currentConversationId = activeConversationId || gateway?.getConversationId?.() || null;
 
@@ -538,6 +615,12 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
             void navigator.clipboard.writeText(currentConversationId);
         }
     }, [currentConversationId]);
+
+    const copyConversationLink = useCallback(() => {
+        if (currentConversationId && conversationLink && navigator.clipboard) {
+            void navigator.clipboard.writeText(conversationLink(currentConversationId));
+        }
+    }, [currentConversationId, conversationLink]);
 
     const handleDeleteConversation = useCallback(
         async (id: string) => {
@@ -562,6 +645,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         hostHandlesOpenChange: Boolean(onOpenChange),
         canSwitchMode: Boolean(onSwitchMode),
         canShare: Boolean(onShare),
+        canCopyConversationLink: Boolean(conversationLink),
         canStop: Boolean(activeClient && 'cancelTurn' in activeClient),
         canShowCredits,
         isCreditUsageOpen: canShowCredits && isCreditUsageOpen,
@@ -578,6 +662,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         conversations,
         starredConversations,
         starringSupported,
+        renamingSupported,
         isLoadingConversations,
         isLoadingMore,
         hasMore,
@@ -587,9 +672,6 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         enablableTools,
         enabledToolIds,
         handledToolSlugs,
-        agents: agents ?? NO_AGENTS,
-        agentId: effectiveAgentId,
-        agentsLoading,
     };
 
     // --- What the actions do, as of this render ---
@@ -635,12 +717,16 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
             await setStarred(conversationId, starred);
             events.emit('conversation.starred', { conversationId, starred });
         },
+        renameConversation: async (conversationId, title) => {
+            await renameConversation(conversationId, title);
+            events.emit('conversation.renamed', { conversationId, title: title.trim() });
+        },
         searchConversations,
         refreshConversations: fetchConversations,
         loadMoreConversations: loadMore,
         copyConversationId,
+        copyConversationLink,
 
-        setAgentId,
         setEnabledToolIds: changeEnabledToolIds,
 
         focusComposer,
@@ -740,11 +826,12 @@ function delegateActions(latest: React.MutableRefObject<ChatActions>): ChatActio
         selectConversation: id => latest.current.selectConversation(id),
         deleteConversation: id => latest.current.deleteConversation(id),
         setConversationStarred: (id, starred) => latest.current.setConversationStarred(id, starred),
+        renameConversation: (id, title) => latest.current.renameConversation(id, title),
         searchConversations: query => latest.current.searchConversations(query),
         refreshConversations: () => latest.current.refreshConversations(),
         loadMoreConversations: () => latest.current.loadMoreConversations(),
         copyConversationId: () => latest.current.copyConversationId(),
-        setAgentId: id => latest.current.setAgentId(id),
+        copyConversationLink: () => latest.current.copyConversationLink(),
         setEnabledToolIds: ids => latest.current.setEnabledToolIds(ids),
         focusComposer: () => latest.current.focusComposer(),
         setComposerText: text => latest.current.setComposerText(text),
