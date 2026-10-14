@@ -133,12 +133,13 @@
 /* `:root` against a host's paragraph margin, as for the title; its text cut
  * short as the title's is (below) — in its own direction, kept at the page's
  * start edge by `match-parent`, with the `-webkit-` spelling first: Chromium
- * reads only that one, and dropped the declaration until 2026-10-14. */
+ * reads only that one, and dropped the declaration until 2026-10-14. The
+ * secondary text, as a row's details are (see `.cb-file-meta`). */
 :root .cb-artifact-detail-meta {
     flex-shrink: 0;
     margin: 0;
     padding: var(--cb-space-2) var(--cb-space-4) 0;
-    color: var(--cb-text-tertiary);
+    color: var(--cb-text-secondary);
     font-size: 11.5px;
     text-align: start;
 }
@@ -347,9 +348,10 @@
 }
 
 /* The field's edge is its focus indicator: the focus ring's colour, 3:1 or
- * more on the field (the plain accent was 3.0:1 on its light grey). */
+ * more on the field (2026-10-14; the plain accent was 2.96:1 on its light
+ * grey). */
 :root .cb-files-search-input:focus {
-    border-color: var(--cb-focus-ring, var(--cb-accent-primary));
+    border-color: var(--cb-focus-ring, var(--cb-accent-strong));
 }
 
 .cb-files-chips {
@@ -509,12 +511,16 @@
     text-align: match-parent;
 }
 
+/* A row's details, at 11.5px: the secondary text, 4.5:1 or more wherever a
+ * row is drawn — the Artifacts view's page and its hovered rows, the files
+ * dialog and its — in both themes. The tertiary it was until 2026-10-14 is
+ * 3.3:1 on the dark page. */
 .cb-file-meta {
     display: flex;
     align-items: center;
     gap: 6px;
     min-width: 0;
-    color: var(--cb-text-tertiary);
+    color: var(--cb-text-secondary);
     font-size: 11.5px;
     white-space: nowrap;
 }
@@ -744,17 +750,26 @@
     color: var(--cb-text-secondary);
 }
 
-/* The Artifacts view's saved filter: one control of three segments, above
- * the kind chips. */
+/* A segmented control: the Artifacts view's saved filter (All · Saved · Not
+ * saved, above the kind chips) and the files dialog's filter, whose shape
+ * and counts are its own (below). Their colours are these rules, shared
+ * (2026-10-14): the track a lift (`--cb-surface-hover`), the chosen option a
+ * further one (`--cb-surface-selected`; white in the light theme) edged by
+ * `--cb-border-selected` — 3.7:1 against the track on the dark page, 3.3:1
+ * on the light one — so the choice does not rest on its weight and a 1.4:1
+ * fill alone. Until then the Artifacts view's chosen option was the page's
+ * own colour (`--cb-bg-primary`) on a `--cb-bg-secondary` track: darker
+ * than its track in the dark theme, 1.1:1 against it, with no edge. Labels
+ * are 6.0:1 or more on the track; a count's pill is drawn as the dialog's. */
 .cb-files-segmented {
     display: flex;
     flex-shrink: 0;
     align-self: flex-start;
     max-width: 100%;
     padding: 2px;
-    border: 1px solid var(--cb-border-subtle);
+    border: 1px solid transparent;
     border-radius: var(--cb-radius-full);
-    background-color: var(--cb-bg-secondary);
+    background-color: var(--cb-surface-hover);
 }
 
 :root .cb-files-segment {
@@ -781,8 +796,8 @@
 }
 
 :root .cb-files-segment.is-active {
-    background-color: var(--cb-bg-primary);
-    box-shadow: var(--cb-shadow-sm);
+    background-color: var(--cb-surface-selected, var(--cb-bg-elevated));
+    box-shadow: var(--cb-shadow-sm), 0 0 0 1px var(--cb-border-selected, var(--cb-border-strong));
     color: var(--cb-text-primary);
     font-weight: 600;
 }
@@ -815,7 +830,7 @@
 .cb-md-block.is-located,
 .cb-md-block-bare.is-located,
 .cb-message-row.is-located {
-    outline: 2px solid var(--cb-focus-ring, var(--cb-accent-primary));
+    outline: 2px solid var(--cb-focus-ring, var(--cb-accent-strong));
     outline-offset: 2px;
     transition: outline-color 0.3s ease-out;
 }
@@ -984,15 +999,13 @@
 
 /* The toolbar: the filter, a compact segmented control with counts.
  *
- * The track is a lift (`--cb-surface-hover`, 1.2:1 on the dark dialog) and
- * the chosen option a further one (`--cb-surface-selected`; white in the
- * light theme) — tokens that lift in both themes — edged by
- * `--cb-border-selected`, 3:1 or more against the track in both themes
- * (3.6:1 dark, 3.3:1 light), so the choice does not rest on its weight and
- * a 1.4:1 fill alone. Until the review of 2026-10-14 the track was
+ * Its colours are the segmented control's, shared with the Artifacts view
+ * (above): the track 1.2:1 on the dark dialog, the chosen option's edge
+ * 3.6:1 on it (3.3:1 light). Until the review of 2026-10-14 the track was
  * `--cb-surface-sunken` (1.05:1 on the dark dialog: invisible) and the chosen
  * option `--cb-bg-elevated`, the dark dialog's own colour, with a 10%
- * hairline. */
+ * hairline. Its shape is its own: rounded corners, taller options with a
+ * count. */
 .cb-files-panel .cb-files-toolbar {
     flex-direction: row;
     align-items: center;
@@ -1002,12 +1015,12 @@
 
 .cb-files-panel .cb-files-segmented {
     max-width: 100%;
-    border-color: transparent;
     border-radius: var(--cb-radius-md);
-    background-color: var(--cb-surface-hover);
 }
 
-/* Logical padding: the label's side is the start in either direction. */
+/* Logical padding: the label's side is the start in either direction. No
+ * colour or weight here: those are the shared rules', and a weight at this
+ * specificity, later, would undo the chosen option's. */
 :root .cb-files-panel .cb-files-segment {
     display: inline-flex;
     flex: 0 1 auto;
@@ -1017,13 +1030,6 @@
     padding-block: 0;
     padding-inline: 12px 10px;
     border-radius: calc(var(--cb-radius-md) - 2px);
-    font-weight: 500;
-}
-
-:root .cb-files-panel .cb-files-segment.is-active {
-    background-color: var(--cb-surface-selected, var(--cb-bg-elevated));
-    box-shadow: var(--cb-shadow-sm), 0 0 0 1px var(--cb-border-selected, var(--cb-border-strong));
-    font-weight: 600;
 }
 
 .cb-files-segment-label {
@@ -1149,7 +1155,6 @@
 
 .cb-files-panel .cb-file-meta {
     gap: var(--cb-space-2);
-    color: var(--cb-text-secondary);
     font-size: 12px;
     line-height: 18px;
 }

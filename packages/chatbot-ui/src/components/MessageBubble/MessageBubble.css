@@ -519,15 +519,25 @@
     }
 }
 
-/* Inline edit */
+/* Inline edit.
+ *
+ * The box (drawn in place of the user's bubble), its field and its buttons
+ * take their colours from the theme tokens (2026-10-14). They were dark
+ * literals with no light version: in the light theme the box was grey with
+ * white text, and the focus ring was 2.0:1 at most against the box and about
+ * 1:1 against the focused field. The dark look is kept — the sunken surface
+ * is the black wash the literals were — and a focused field takes the page's
+ * colour, white in the light theme. The ring is 4.1:1 or more on the box and
+ * the field on every background, in both themes (`Files.styles.test.ts`
+ * measures it). */
 .cb-edit-container {
     display: flex;
     flex-direction: column;
     gap: 12px;
     width: 100%;
     animation: cb-edit-fade-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    background: rgba(20, 20, 25, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--cb-surface-sunken);
+    border: 1px solid var(--cb-border-subtle);
     border-radius: 14px;
     padding: 12px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.05);
@@ -550,10 +560,10 @@
     width: 100%;
     min-height: 80px;
     padding: 12px 14px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid var(--cb-border-medium);
     border-radius: 10px;
-    background: rgba(0, 0, 0, 0.2);
-    color: rgba(255, 255, 255, 0.95);
+    background: var(--cb-surface-sunken);
+    color: var(--cb-text-primary);
     font-family: inherit;
     font-size: 14px;
     line-height: 1.6;
@@ -567,8 +577,8 @@
 }
 
 .cb-edit-textarea:focus {
-    border-color: var(--cb-accent-primary, #6366f1);
-    background: rgba(0, 0, 0, 0.3);
+    border-color: var(--cb-focus-ring);
+    background: var(--cb-bg-primary);
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2), inset 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
@@ -626,13 +636,13 @@
 
 .cb-edit-cancel {
     background: transparent;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--cb-text-secondary);
     border: 1px solid transparent;
 }
 
 .cb-edit-cancel:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: rgba(255, 255, 255, 0.9);
+    background: var(--cb-surface-hover);
+    color: var(--cb-text-primary);
 }
 
 .cb-edit-cancel:active {
@@ -659,9 +669,9 @@
 .cb-edit-save:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--cb-surface-hover);
     box-shadow: none;
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--cb-text-tertiary);
 }
 
 /* ==========================================================================

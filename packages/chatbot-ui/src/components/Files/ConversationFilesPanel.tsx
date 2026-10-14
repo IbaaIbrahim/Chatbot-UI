@@ -4,7 +4,15 @@ import type { BlockRenderer } from '../../common/chatbotConfig';
 import { formatCount, formatLabel } from '../../common/labels';
 import { rendererFor } from '../../common/markdownBlocks';
 import { useStableId } from '../../common/useStableId';
-import { useChatActions, useChatEvent, useChatState, useIcons, useLabels, useMarkdownConfig } from '../../store/hooks';
+import {
+    useChatActions,
+    useChatEvent,
+    useChatRuntime,
+    useChatState,
+    useIcons,
+    useLabels,
+    useMarkdownConfig,
+} from '../../store/hooks';
 import { formatFileSize } from '../AttachmentViewer/AttachmentViewer';
 import { BlockDialog, ExpandedBlock } from '../MarkdownBlock/MarkdownBlock';
 import {
@@ -58,11 +66,15 @@ type LoadState =
     | { status: 'loaded'; conversationId: string | null; files: ConversationFile[]; blocks: BlockRecord[] }
     | { status: 'failed'; conversationId: string | null };
 
-/** A block open in the expanded overlay, drawn live. */
+/**
+ * A block open in the expanded overlay, drawn live — of the conversation it
+ * was opened in, which its Save saves against (review of 2026-10-14).
+ */
 interface OpenBlock {
     block: ConversationBlock;
     source: string;
     renderer: BlockRenderer;
+    conversationId: string | null;
 }
 
 /** How many skeleton rows stand in while the list loads. */
@@ -157,6 +169,7 @@ function locateInTranscript(root: Element | null, block: ConversationBlock): boo
 }
 
 const ConversationFilesBody: React.FC = () => {
+    const { store } = useChatRuntime();
     const storage = useChatState(s => s.storageClient);
     const conversationId = useChatState(s => s.activeConversationId);
     // The open conversation's title, as the sidebar lists it — the panel's subtitle.
@@ -192,6 +205,12 @@ const ConversationFilesBody: React.FC = () => {
     const focusAfterSave = useRef<string | null>(null);
     const closePreview = useCallback(() => setPreview(null), []);
     const closeBlock = useCallback(() => setOpenBlock(null), []);
+    // Another conversation picked beside the panel closes a block of this one:
+    // drawn under the new one, its Save would save against it.
+    const shownBlock = openBlock && openBlock.conversationId === conversationId ? openBlock : null;
+    useEffect(() => {
+        setOpenBlock(current => (current && current.conversationId !== conversationId ? null : current));
+    }, [conversationId]);
     const sectionId = useStableId('cb-files-section');
     const bodyRef = useRef<HTMLDivElement>(null);
     const openerRef = useRef<HTMLElement | null>(null);
@@ -306,23 +325,35 @@ const ConversationFilesBody: React.FC = () => {
     /**
      * Open a block drawn live: at once when the transcript holds its body,
      * after fetching it (`getBlock`) otherwise — the row says when that fails.
+     *
+     * A fetch lands only where it was asked for: the panel still open, on the
+     * same conversation (review of 2026-10-14). Read from the store when it
+     * lands, not from this render: a conversation picked in the inline
+     * sidebar meanwhile opened the block against the new one — drawn under
+     * its name, its Save saving it there.
      */
     const openLive = (item: ConversationItem & { type: 'block' }, renderer: BlockRenderer, opener: HTMLButtonElement) => {
         const { block } = item;
         openerRef.current = opener;
         if (block.source !== null) {
-            setOpenBlock({ block, source: block.source, renderer });
+            setOpenBlock({ block, source: block.source, renderer, conversationId });
             return;
         }
         if (!storage || !block.serverUuid || busyRows[item.id]) return;
+        const askedFor = conversationId;
+        const stillHere = () => {
+            if (!mounted.current) return false;
+            const now = store.getState();
+            return now.isFilesPanelOpen && now.activeConversationId === askedFor;
+        };
         setRowError(item.id)(null);
         setRowBusy(item.id, true);
         storage.getBlock(block.serverUuid).then(
             record => {
-                if (mounted.current) setOpenBlock({ block, source: record.source, renderer });
+                if (stillHere()) setOpenBlock({ block, source: record.source, renderer, conversationId: askedFor });
             },
             () => {
-                if (mounted.current) setRowError(item.id)(labels.blockLoadFailed);
+                if (stillHere()) setRowError(item.id)(labels.blockLoadFailed);
             }
         ).finally(() => {
             if (mounted.current) setRowBusy(item.id, false);
@@ -542,31 +573,31 @@ const ConversationFilesBody: React.FC = () => {
                 )}
             </div>
             <FilePreview file={preview} onClose={closePreview} />
-            {openBlock && (
+            {shownBlock && (
                 <BlockDialog
-                    label={openBlock.block.title ?? (openBlock.renderer.label ?? openBlock.block.language)}
+                    label={shownBlock.block.title ?? (shownBlock.renderer.label ?? shownBlock.block.language)}
                     onClose={closeBlock}
                     returnFocusTo={openerRef}
                 >
                     <ExpandedBlock
-                        language={openBlock.block.language}
-                        source={openBlock.source}
-                        meta={openBlock.block.meta}
-                        renderer={openBlock.renderer}
+                        language={shownBlock.block.language}
+                        source={shownBlock.source}
+                        meta={shownBlock.block.meta}
+                        renderer={shownBlock.renderer}
                         // Saved against the turn, whichever job of it drew the block.
-                        jobUuid={openBlock.block.turnJobUuid}
-                        conversationId={conversationId}
-                        messageId={openBlock.block.messageId ?? ''}
-                        getMessageSource={openBlock.block.messageText !== null
+                        jobUuid={shownBlock.block.turnJobUuid}
+                        conversationId={shownBlock.conversationId}
+                        messageId={shownBlock.block.messageId ?? ''}
+                        getMessageSource={shownBlock.block.messageText !== null
                             ? () => {
-                                const message = messagesRef.current.find(candidate => candidate.id === openBlock.block.messageId);
-                                return message ? messageTextOf(message) : openBlock.block.messageText ?? openBlock.source;
+                                const message = messagesRef.current.find(candidate => candidate.id === shownBlock.block.messageId);
+                                return message ? messageTextOf(message) : shownBlock.block.messageText ?? shownBlock.source;
                             }
                             : undefined}
                         // A block of the turn under way is told so, as in the
                         // transcript: a report exports, and saves, the whole
                         // answer once it has ended, not the half written so far.
-                        streaming={Boolean(openBlock.block.messageId && openBlock.block.messageId === liveMessageId)}
+                        streaming={Boolean(shownBlock.block.messageId && shownBlock.block.messageId === liveMessageId)}
                         onClose={closeBlock}
                     />
                 </BlockDialog>

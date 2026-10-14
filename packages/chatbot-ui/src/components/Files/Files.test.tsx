@@ -2286,6 +2286,82 @@ describe('the conversation files panel — everything of the conversation', () =
         expect(rowTitled(page, 'Gone')!.querySelector('.cb-file-error')?.textContent).toBe("Couldn't load this visual.");
     });
 
+    it('opens a block it fetched only where it was asked for: not under a conversation picked meanwhile, nor after the panel closed (review of 2026-10-14)', async () => {
+        const LAST_WEEK = '{"type":"line","title":"Last week"}';
+        storage.conversationBlocks = [
+            wireBlock('srv-old', { job_uuid: 'job-0', turn_job_uuid: 'job-0', block_key: 'old1', title: 'Last week', created_at: '2026-10-01T09:00:00Z' }),
+        ];
+        storage.blockSources = { 'srv-old': LAST_WEEK };
+        // The block's body waits here until released.
+        const held: Array<() => void> = [];
+        (fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => (
+            String(input) === `${BASE}/blocks/srv-old`
+                ? new Promise<Response>(resolve => held.push(() => resolve(fakeFetch(input, init))))
+                : fakeFetch(input, init)
+        ));
+        stubResizeObserver();
+        const page = renderInContainer('fullscreen', {}, BLOCK_CONFIG, [wireJob(JOB, ANSWER)]);
+        await settle();
+        await settle();
+        act(() => button(page, 'Conversation files')!.click());
+        await settle();
+        const open = () => act(() => rowTitled(page, 'Last week')!.querySelector<HTMLButtonElement>('.cb-file-main')!.click());
+        const drawnLastWeek = () => chartProps.filter(props => props.source === LAST_WEEK);
+
+        // Asked for under conv-1; conv-2 is picked in the sidebar before it lands.
+        open();
+        await settle();
+        expect(held).toHaveLength(1);
+        await act(async () => {
+            await actions!.selectConversation('conv-2');
+        });
+        await settle();
+        expect(page.querySelector('.chat-state')?.textContent).toMatch(/^conv-2\//);
+        expect(page.querySelector('.cb-files-panel')).not.toBeNull();
+        await act(async () => {
+            held.shift()!();
+        });
+        await settle();
+        expect(document.body.querySelector('.cb-md-block-overlay')).toBeNull();
+        expect(drawnLastWeek()).toEqual([]);
+        // Nor is it kept for when conv-1 is picked again.
+        await act(async () => {
+            await actions!.selectConversation(CONVERSATION);
+        });
+        await settle();
+        expect(page.querySelector('.chat-state')?.textContent).toMatch(/^conv-1\//);
+        expect(document.body.querySelector('.cb-md-block-overlay')).toBeNull();
+        expect(drawnLastWeek()).toEqual([]);
+
+        // Asked for and landing on the same conversation, it opens, against that one.
+        open();
+        await settle();
+        await act(async () => {
+            held.shift()!();
+        });
+        await settle();
+        expect(document.body.querySelector('.cb-md-block-overlay')).not.toBeNull();
+        expect(lastChart()).toMatchObject({ source: LAST_WEEK, conversationId: CONVERSATION, jobUuid: 'job-0', expanded: true });
+        press(document.activeElement!, 'Escape');
+        expect(document.body.querySelector('.cb-md-block-overlay')).toBeNull();
+
+        // Asked for, then the panel closed before it lands: nothing opens, then or on opening it again.
+        const drawn = drawnLastWeek().length;
+        open();
+        await settle();
+        act(() => actions!.closeFiles());
+        await settle();
+        await act(async () => {
+            held.shift()!();
+        });
+        await settle();
+        act(() => button(page, 'Conversation files')!.click());
+        await settle();
+        expect(page.querySelector('.cb-files-panel')).not.toBeNull();
+        expect(document.body.querySelector('.cb-md-block-overlay')).toBeNull();
+        expect(drawnLastWeek()).toHaveLength(drawn);
+    });
+
     it("shows a block of a language this page cannot draw as a row with its language, opening nothing", async () => {
         storage.conversationBlocks = [
             wireBlock('srv-gauge', { language: 'gauge', kind: null, block_key: 'g1', title: 'Pressure' }),

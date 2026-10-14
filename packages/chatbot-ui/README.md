@@ -1522,8 +1522,19 @@ with darker hues in the light theme. Three more tokens serve them (2026-10-14):
   (3.6:1 dark, 3.3:1 light), so the choice is seen by more than its fill and
   its weight.
 
-A host that redefines these should keep those ratios: the files dialog's
-colours are measured against WCAG from the tokens by
+Every focus ring in the chat, and a focused field's edge, is `--cb-focus-ring`
+(2026-10-14): `--cb-accent-strong` by default, solid — 4.5:1 or more on the
+four backgrounds in both themes, 3.3:1 or more on a hovered, raised or chosen
+surface. `--cb-border-focus` (the accent at 50%, about 2:1) is no focus ring:
+it stays for a questionnaire's checked option and a hovered quick-action card.
+A browser without `color-mix()` (Chrome/Edge before 111, Safari before 16.2,
+Firefox before 113) cannot read the light theme's mixed `--cb-accent-strong`,
+which would void every ring drawn from it; an `@supports not` block gives it
+`#4a6cb4` there (the default mix, 5.1:1 on white), which does not follow a
+rebranded accent.
+
+A host that redefines these should keep those ratios: the files lists'
+colours and the focus ring are measured against WCAG from the tokens by
 `src/components/Files/Files.styles.test.ts`.
 
 The stylesheet is injected by the JavaScript bundle; there is no separate CSS file
@@ -1786,8 +1797,8 @@ from the tokens and fails when a rule falls below.
   2.7:1.
 - **Focus.** The files lists' rings are `--cb-accent-strong`, solid (5.6:1 on
   the dark dialog, 5.1:1 on white, 3.4:1 or more on a hovered row or the
-  filter); `--cb-border-focus` is the accent at 50%, about 2:1, and is left
-  as it is for the rest of the chat.
+  filter); `--cb-border-focus` is the accent at 50%, about 2:1 — the rest of
+  the chat's rings moved off it in the follow-up below.
 - **Older browsers.** The rule keeping a busy row's actions shown (`:has()`)
   is its own: in one list with `:hover` and `:focus-within`, a browser without
   `:has()` (Firefox before 121) dropped all three, and the actions stayed
@@ -1804,6 +1815,41 @@ from the tokens and fails when a rule falls below.
   minutes ago", not "60 minutes ago"; 23.7 hours "23 hours ago"; 6.8 days "6
   days ago", never "7 days ago" a moment before the short date.
 - **Label:** `disclaimer` reads "…Verify results." (it read "Very results.").
+
+**Follow-up to the contrast review (2026-10-14).** Still 4.1.0.
+
+- **Focus, everywhere.** New token `--cb-focus-ring` (the strong accent,
+  solid): every focus ring in the chat — the composer's focused edge, the
+  sidebar, the welcome screen, the launcher, rich blocks and their menu, the
+  attachment viewer's inline actions, tool and thinking headers, confirm
+  buttons, credit usage, the questionnaire, the tools menu, the drawer's and
+  the files lists' search fields — draws in it: 4.5:1 or more on every
+  background, where `--cb-border-focus` was 1.7–2.0:1 and the composer's 40%
+  accent 1.7:1. `--cb-border-focus` is unchanged and kept for the two states
+  that are not focus (a checked questionnaire option, a hovered quick-action
+  card). The lightbox keeps its own light ring on its dark panel.
+- **Focus without `color-mix()`.** The light theme's `--cb-accent-strong` is a
+  `color-mix()`; in a browser without it every ring drawn in the token
+  vanished (an unparsable custom property voids `outline` at computed-value
+  time). An `@supports not` block gives it a plain `#4a6cb4` there.
+- **Editing a message** (`.cb-edit-container`, `.cb-edit-textarea`, Cancel,
+  a disabled Send) takes theme tokens in place of dark literals: in the light
+  theme the box was grey with white text, and its ring 2.0:1 at most on the
+  box and about 1:1 on the focused field. Now 4.1:1 or more on both, on every
+  background; the dark look is kept. The contrast test measures it.
+- **The Artifacts view's All · Saved · Not saved** takes the files dialog's
+  segmented colours, now shared rules: a lifted track and a chosen option
+  edged at 3.7:1 (3.3:1 light) — it was the page's colour on a
+  `--cb-bg-secondary` track, 1.1:1 and darker than the track in the dark
+  theme. The track keeps its pill shape and loses its hairline.
+- **Details text.** A row's details (`.cb-file-meta`) and an opened
+  artifact's details line (`.cb-artifact-detail-meta`) are the secondary
+  text: the tertiary was 3.3:1 on the dark page, 3.0:1 on a hovered row.
+- **Files panel:** a block fetched on a click (`getBlock`) opens only if the
+  panel is still open on the conversation it was asked for — a conversation
+  picked in the inline sidebar meanwhile opened it under the new one, where
+  its Save saved against that one. An open block closes when another
+  conversation is picked.
 
 ## Migrating from 3.x
 

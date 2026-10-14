@@ -162,10 +162,11 @@
   --cb-border-focus: rgba(99, 102, 241, 0.5) !important;
   /* Every focus ring and focused field's edge in the chat (2026-10-14): the
    * strong accent, solid, so it keeps 3:1 against every surface it lands on
-   * in both themes — 4.5:1 or more on the four backgrounds, 3.6:1 or more on
-   * a hovered one (`Files.styles.test.ts` measures it). Until then the rings
-   * outside the files lists were `--cb-border-focus`, under 2.1:1. A host's
-   * rebrand of the accent carries over; a host may set its own, at 3:1. */
+   * in both themes — 4.5:1 or more on the four backgrounds, 3.3:1 or more
+   * on a hovered, raised or chosen one (`Files.styles.test.ts` measures it).
+   * Until then the rings outside the files lists were `--cb-border-focus`,
+   * 1.7-2.0:1. A host's rebrand of the accent carries over; a host that sets
+   * its own should keep 3:1. */
   --cb-focus-ring: var(--cb-accent-strong) !important;
 
   /* Shadows */
@@ -314,6 +315,35 @@
     --cb-kind-image: #db2777 !important;
     --cb-kind-pdf: #dc2626 !important;
     --cb-kind-spreadsheet: #15803d !important;
+  }
+}
+
+/* The light theme's strong accent in a browser without `color-mix()` (Chrome
+ * and Edge before 111, Safari before 16.2, Firefox before 113), as a plain
+ * colour (2026-10-14). There the mix above is a value the browser cannot
+ * parse, and a custom property that substitutes to one voids the declaration
+ * using it at computed-value time: `outline: 2px solid var(--cb-focus-ring)`
+ * fell back to no outline at all, so keyboard focus vanished from the whole
+ * light theme, and icons drawn in the token took the inherited colour.
+ * `#4a6cb4` is the mix of the default accent, rounded — 5.1:1 on white. It
+ * does not follow a rebranded accent; only these browsers see it. Both
+ * selector forms, after the light blocks, so it wins where they apply
+ * (`Files.styles.test.ts` checks both, and the ring they give). */
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+
+  .cb-chat-container[data-theme='light'],
+  .cb-chat-launcher[data-theme='light'],
+  .cb-root[data-theme='light'] {
+    --cb-accent-strong: #4a6cb4 !important;
+  }
+
+  @media (prefers-color-scheme: light) {
+
+    .cb-chat-container:not([data-theme='dark']),
+    .cb-chat-launcher:not([data-theme='dark']),
+    .cb-root:not([data-theme='dark']) {
+      --cb-accent-strong: #4a6cb4 !important;
+    }
   }
 }
 
