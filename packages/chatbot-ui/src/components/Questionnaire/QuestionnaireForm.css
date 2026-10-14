@@ -134,6 +134,8 @@
     color: var(--cb-text-primary);
 }
 
+/* Checked is a state, not focus: the soft accent edge (`--cb-border-focus`)
+   stays; a focused option's ring is the input's, below. */
 .cb-questionnaire-option.checked {
     border-color: var(--cb-border-focus);
     color: var(--cb-text-primary);
@@ -188,9 +190,12 @@
     min-height: 52px;
 }
 
+/* The edge is the indicator, so it is the focus ring's colour (2026-10-14):
+   3:1 or more against the field and the form. It was `--cb-border-focus`,
+   the accent at 50%, about 2:1; the halo around it is decoration. */
 .cb-questionnaire-other-input:focus,
 .cb-questionnaire-textarea:focus {
-    border-color: var(--cb-border-focus);
+    border-color: var(--cb-focus-ring);
     outline: 2px solid transparent;
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
 }
@@ -261,6 +266,6 @@
 .cb-questionnaire-nav:focus-visible,
 .cb-questionnaire-submit:focus-visible,
 .cb-questionnaire-option input:focus-visible {
-    outline: 2px solid var(--cb-border-focus);
+    outline: 2px solid var(--cb-focus-ring);
     outline-offset: 2px;
 }

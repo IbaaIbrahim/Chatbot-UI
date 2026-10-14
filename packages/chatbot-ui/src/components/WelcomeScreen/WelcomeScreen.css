@@ -253,7 +253,7 @@
 }
 
 .cb-welcome-quick-action-pill:focus-visible {
-    outline: 2px solid var(--cb-border-focus);
+    outline: 2px solid var(--cb-focus-ring);
     outline-offset: 2px;
 }
 
@@ -312,7 +312,7 @@
 }
 
 :root .cb-welcome-prompt-row:focus-visible {
-    outline: 2px solid var(--cb-border-focus);
+    outline: 2px solid var(--cb-focus-ring);
     outline-offset: -2px;
 }
 
@@ -418,7 +418,7 @@
 }
 
 .cb-welcome-feature-card:focus-visible {
-    outline: 2px solid var(--cb-border-focus);
+    outline: 2px solid var(--cb-focus-ring);
     outline-offset: 2px;
 }
 
@@ -699,6 +699,7 @@
     text-align: start;
 }
 
+/* Hover, not focus: the soft accent edge (`--cb-border-focus`) stays. */
 .cb-quick-action-card:hover {
     background-color: var(--cb-bg-tertiary);
     border-color: var(--cb-border-focus);

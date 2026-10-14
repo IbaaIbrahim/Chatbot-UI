@@ -80,7 +80,7 @@
 }
 
 :root .cb-md-block-btn:focus-visible {
-    outline: 2px solid var(--cb-border-focus);
+    outline: 2px solid var(--cb-focus-ring);
     outline-offset: 1px;
 }
 
@@ -139,7 +139,7 @@
 }
 
 :root .cb-md-block-menu-item:focus-visible {
-    outline: 2px solid var(--cb-border-focus);
+    outline: 2px solid var(--cb-focus-ring);
     outline-offset: -2px;
 }
 

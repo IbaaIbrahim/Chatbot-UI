@@ -729,7 +729,7 @@
 }
 
 .cb-sub-agent-header:focus-visible {
-    outline: 2px solid var(--cb-border-focus);
+    outline: 2px solid var(--cb-focus-ring);
     outline-offset: -2px;
 }
 
@@ -824,7 +824,7 @@
 }
 
 .cb-thinking-header:focus-visible {
-    outline: 2px solid var(--cb-border-focus);
+    outline: 2px solid var(--cb-focus-ring);
     outline-offset: -2px;
 }
 
@@ -927,7 +927,7 @@
 
 /* Editing a message: the textarea is the whole interaction, so it shows focus. */
 .cb-edit-textarea:focus-visible {
-    outline: 2px solid var(--cb-border-focus);
+    outline: 2px solid var(--cb-focus-ring);
     outline-offset: -1px;
 }
 
@@ -995,7 +995,7 @@
 }
 
 .cb-error-action:focus-visible {
-    outline: 2px solid var(--cb-border-focus);
+    outline: 2px solid var(--cb-focus-ring);
     outline-offset: 2px;
 }
 

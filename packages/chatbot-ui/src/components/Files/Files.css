@@ -231,7 +231,7 @@
 
 .cb-files-title:focus-visible {
     border-radius: var(--cb-radius-sm);
-    outline: 2px solid var(--cb-accent-strong, var(--cb-accent-primary));
+    outline: 2px solid var(--cb-focus-ring, var(--cb-accent-strong));
     outline-offset: 2px;
 }
 
@@ -268,19 +268,19 @@
     color: var(--cb-text-primary);
 }
 
-/* Focus rings in both lists are the strong accent, solid: the shared
- * `--cb-border-focus` is the accent at 50%, about 1.9:1 on the dark dialog
- * and 2.0:1 on white, and an icon-only action has nothing else to say it is
- * the focused one. `--cb-accent-strong` is 5.6:1 on the dark dialog, 5.1:1
- * on white, and at least 3.4:1 on a hovered row, the filter's track or its
- * chosen option (review of 2026-10-14). */
+/* Focus rings in both lists are the chat's focus ring (`--cb-focus-ring`,
+ * the strong accent, solid): the half-transparent `--cb-border-focus` was
+ * about 1.9:1 on the dark dialog and 2.0:1 on white, and an icon-only action
+ * has nothing else to say it is the focused one. The ring is 5.6:1 on the
+ * dark dialog, 5.1:1 on white, and at least 3.4:1 on a hovered row, the
+ * filter's track or its chosen option (review of 2026-10-14). */
 :root .cb-files-icon-btn:focus-visible,
 :root .cb-file-action:focus-visible,
 :root .cb-file-main:focus-visible,
 :root .cb-files-chip:focus-visible,
 :root .cb-files-text-btn:focus-visible,
 :root .cb-files-load-more:focus-visible {
-    outline: 2px solid var(--cb-accent-strong, var(--cb-accent-primary));
+    outline: 2px solid var(--cb-focus-ring, var(--cb-accent-strong));
     outline-offset: 1px;
 }
 
@@ -346,8 +346,10 @@
     outline: none;
 }
 
+/* The field's edge is its focus indicator: the focus ring's colour, 3:1 or
+ * more on the field (the plain accent was 3.0:1 on its light grey). */
 :root .cb-files-search-input:focus {
-    border-color: var(--cb-accent-primary);
+    border-color: var(--cb-focus-ring, var(--cb-accent-primary));
 }
 
 .cb-files-chips {
@@ -786,7 +788,7 @@
 }
 
 :root .cb-files-segment:focus-visible {
-    outline: 2px solid var(--cb-accent-strong, var(--cb-accent-primary));
+    outline: 2px solid var(--cb-focus-ring, var(--cb-accent-strong));
     outline-offset: 1px;
 }
 
@@ -808,11 +810,12 @@
     overflow: auto;
 }
 
-/* Where "Show in chat" went: marked for a moment. */
+/* Where "Show in chat" went, and focus with it: marked for a moment, in the
+ * focus ring's colour. */
 .cb-md-block.is-located,
 .cb-md-block-bare.is-located,
 .cb-message-row.is-located {
-    outline: 2px solid var(--cb-accent-primary);
+    outline: 2px solid var(--cb-focus-ring, var(--cb-accent-primary));
     outline-offset: 2px;
     transition: outline-color 0.3s ease-out;
 }

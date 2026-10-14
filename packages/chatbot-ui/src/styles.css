@@ -156,7 +156,17 @@
   --cb-radius-xl: 24px !important;
   --cb-radius-full: 9999px !important;
   --cb-border-subtle: rgba(255, 255, 255, 0.1) !important;
+  /* A soft accent edge for a state that is not focus: a questionnaire's
+   * checked option, a quick-action card under the pointer. Not a focus ring:
+   * at 50% it is about 1.9:1 on the dark surfaces and 2.0:1 on white. */
   --cb-border-focus: rgba(99, 102, 241, 0.5) !important;
+  /* Every focus ring and focused field's edge in the chat (2026-10-14): the
+   * strong accent, solid, so it keeps 3:1 against every surface it lands on
+   * in both themes — 4.5:1 or more on the four backgrounds, 3.6:1 or more on
+   * a hovered one (`Files.styles.test.ts` measures it). Until then the rings
+   * outside the files lists were `--cb-border-focus`, under 2.1:1. A host's
+   * rebrand of the accent carries over; a host may set its own, at 3:1. */
+  --cb-focus-ring: var(--cb-accent-strong) !important;
 
   /* Shadows */
   --cb-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
