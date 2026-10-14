@@ -408,6 +408,20 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
             steps: 0, input_tokens: 0, output_tokens: 0, credits_charged: 0, credits_waived: 0,
         };
 
+        // The turn's own job, from the first frame that names one and is not
+        // a sub-agent's. It is what a host saves a file against
+        // (`MessageProps.jobUuid`, a block's `jobUuid`), and a reload reads the
+        // same uuid from history — so it is recorded once, as soon as it is
+        // known, rather than waiting for the turn to end. A handoff child is a
+        // sub-agent here: the turn stays the parent's.
+        let turnJobUuid: string | null = null;
+        const recordTurnJob = (event: any) => {
+            const jobUuid = event?.data?.job_uuid;
+            if (turnJobUuid || !jobUuid || isSubAgentJob(event)) return;
+            turnJobUuid = String(jobUuid);
+            patchTurn(m => (m.jobUuid ? {} : { jobUuid: turnJobUuid }));
+        };
+
         // A check-in is answered through the same endpoint as an approval, so
         // it is rendered as the same card; this is what the card says.
         const describeCheckIn = (elapsedSeconds: number, credits?: number): string => {
@@ -421,6 +435,8 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
         };
 
         const handleEvent = (event: StreamEvent) => {
+            recordTurnJob(event);
+
             // Handle attachment metadata events.
             if (event.type === 'attachments' && currentUserMessageIdRef.current && storageApiUrl) {
                 const jobUuid = event.data?.job_uuid;

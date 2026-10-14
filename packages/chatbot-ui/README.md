@@ -17,6 +17,8 @@ changes — not on every streamed token.
 - [Configuration](#configuration)
 - [Changing the chat on one screen: `useChatOverrides`](#changing-the-chat-on-one-screen-usechatoverrides)
 - [The conversation sidebar](#the-conversation-sidebar)
+- [Rich blocks: charts, tables and cards in an answer](#rich-blocks-charts-tables-and-cards-in-an-answer)
+- [Conversation files and artifacts](#conversation-files-and-artifacts)
 - [What the Gateway must serve](#what-the-gateway-must-serve)
 - [Your own layout](#your-own-layout)
 - [A fixed agent for one screen](#a-fixed-agent-for-one-screen)
@@ -24,6 +26,7 @@ changes — not on every streamed token.
 - [The `tools` prop](#the-tools-prop)
 - [Theming](#theming)
 - [Developing against a linked host](#developing-against-a-linked-host)
+- [Migrating from 4.0 (4.1)](#migrating-from-40-41)
 - [Migrating from 3.x](#migrating-from-3x)
 - [Migrating from 2.x](#migrating-from-2x)
 - [Migrating from 1.x](#migrating-from-1x)
@@ -90,6 +93,10 @@ call re-renders on every change unless it is paired with an equality function;
 | `isOpen`, `isSidebarOpen` | Presence. |
 | `hostHandlesOpenChange`, `canSwitchMode`, `canShare`, `canCopyConversationLink`, `canStop` | Whether the provider has `onOpenChange` / `onSwitchMode` / `onShare` / `conversationLink`, and whether the client can cancel a turn on the server. |
 | `canShowCredits`, `isCreditUsageOpen` | Whether the client can read the user's own allowance, and whether the "Credit usage" dialog is open. |
+| `storageClient` | The storage API's client for this user (`StorageClient`), built from `storageApiUrl` and `accessToken`; `null` without both. See [Conversation files and artifacts](#conversation-files-and-artifacts). |
+| `isFilesPanelOpen`, `isArtifactsPanelOpen` | Whether the "Conversation files" panel is open, or the "Artifacts" view is showing in place of the chat (one at a time). |
+| `artifactsOpenings` | Counts the calls to `openArtifacts()` — the view goes back to its list when "Artifacts" is chosen while it already shows. |
+| `filesRevision` | Counts the files saved and artifacts deleted through the chat — a list of files reads it to know when to read again. |
 | `messages` | The transcript. Changes on every streamed token — read it only where you draw it. |
 | `isThinking`, `isResuming`, `isStopping` | The turn in progress. |
 | `usageSummary` | The consumption figures the usage ring shows. |
@@ -116,12 +123,18 @@ closure to capture: every call acts on the current state.
 | `switchMode(mode)` | Calls the provider's `onSwitchMode`. |
 | `share()` | Calls the provider's `onShare`. |
 | `openCreditUsage()`, `closeCreditUsage()` | The "Credit usage" dialog — see [Credit usage](#credit-usage). |
+| `openFiles()`, `closeFiles()` | The "Conversation files" panel, for the open conversation. |
+| `openArtifacts()`, `closeArtifacts()` | The "Artifacts" view: everything the answers produced across conversations, saved and not saved, in the chat column in place of the transcript and the composer. |
+| `saveFile(jobUuid, file, options?)` | Stores a `File` or `Blob` in the conversation against the turn `jobUuid` (a block's `jobUuid`): an export by default, an artifact with `isArtifact: true`. Resolves to the stored `ConversationFile`; rejects with the server's reason (after 3 s of retries for a turn not stored yet), or at once without a storage API. See [Saving](#saving-a-file-or-an-artifact). |
+| `saveArtifact(jobUuid, file, options?)` | `saveFile` with `isArtifact: true` — listed under "Artifacts". A block's Save passes its `blockKey` prop (`options.blockKey`), which marks that block "Saved". |
+| `saveGeneratedFile(attachmentUuid)` | Saves a file the application generated (an export) as an artifact: the storage API copies it. Resolves to the copy (the existing one when saved before); rejects with the server's reason (409 `NOT_GENERATED` for an upload or an artifact), or at once without a storage API. |
+| `deleteArtifact(attachmentUuid)` | Deletes one of the user's artifacts; rejects when the server refuses. |
 | `sendMessage(text, attachedFiles?)` | Sends a message in the active conversation (a new one when none is active). |
 | `stopTurn()`, `retryTurn()`, `continueTurn()` | The turn in progress or the one that failed. |
 | `confirmApproval(uuid)`, `rejectApproval(uuid)` | Answers a held tool call. |
 | `submitQuestionnaire(formattedAnswers)` | Answers an `ask_user_questions` call. |
-| `newChat()` | Starts a new conversation. |
-| `selectConversation(id)` | Loads a conversation; resolves to `false` if it could not. |
+| `newChat()` | Starts a new conversation (and leaves the Artifacts view for it). |
+| `selectConversation(id)` | Loads a conversation (and leaves the Artifacts view for it); resolves to `false` if it could not. |
 | `deleteConversation(id)` | Rejects when the server refuses, and then removes nothing. |
 | `setConversationStarred(id, starred)` | Moves the conversation between Starred and Recents at once, and back if the server refuses. |
 | `renameConversation(id, title)` | Shows the new title at once, and the old one again if the server refuses. A blank title changes nothing. |
@@ -131,7 +144,7 @@ closure to capture: every call acts on the current state.
 | `copyConversationLink()` | Copies the provider's `conversationLink` for the active conversation; nothing without one. |
 | `setEnabledToolIds(ids)` | Switches user-enablable tools on or off. Saved in `localStorage` (`chatbot-ui:enabled-tools`); ids this screen does not list are kept as they were, so a screen with fewer tools cannot switch off the others. |
 | `focusComposer()` | Focuses the composer, unless the user is already typing somewhere. |
-| `setComposerText(text)` | Replaces the composer's text and focuses it — to prefill a prompt from a page button. |
+| `setComposerText(text)` | Replaces the composer's text and focuses it — to prefill a prompt from a page button. Leaves the Artifacts view, which stands where the composer is. |
 
 ## Reacting: `useChatEvent`
 
@@ -154,6 +167,7 @@ other handlers.
 | `conversation.starred` | `{ conversationId, starred }` | The server accepted a star or unstar. |
 | `conversation.renamed` | `{ conversationId, title }` | The server accepted a rename. |
 | `conversation.deleted` | `{ conversationId }` | The server accepted a delete. |
+| `chat.files.changed` | `{ change: 'saved' \| 'deleted', attachmentUuid, file, conversationId, jobUuid, blockKey, savedFromUuid }` | The server accepted a `saveFile` / `saveArtifact` / `saveGeneratedFile` (`file` is what it stored; `blockKey` names the block an artifact was saved from, `savedFromUuid` the generated file a copy was saved from) or a `deleteArtifact` (`file` is `null`). |
 
 Use `useChatState` to render the current value of something, and `useChatEvent` to
 react to the moment it happens.
@@ -180,7 +194,7 @@ or `useChatEvent('sidebar.opened', …)`. To *replace* the default, control
 | --- | --- | --- |
 | `client` | — | A `GatewayStreamClient` (or any `StreamChatClient`). |
 | `streamUrl`, `streamHeaders` | — | Builds a plain `StreamClient` when no `client` is given. |
-| `storageApiUrl`, `accessToken` | `''`, `null` | Attachments and authenticated images. |
+| `storageApiUrl`, `accessToken` | `''`, `null` | Attachments and authenticated images; with both, the conversation files button, the Artifacts entry and `saveFile` / `saveArtifact`. |
 | `userName` | `'User'` | Fills `{name}` in the greeting. |
 | `tools` | — | See [The `tools` prop](#the-tools-prop). |
 | `skills` | — | This app's own skills, loaded on demand. See [Client skills and the host catalogue](#client-skills-and-the-host-catalogue). Memoise it; omit it to leave `client.setSkills` alone, `[]` clears. |
@@ -262,7 +276,8 @@ const config: ChatbotConfig = {
   icons: { sidebarToggle: <MyPanelIcon /> },                // every icon; see DEFAULT_ICONS
   header: { close: false, switchView: false, actions: <MyHeaderButtons />, menuItems: [...] },
   composer: { mic: true, onVoiceInput: startDictation, usageDetails: false },
-  sidebar: { items: [{ id: 'artifacts', label: 'Artifacts', icon: <Box />, onSelect: openArtifacts }] },
+  sidebar: { items: [{ id: 'tasks', label: 'Tasks', icon: <Box />, onSelect: openTasks }] },
+  markdown: { blockRenderers: BLOCK_RENDERERS },            // fences the host draws; see Rich blocks
   greeting: { title: 'Hi {name}, what are we doing today?' },
   suggestions: [...], quickActions: [...], featureCards: [...],
 };
@@ -294,6 +309,7 @@ const config: ChatbotConfig = {
 | `creditUsage` | `true` | The client can read the allowance (`GatewayStreamClient`) — see [Credit usage](#credit-usage). |
 | `copyConversationId` | `true` | A conversation is active. Copies the provider's `conversationLink` when it has one ("Copy conversation link"), the id otherwise. |
 | `deleteConversation` | `true` | A conversation is active. Takes two clicks: the first asks, in place. |
+| `files` | `true` | A conversation is active, the provider has `storageApiUrl` and `accessToken`, and the Artifacts view is not showing in its place. Opens "Conversation files" — see [Conversation files and artifacts](#conversation-files-and-artifacts). |
 | `close` | `true` | The provider has `onOpenChange`, or the chat is floating and not embedded (its launcher can reopen it). |
 
 ### Views: the "Switch view" entry
@@ -364,7 +380,7 @@ organisation's or the provider's figures, which the Gateway does not send.
 | `density` | `'auto'` | Not a control: how much room the composer takes — see below. |
 | `usage` | `true` | The consumption indicator under the composer: a ring for the context window, and the conversation's total credits beside it (*until 4.0, the window's percentage, or the latest turn's credits*). |
 | `usageDetails` | `true` | The breakdown card the indicator opens on click. `false` leaves the ring and the total with nothing to open: `config={{ composer: { usageDetails: false } }}`. |
-| `disclaimer` | `true` | "This is AI, and can make mistakes. Very results." (`labels.disclaimer`). |
+| `disclaimer` | `true` | "This is AI, and can make mistakes. Verify results." (`labels.disclaimer`). |
 | `mic` | `true` | `onVoiceInput` is set — the library records no audio itself. |
 | `onVoiceInput` | — | Called by the mic button. |
 
@@ -417,7 +433,8 @@ it holds the Stop button for the run that asked.
 | --- | --- | --- |
 | `enabled` | `true` | `false` removes the sidebar and its toggle. |
 | `newChat` | `true` | The "New chat" entry. |
-| `items` | `[]` | Navigation entries under "New chat": `{ id, label, icon?, onSelect, active?, badge? }` — an Artifacts or Tasks page, say. None by default. |
+| `artifacts` | `true` | The "Artifacts" entry under "New chat"; shown only while the provider has `storageApiUrl` and `accessToken`. See [Conversation files and artifacts](#conversation-files-and-artifacts). |
+| `items` | `[]` | Navigation entries under "Artifacts": `{ id, label, icon?, onSelect, active?, badge? }` — a Tasks page, say. None by default. |
 | `starred` | `true` | The Starred section; shown only while the Gateway reports `starred_at`. |
 | `search` | `true` | The search box. |
 | `rename` | `true` | "Rename" in a row's menu; needs a client with `renameConversation`. |
@@ -503,8 +520,26 @@ see [Meta-tool steps](#meta-tool-steps)); the activity section
 `activityRanOne`, `activityRanRepeated`, `activityRanOther`,
 `activityAgentOne`/`Other`, `activityAgentWorking`, `activityFailed`,
 `activitySeparator` — see [The activity section](#the-activity-section));
+rich blocks (`blockPreparing`, `blockFailed`, `blockShowSource`, `blockExpand`,
+`blockMore`, `blockCopySource`, `blockClose` — see [Rich blocks](#rich-blocks-charts-tables-and-cards-in-an-answer));
 attachment viewer (`close`, `closeAttachment`, `attachmentLoadFailed`,
-`attachmentNoAuth`, `pdfLoadFailed`); questionnaire (`answerPlaceholder`,
+`attachmentNoAuth`, `pdfLoadFailed`, `downloadFile`, `downloadFailed`,
+`previewTruncated`); conversation files and artifacts (`conversationFiles`,
+`conversationFilesEmpty`, `filesLoadFailed`, `fileArtifactBadge`,
+`fileGeneratedBadge`, `previewFile`, `artifacts`, `artifactsEmpty`,
+`artifactsLoadFailed`, `searchArtifacts`, `noArtifactResults`,
+`noArtifactFilterResults`, `artifactKindFilter`, `artifactKindAll`,
+`artifactKindChart`, `artifactKindTable`, `artifactKindKpi`, `artifactKindReport`,
+`artifactKindFile`, `openConversation`, `backToArtifacts`, `deleteArtifact`,
+`confirmDeleteArtifact`, `artifactDeleteFailed`); saved and not saved (`savedBadge`,
+`notSavedBadge`, `saveFile`, `saveFileFailed`, `fileSavedAnnouncement`, `showInChat`, `showInChatUnavailable`,
+`blockUntitled`, `blockNoRenderer`, `blockLoadFailed`, `filesFilter`, `filesFilterAll`,
+`filesFilterVisuals`, `filesFilterFiles`, `conversationVisualsEmpty`, `artifactStatus`,
+`artifactStatusAll`, `artifactStatusSaved`, `artifactStatusUnsaved`, `artifactsSavedEmpty`,
+`artifactsUnsavedEmpty`); the files panel's look (`conversationFilesEmptyTitle`,
+`conversationFilesEmptyHint`, `filesItemsOne`, `filesItemsOther`, `filesSavedCount`,
+`itemKindChart`, `itemKindTable`, `itemKindKpi`, `itemKindReport`, `itemKindFile`,
+`itemKindImage`, `itemKindPdf`, `itemKindSpreadsheet`); questionnaire (`answerPlaceholder`,
 `otherOption`, `customAnswerPlaceholder`, `previousQuestion`, `nextQuestion`,
 `submit`, `submitted`); usage (`usageTitle`, `usageFootnote`, `usageUpdating`, `usageTrigger`,
 `usageSummaryWithWindow`, `usageSummary`, `usageContextWindow`, `usageLimitUnknown`,
@@ -530,7 +565,13 @@ theme.
 `star`, `starFilled`, `sectionCollapsed`, `sectionExpanded`, `promptRow`, `delete`,
 `rename`, `more`, `share`, `viewFloating`, `viewSidebar`, `viewFullscreen`, `switchView`,
 `check`, `creditUsage`, `copy`, `link`, `close`, `attach`, `tools`, `mic`, `send`, `stop`,
-`scrollDown`.
+`scrollDown`, `files`, `artifacts`, `download`, `expand`, `openConversation`, `back`
+(an opened artifact's "Back to artifacts", drawn pointing left and mirrored
+right-to-left), and one per artifact kind: `artifactChart`, `artifactTable`, `artifactKpi`, `artifactReport`,
+`artifactFile`; one per plain file's type, in the files lists' rows: `fileImage`, `filePdf`,
+`fileSpreadsheet` (anything else is `artifactFile`); and for saved and not saved: `saved` (the "Saved" mark), `notSaved` (the
+"Not saved" mark), `save` (a generated file's Save) and `showInChat` (a block's "Show in chat"
+in the files panel).
 
 `sidebarToggle` and `sidebarCollapse` are one panel drawn twice, its chevron
 reversed: the header shows the first while the sidebar is closed and the second
@@ -591,8 +632,9 @@ function AuditScreen() {
 
 ## The conversation sidebar
 
-New chat, then the host's `sidebar.items`, then **Starred** and **Recents**,
-with search over all of them. Selecting from an overlay closes it; the
+New chat, then **Artifacts** (with a storage API — see [Conversation files and
+artifacts](#conversation-files-and-artifacts)), then the host's `sidebar.items`,
+then **Starred** and **Recents**, with search over all of them. Selecting from an overlay closes it; the
 fullscreen column on a wide screen stays open.
 
 - **Starred** appears only when the Gateway reports `starred_at` on its
@@ -618,6 +660,357 @@ fullscreen column on a wide screen stays open.
   conversation and removes nothing (revision 011). *Until 4.0 delete was off by
   default, because the Gateway served no `DELETE` route.*
 
+## Rich blocks: charts, tables and cards in an answer
+
+*New in 4.1 (2026-10-14).* A host draws fenced code blocks itself. The model
+writes a fence in its answer — ` ```chart `, ` ```table `, whatever languages the
+host registers — and the chat draws the host's component in its place: inline,
+next to the sentence that refers to it, several per answer. The library knows no
+chart; it owns the frame, the streaming, the failure path and the plumbing.
+
+```tsx
+const BLOCK_RENDERERS: Record<string, BlockRenderer> = {   // module level: its identity is compared
+  chart: { component: ChartBlock, label: 'chart', minHeight: 260 },
+  table: { component: TableBlock, label: 'table' },
+};
+
+<ChatbotProvider config={{ markdown: { blockRenderers: BLOCK_RENDERERS } }} … />
+```
+
+| `BlockRenderer` | Default | Meaning |
+| --- | --- | --- |
+| `component` | — | A component taking `BlockRenderProps`. Rendered only once the fence is whole. A renderer without one React can render is ignored with a console warning. |
+| `placeholder` | the library's skeleton | Shown while the fence streams: `{ language, partialSource, label }`. |
+| `toText(source)` | `[<label>: <title>]` | What the block reads as in "Copy". |
+| `minHeight` | `160` | Height (px) the skeleton reserves, so the transcript does not jump. |
+| `label` | the language | The word the skeleton ("Preparing chart…") and the fallback use. |
+| `frame` | `true` | `false` draws the component bare: no border, title, toolbar or menu. |
+
+`config.markdown.onExpandBlock(block)` takes "Expand" over — return `true` to
+show the block somewhere of your own (a side panel); otherwise the library's
+overlay opens. A layer's `blockRenderers: { chart: null }` removes a renderer set
+beneath it, for a screen that must not draw charts.
+
+The resolved map (`useMarkdownConfig().blockRenderers`) has **no prototype**: a
+fence's language is text from the answer, and ` ```constructor ` must not find
+`Object.prototype.constructor`. Read it by key or with `Object.keys`, or look a
+language up with `rendererFor(map, language)` — which also guards a map of your
+own — but not with `map.hasOwnProperty(…)`, which it does not have.
+
+**What a block's component is given** (`BlockRenderProps`):
+
+| Prop | Meaning |
+| --- | --- |
+| `language`, `source`, `meta`, `blockKey`, `messageId` | The fence: its language, body and info string after the language; `blockKey` is `fnv1a(language + '\n' + source)`, the same live and after a reload. |
+| `jobUuid`, `conversationId` | The turn that wrote the answer and its conversation — what a block is saved against (`saveArtifact(jobUuid, …)`). `jobUuid` is `null` until a live turn's first frame names its job. |
+| `streaming` | The turn is still in flight: a reference to one of its steps may not have a result yet. Wait rather than fail. |
+| `expanded` | Drawn in the expanded overlay. |
+| `width` | The width the component can draw in, in px: the body's content box (inside its padding), the same box on the first measurement as on every later one. Kept current; `0` until measured. |
+| `theme`, `direction`, `mode` | `'light'`/`'dark'` as drawn (`system` resolved), the text direction around the block, the chat's placement. |
+| `getMessageSource()` | The whole answer's text, for a block that exports its siblings (a report). |
+| `setTitle(title)` | The title in the frame's header. |
+| `setActions(actions)` | The block's actions: `{ id, label, icon?, run({ element, messageElement }), placement?: 'menu' \| 'toolbar', disabled? }`. Menu entries sit under "More actions" with "Copy source"; at most one or two `toolbar` buttons beside Expand. Calling it again with the same ids, labels, placements and states changes nothing, so it is safe in an effect; a click runs the latest `run`. |
+| `openExpanded()` | Opens the overlay (or `onExpandBlock`). |
+| `fail(reason)` | Shows the library's fallback: "Couldn't display this chart: *reason*", with the source. |
+
+How it behaves:
+
+- **Streaming.** A fence is drawn as a skeleton — with the title once `"title"`
+  has streamed — until its closing line arrives; nothing is parsed from a
+  partial body. A fence the answer ended inside counts as closed. Once drawn, a
+  block **is not rendered again by later tokens**: the `components` map is a
+  module constant, the block is memoised on its props, and `getMessageSource` is
+  a stable reader. Memoise `config` and the renderer map, or every change of
+  them re-renders every block.
+- **Failure.** A component that throws is caught by an error boundary around
+  each block; the answer around it stays, and the fallback shows the reason and
+  the source. A `component` React cannot render at all is caught there too.
+- **Whose messages.** Only the assistant's answers draw blocks. A user's own
+  message shows a fence they pasted as code, and its "Copy" gives back exactly
+  what they wrote. `MarkdownContent`'s `blocks={false}` does the same for a host.
+- **Expanded.** A modal overlay portalled to `document.body`, carrying `.cb-root`
+  and the chat's `data-theme` so the tokens apply there too. Escape and the
+  scrim close it; Tab stays inside (a popup your component portals out of it
+  keeps its own Tab order); focus returns to Expand. Its header is the title,
+  the `toolbar` actions, "More actions", then the close button — last.
+- **Copy.** The message's "Copy" replaces each claimed fence with
+  `renderer.toText(source)` or `[<label>: <title>]` (`toPlainText`).
+- **Line endings.** A block's `source` has `\n` line endings whatever the
+  answer used, so its `blockKey` is the one `extractBlocks` gives for it.
+- **A fence the answer ended inside** is drawn (once the text stops) with its
+  body as the parser hands it over: without the text's final line break.
+  `extractBlocks` reads it the same way since 2026-10-14, so its `blockKey` —
+  the one a Save sends and the platform indexes — is the drawn block's.
+- **Found again.** A drawn block's frame carries `data-block-key` and
+  `data-job-uuid` (its turn), which the files panel's "Show in chat" goes to.
+- **Indexed.** Every job names the languages the page draws
+  (`block_languages`, from the merged `blockRenderers`), so the platform
+  indexes those blocks when the turn ends: a block nobody saved is listed as
+  "Not saved" in the conversation's files and under Artifacts — see
+  [Saved and not saved](#saved-and-not-saved).
+- **Width.** An answer takes its row's whole width since 4.1 (a user message keeps
+  80%), so a block gets ~330px in the 400px floating panel.
+- **Styles.** A block's body sits inside the message's `.cb-markdown-content`,
+  whose rules (`p`, `table`, `code`…) reach a renderer's elements: scope a
+  renderer's styles with a class of its own. The frame is `figure.cb-md-block`
+  (`.cb-md-block-header`, `-title`, `-toolbar`, `-body`, `-fallback`), tokens only.
+- **Without renderers** — another host, an old answer — a fence stays a code
+  block, so the JSON is still readable.
+
+Exports for a host that renders or exports answers itself: `MarkdownContent`
+(the one markdown renderer every answer goes through; `blocks={false}` keeps
+every fence as code), `toPlainText(markdown, renderers)`, `extractBlocks(markdown,
+languages, messageId?)` (every block of those languages, with the same
+`blockKey`), `scanBlocks(markdown, languages, messageId?)` (the same, with
+whether each fence has closed), `extractBlockTitle`, `isFenceClosed`, `fnv1a`,
+`blockKeyOf`, `blockLanguagesOf(languages)` (what a job sends as
+`block_languages`), `rendererFor(renderers, language)`, and `useMarkdownConfig()`.
+
+A block drawn **outside its message** — in a panel of your own, say — is
+`<ExpandedBlock language source renderer jobUuid conversationId meta? messageId?
+getMessageSource? streaming? onClose? />`: the host renderer, expanded and not
+streaming (pass `streaming` while the block's turn is still under way, and a
+`getMessageSource` that reads the message's current text), in the library's
+frame, so its own Save saves it against `jobUuid` (pass the turn's). `<BlockDialog label onClose returnFocusTo?>` is the library's expanded
+overlay around it — a modal dialog over the page, as the files panel opens a
+block in.
+
+## Conversation files and artifacts
+
+*New in 4.1 (2026-10-14).* With `storageApiUrl` and `accessToken` on the
+provider, the chat shows what a conversation has stored, and what the user chose
+to keep:
+
+- **The header's files button** (`header.files`) opens **"Conversation files"**:
+  everything of the open conversation, newest first — what the user attached,
+  what the application generated (an export), what the user saved, and every
+  chart, table, KPI card or report its answers drew — with filter chips (All ·
+  Visuals · Files) and a **Saved / Not saved** mark (an icon and the word) on
+  every artifact; the user's uploads carry none. A file opens in the viewer
+  (images, PDFs, a CSV as a table, text; anything else as a download) and
+  downloads with the user's token; a generated file nobody saved has a Save
+  button. A drawn block opens **drawn live** by its renderer in the expanded
+  overlay — its own Save saves it — and "Show in chat" closes the panel and
+  goes to it in the transcript. See [Saved and not saved](#saved-and-not-saved).
+  It is a dialog sized to its list (2026-10-14): centred and rounded, as
+  tall as its content up to `min(680px, 80vh)` with the list scrolling under
+  a fixed header and filter — a sheet at the bottom of the chat, with small
+  margins, in a narrow one (the floating card, a docked panel). Its header
+  says the conversation and "6 items · 2 saved"; the filter is a segmented
+  control with a count per option; under "All" the list is two sections,
+  Visuals then Files, newest first in each. A row is a tile tinted by its kind
+  (chart, table, KPI card, report, image, PDF, spreadsheet, file — or the image
+  itself), its title, its mark as a small pill, and its details (kind, when —
+  relative within the week in whole units, the full date as the tooltip — and
+  size); its actions show on hover or focus with a mouse, and always on a
+  touch screen or in a narrow chat. In a narrow chat the pill is its icon (a
+  filled or a dashed bookmark; the word stays in the row's name) and the
+  details wrap between parts to a second line, so the date and the size
+  always show. Loading shows four rows' skeletons; an empty
+  conversation, a heading ("No files yet") and what will appear there; an empty
+  filter, its own line; a failed read, a message with Retry.
+- **The sidebar's "Artifacts" entry** (`sidebar.artifacts`), under "New chat",
+  opens **"Artifacts"**: everything the answers produced, across conversations,
+  saved and not saved — a segmented control (All · Saved · Not saved) above
+  the kind filter (charts, tables, KPIs, reports, files), a mark on every row
+  — with search, 20 at a time, each with its conversation's title and a button
+  that opens it, download (a stored file), and delete (an artifact; two
+  clicks). "Load more", a search and a save keep the pages
+  already loaded: a read again reads everything on screen, not just page one,
+  in pages of at most 100. A "Load more" under way when the list is read again
+  is neither lost nor shown twice, even when that read fails.
+- **"Artifacts" is a view in place of the chat, not a dialog over it.** It
+  takes the chat column's place — where the transcript and the composer are —
+  under the header, with the sidebar where it was (inline in fullscreen; a
+  drawer elsewhere, which closes as it does for a conversation). The entry is
+  marked current (`aria-current="page"`) while it shows, and no conversation
+  is. The transcript and the composer stay mounted behind it, hidden from the
+  eye and from assistive technology, so a draft, an upload under way and the
+  scroll position are there to come back to. The view is a labelled region:
+  no scrim, no focus trap. Opening it puts focus in its search; choosing
+  "Artifacts" again while it shows goes back to the list (from an open
+  artifact) with focus in the search. The header's files button hides while
+  it shows: the conversation it would describe is not on screen.
+- **An artifact opens in full in that same column.** Its header has "Back to
+  artifacts" at the start, its kind and title, its Saved / Not saved mark, its
+  actions (Save, download, open its conversation, delete) and the close button
+  last; below, its conversation,
+  date and size, then the file — an image as wide as the column (scrolling
+  when taller), a PDF a page at a time at the column's width, a CSV as a table,
+  text as text, anything else as a card with a download — in the chat's own
+  theme. A file that cannot be fetched says so in place, and the artifact
+  stays open. A block nobody saved is **drawn live** there, full width, by the
+  host's renderer; a generated file nobody saved shows as its file with Save.
+  "Back" returns to the list as it was left: search, filters, the pages
+  loaded, the scroll position, and focus on the row (or on the artifact it
+  was saved as).
+- **Leaving the view.** Its close button, "Open conversation", a conversation
+  picked in the sidebar, "New chat" (sidebar or header) and `setComposerText`
+  give the column back to the chat. The conversation that was open behind the
+  view, picked again, comes back as it was — not loaded again, so an answer
+  still streaming goes on. Escape steps back — from an artifact to the list,
+  from the list to the chat — when pressed in the chat (the view, or an inline
+  sidebar beside it), not from the host's page around it. While another
+  dialog (credit usage), an overlay sidebar or the header's menu is open, the
+  Escape is theirs, wherever focus is. Focus goes back to the "Artifacts"
+  entry when it is on screen, else to the composer; after "Open
+  conversation", to the composer; and nowhere when a dialog took the column
+  (`openFiles()`), which keeps it.
+- **The files panel is a modal dialog over the chat column.** Tab stays inside
+  it. Escape closes it from anywhere in the chat (the panel, or the sidebar
+  beside it), but not from the host's page around the chat; with nothing
+  focused — the row the user was on was deleted — it goes by where the user
+  last clicked or focused. A file opens in the viewer (a lightbox over the
+  page); closing it puts focus back on its row.
+- **A header's close button is last** — in the files panel, the Artifacts view
+  and an opened artifact, the attachment viewer and an expanded block: after
+  every action and the "More actions" menu. The row follows the page's
+  direction, so right-to-left it is the left end.
+- **Thumbnails.** An image of up to 1 MB shows itself in its row, fetched only
+  once the row comes near the visible list and three at a time; a larger one
+  shows its kind's icon (the storage API has no smaller rendition). The
+  provider keeps fetched files' object URLs in a bounded cache (60 files or
+  48 MB, least recently used out first) and lets a deleted artifact's go at once.
+
+### Saving a file or an artifact
+
+A file is stored against a **turn**: `saveFile(jobUuid, file, options)` — the
+block's own `jobUuid`. The storage API checks that the turn is the user's.
+
+```tsx
+const ChartBlock: React.FC<BlockRenderProps> = ({ jobUuid, source, setActions }) => {
+  const { saveArtifact } = useChatActions();
+  const [saved, setSaved] = React.useState(false);
+  const { title } = JSON.parse(source);
+  React.useEffect(() => setActions([
+    { id: 'png', label: 'Download PNG', run: ({ element }) => downloadPng(element) },
+    {
+      id: 'save', label: saved ? 'Saved' : 'Save', placement: 'toolbar', icon: <SaveIcon />,
+      disabled: saved || !jobUuid,
+      run: async ({ element }) => {
+        await saveArtifact(jobUuid!, await toPngBlob(element), { title, kind: 'chart', spec: source });
+        setSaved(true);
+      },
+    },
+  ]));
+  …
+};
+```
+
+| `SaveFileOptions` | Meaning |
+| --- | --- |
+| `isArtifact` | `true`: an artifact, listed under "Artifacts" too. `false` (the default): a generated file of the conversation — an export. `saveArtifact` sets it. |
+| `title` | Shown instead of the file name (one line, 255 characters). |
+| `kind` | `'chart'`, `'table'`, `'kpi'`, `'report'` or `'file'`. |
+| `spec` | What the file was drawn from (the block's body), kept so it can be drawn again. The storage API keeps one JSON object of at most 256 KiB, and refuses the whole save otherwise, so: an object, or a string holding one, is sent as that object; anything else — JSON your renderer had to repair, an array — is kept as its text under `source` (`{"source": "…"}`; hand `spec.source` back to the renderer to draw it again); a spec still over the limits (size, 64 levels of nesting, a NUL character) is left out with a console warning and the file is saved without it. `prepareSpec(spec)` says beforehand what will be sent. |
+| `filename` | The name for a bare `Blob`; otherwise the title plus the type's extension. |
+| `blockKey` | For an artifact saved from a drawn block: the block's `blockKey` prop, sent as `block_key`. It marks the block "Saved" in the conversation's files and takes it off "Not saved" under Artifacts. Sent only with `isArtifact: true`; a key the storage API would refuse is left out with a console warning. |
+
+The promise resolves to the stored `ConversationFile` (`attachment_uuid`,
+`job_uuid`, `conversation_uuid`, `conversation_title`, `filename`,
+`content_type`, `size_bytes`, `is_artifact`, `artifact_kind`, `title`,
+`has_spec`, `source`, `created_at`, `download_url`, and since 2026-10-14
+`saved`, `block_key`, `saved_from_uuid`) and rejects with the
+server's reason (`StorageRequestError`: `status`, `code`, `message`) — a type it
+does not store (SVG and HTML are refused), more than 10 MB, a turn that is not the
+user's. After it resolves the panels read again and `chat.files.changed` fires.
+
+A block's `jobUuid` is set as soon as the stream names the turn, a moment before
+the platform has written the turn's row, so a Save pressed at once can find the
+storage API not knowing the turn yet (404 `JOB_NOT_FOUND`). `saveFile` tries
+that answer again three times, 0.5, 1 and 1.5 s apart, before rejecting with
+it; every other refusal rejects at once. A turn that really is not the user's
+is therefore refused about 3 s later.
+
+`useStorageClient()` (or `new StorageClient({ storageApiUrl, token })`) reads
+directly: `listConversationFiles(conversationId)` → `{ conversation_uuid,
+files, blocks }` (the files newest first; the blocks the platform indexed,
+`BlockRecord[]`, oldest turn first — dedupe them by `(turn_job_uuid,
+block_key)`; until 2026-10-14 it resolved to the files alone),
+`listArtifactEntries({ status, kind, q, limit, offset })` → `{ items:
+ArtifactEntry[], total, limit, offset, hasMore }` (saved and not saved;
+`status` `all` | `saved` | `unsaved`), `getBlock(uuid)` (a block with its
+`source`, to draw it again), `saveGeneratedFile(uuid)`, `listArtifacts({
+limit, offset, q, kind })` → `{ items, total, limit, offset, hasMore }` (saved
+artifacts only) — every list query brought within what the storage API takes:
+`limit` 1–100, `offset` 0–1,000,000 (`MAX_ARTIFACT_OFFSET`; a page past it is
+empty, without a request), `q` without NUL characters and cut at 200
+characters (it answers anything else with a 422) — `getArtifact(uuid)` (with its `spec`), `deleteArtifact(uuid)`,
+`fetchFile(file)` → `Blob`, `downloadFile(file)`, `fileDownloadUrl(jobUuid,
+attachmentUuid)`. `normalizeConversationFile`, `normalizeBlockRecord` and
+`normalizeArtifactEntry` read the storage API's records for a host that calls
+a route of its own.
+
+### Saved and not saved
+
+*2026-10-14.* An **artifact** is anything the agent produced for the user:
+every block it drew (a fence of a language with a renderer) and every file a
+tool generated. **Saved** — the user pressed Save, and a stored, downloadable
+artifact exists; **Not saved** — drawn or generated, never saved. The user's
+own uploads are neither.
+
+- **Indexing.** Every job carries `block_languages` — the languages of the
+  merged `config.markdown.blockRenderers` the platform takes
+  (`^[a-z][a-z0-9_-]{0,31}$`, each once, sorted, at most 16; left out with
+  none). When the turn ends, the platform indexes those fences of its answer,
+  sub-agents' included. `GatewayStreamClient.setBlockLanguages(languages)` and
+  `getBlockLanguages()` (the provider calls the first; a host rarely needs
+  them), or `blockLanguages` in its config.
+- **The link.** A block is known by `(turn job, blockKey)`. A block's Save
+  passes `blockKey` to `saveArtifact` against the block's `jobUuid` (the
+  turn's), and the block is then Saved. Deleting the artifact makes it Not
+  saved again.
+- **The files panel** lists the server's blocks together with those in the
+  loaded transcript — the turn under way (a fence still being written is
+  left out) and older conversations the platform never indexed show at once —
+  one row per turn and key. A saved block's artifact, and a generated file's
+  saved copy, are folded into that block's or file's row. It reads again on
+  `chat.files.changed` and twice shortly after a turn ends (1.5 s and 5 s),
+  when the platform has indexed it. A block of the turn under way opens with
+  `streaming: true` and a `getMessageSource` that reads its message as it
+  grows, until the turn ends. A reloaded handoff child's answer belongs to the
+  turn that handed over (`MessageProps.jobUuid`, as live), so its blocks are
+  one row with the platform's. Picking another conversation (the inline
+  sidebar stays usable beside the panel) shows that one's list, never the
+  previous one's. A block of a language with no renderer on
+  this page is a row with its language that opens nothing; "Show in chat" is
+  off, with its reason, for a block whose answer is not in the transcript on
+  screen.
+- **Artifacts** reads `GET artifact-entries`: a saved block is listed as its
+  artifact file; a not-saved block is fetched (`getBlock`) and drawn live
+  when opened — `expanded: true`, `streaming: false`, `jobUuid` the block's
+  turn, `conversationId` its conversation (not the one open), `blockKey` its
+  key — so a renderer that resolves references reads that conversation.
+- **Renderers.** Drawn outside its message, a block is given `messageId` `''`
+  (or its message's, from the panel) and a `getMessageSource` of its answer
+  when the transcript holds it, else of its own body. Its Save works as in
+  the chat; show "Saved" from `chat.files.changed` (`blockKey`, `jobUuid`).
+- **Known divergences.** The transcript's extraction (`scanBlocks`,
+  `extractBlocks`) and the platform's index — a port of it — read two shapes
+  otherwise than the renderer draws them: an unclosed fence in a list item
+  followed by less-indented text (extracted to the end of the text, drawn to
+  the end of the item: the drawn block's key is not the indexed one, so it
+  stays Not saved in the lists after a save) and a fence inside an HTML block
+  (drawn as HTML, still listed as Not saved). The skill that writes rich
+  blocks produces neither.
+
+### What the storage API must serve
+
+Under `{storageApiUrl}/api/v1/attachments`, with the user's bearer token
+(platform ADR-020):
+
+| Call | Used for |
+| --- | --- |
+| `POST jobs/{job_uuid}/files` — multipart `file`, `title?`, `kind?`, `spec?`, `is_artifact`, `block_key?` | `saveFile` / `saveArtifact`; answers `data.file`. A 404 `JOB_NOT_FOUND` is tried again for 3 s (the turn's row may not be written yet). |
+| `POST files/{attachment_uuid}/save` | `saveGeneratedFile`: 201 `ARTIFACT_SAVED` or 200 `ARTIFACT_ALREADY_SAVED`, `data.file` the copy; 409 `NOT_GENERATED`, 404 `ATTACHMENT_NOT_FOUND`. |
+| `GET conversations/{conversation_uuid}` | The files panel; answers `data.{conversation_uuid, files, blocks}`. A 404 (a thread the platform has not stored yet) reads as nothing yet. |
+| `GET artifact-entries?status&kind&q&limit&offset` | The Artifacts view, saved and not saved; answers `data.artifact_entries.{items, pagination}`. `limit` 1–100, `offset` 0–1,000,000, `q` up to 200 characters without NUL. |
+| `GET blocks/{block_uuid}` | `getBlock`: `data.block` with `source`; 404 `BLOCK_NOT_FOUND`. |
+| `GET artifacts?limit&offset&q&kind` | `listArtifacts` (saved artifacts only); answers `data.artifacts.{items, pagination}`. |
+| `GET artifacts/{uuid}` | `getArtifact`, with `spec`. |
+| `DELETE artifacts/{uuid}` | Deleting an artifact (204). |
+| `GET jobs/{job_uuid}/files/{attachment_uuid}` | Previews and downloads. |
+
 ## What the Gateway must serve
 
 What `GatewayStreamClient` calls, all under `/v1/user/` with the session's bearer
@@ -625,7 +1018,7 @@ token:
 
 | Call | Used for |
 | --- | --- |
-| `POST jobs`, then the job's stream URL, `POST jobs/{id}/stream-token` | Sending a message and streaming the turn; re-minting an expired stream token. A job without `agent_id` carries `host_catalogue=true` (and no `client_tools`); one with an agent carries `client_tools`. |
+| `POST jobs`, then the job's stream URL, `POST jobs/{id}/stream-token` | Sending a message and streaming the turn; re-minting an expired stream token. A job without `agent_id` carries `host_catalogue=true` (and no `client_tools`); one with an agent carries `client_tools`. Every job carries `block_languages` (a JSON array) when the page draws rich blocks. |
 | `POST jobs/{id}/cancel` | Stop. |
 | `POST tools/jobs/{id}/tool-results`, `tool-approvals` | Answering a client tool call or a host request; approving or denying a held call. |
 | `GET tools/enablable` | The tools menu (`?agent_id=` when the client has an agent). |
@@ -658,6 +1051,46 @@ which supplies the design tokens and theme without the frame:
 | `WelcomeScreen` | `composer` |
 | `Composer` | `disabled`, `placeholder`, `toolMenuPlacement` (`'above'` / `'center'`), `className` |
 | `CreditUsageDialog` | none — draws itself while `isCreditUsageOpen`, covering its nearest positioned ancestor |
+| `ConversationFilesPanel` | none — draws itself while the panel is open, covering its nearest positioned ancestor (`ChatContainer` puts it over the chat column) |
+| `ArtifactsPanel` | none — the Artifacts view, drawn while `isArtifactsPanelOpen`, filling the element it is rendered in (see below) |
+| `MarkdownContent` | `content`, `streaming`, `turnInFlight`, `messageId`, `jobUuid`, `conversationId`, `getMessageSource` — the transcript's markdown, with the host's blocks; wrap it in `.cb-markdown-content` for the transcript's typography |
+
+**The Artifacts view in your own layout.** `ChatContainer` draws it in the
+transcript's place. A layout of your own decides where it goes: render
+`ArtifactsPanel` where the view belongs — usually in your chat column, instead
+of `MainChat` and the composer while `isArtifactsPanelOpen`. It is
+`height: 100%` of the element it is rendered in and scrolls inside it, so give
+it an element of its own with a definite height — nothing else stacked in it —
+such as a flex child with `flex: 1` and `min-height: 0` under the header. It
+renders nothing while the view is closed. Keep the chat mounted and hide it
+rather than unmounting it if a draft should survive the visit:
+
+```tsx
+const showingArtifacts = useChatState(s => s.isArtifactsPanelOpen);
+
+<ChatRoot theme="light" className="my-chat-column">
+  <ChatHeader />
+  <div className="my-chat-body" hidden={showingArtifacts}>
+    <MainChat />
+    <Composer />
+  </div>
+  {showingArtifacts && (
+    <div className="my-chat-body">
+      <ArtifactsPanel />
+    </div>
+  )}
+</ChatRoot>
+```
+
+```css
+.my-chat-column { display: flex; flex-direction: column; height: 100%; }
+.my-chat-body { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.my-chat-body[hidden] { display: none; }
+```
+
+A `ConversationSidebar` in the same `ChatRoot` (or `ChatContainer`) is "the
+chat" for Escape, and its "Artifacts" entry is where focus returns when the
+view closes.
 
 `Composer` keeps two per-instance overrides, `disabled` and `placeholder`.
 Everything else it shows comes from the provider, so two composers on one page
@@ -1071,6 +1504,28 @@ specific selector:
 }
 ```
 
+The files lists tint each row's tile by what it is: `--cb-kind-chart` (the
+strong accent by default), `--cb-kind-table`, `--cb-kind-kpi`, `--cb-kind-report`,
+`--cb-kind-image`, `--cb-kind-pdf`, `--cb-kind-spreadsheet` and `--cb-kind-file`
+(the secondary text by default) — the icon in the hue, the tile a tint of it —
+with darker hues in the light theme. Three more tokens serve them (2026-10-14):
+
+- `--cb-accent-strong` — the accent where it must keep 3:1 against a light
+  surface or a tint of itself: the chart tile's icon, the header's folder, the
+  Saved mark's icon and the files lists' focus rings. The accent itself in the
+  dark theme; mixed 70/30 toward the text in the light one, where `#6390f1`
+  on its own tint is 2.7:1 (the mix is 4.3:1 there, 5.1:1 on white). It
+  follows a rebranded `--cb-accent-primary`.
+- `--cb-surface-selected` — the chosen option of a segmented control, above its
+  `--cb-surface-hover` track.
+- `--cb-border-selected` — that option's edge, 3:1 or more against the track
+  (3.6:1 dark, 3.3:1 light), so the choice is seen by more than its fill and
+  its weight.
+
+A host that redefines these should keep those ratios: the files dialog's
+colours are measured against WCAG from the tokens by
+`src/components/Files/Files.styles.test.ts`.
+
 The stylesheet is injected by the JavaScript bundle; there is no separate CSS file
 to import.
 
@@ -1120,6 +1575,235 @@ Things to know while linked:
 Publishing: bump `version` in `package.json`, then `npm run release:chatbot` from
 `frontend/` (build and publish). Bump the host's dependency only after the publish;
 before it, `yarn install` in the host fails to resolve the version.
+
+## Migrating from 4.0 (4.1)
+
+4.1.0 is additive (2026-10-14): nothing a 4.0 host passes changes meaning.
+
+- **New:** rich blocks (`config.markdown`, `MarkdownContent`, the `Block*` types
+  and the fence helpers) — see [Rich blocks](#rich-blocks-charts-tables-and-cards-in-an-answer);
+  conversation files and artifacts (`header.files`, `sidebar.artifacts`,
+  `ConversationFilesPanel`, `ArtifactsPanel`, `StorageClient`, `useStorageClient`,
+  the actions `openFiles`, `closeFiles`, `openArtifacts`, `closeArtifacts`,
+  `saveFile`, `saveArtifact`, `deleteArtifact`, the event `chat.files.changed`,
+  the state `storageClient`, `isFilesPanelOpen`, `isArtifactsPanelOpen`,
+  `filesRevision`) — see [Conversation files and artifacts](#conversation-files-and-artifacts);
+  `MessageProps.jobUuid`, set on every reloaded message and on a live answer from
+  its first frame.
+- **Labels and icons:** new keys only (listed under [Labels](#labels) and
+  [Icons](#icons)); a host that maps every key from its catalogue picks them up,
+  in English until translated.
+- **Looks different:** an answer is as wide as its row (it was 80%); the
+  attachment viewer has a download button in its toolbar for every type and shows
+  a CSV as a table; with `storageApiUrl` and `accessToken` the header has a files
+  button and the sidebar an "Artifacts" entry — `header.files: false` and
+  `sidebar.artifacts: false` remove them.
+- **Moved:** the attachment viewer's rules from `MessageBubble.css` to
+  `AttachmentViewer.css` (same class names); `Attachment` is still exported.
+- `sidebar.items` now sit after the Artifacts entry rather than straight after
+  "New chat".
+
+**Review fixes before release (2026-10-14).** Still 4.1.0 and still additive;
+what changed against the first cut, for a host that built on it:
+
+- A fence named after an inherited member (` ```constructor `, ` ```toString `,
+  ` ```__proto__ `) no longer crashes the transcript: renderers are looked up as
+  the map's own entries (`rendererFor`), the resolved map has no prototype, a
+  renderer without a renderable `component` is dropped with a warning, and a
+  component React cannot render is caught by the block's own boundary.
+- A block in a **running sub-agent** waits for its fence to close (skeleton)
+  and is drawn once, told `streaming: true` until the turn — not only the
+  sub-agent — ends. It used to receive every prefix of the spec, remounting per token.
+- `width` is the body's content box from the first measurement on (it started
+  24px too wide).
+- A CRLF answer's block has the same `source` and `blockKey` as `extractBlocks`
+  gives.
+- `saveFile` sends `spec` the way the storage API keeps it (see the `spec` row
+  above) instead of losing the whole save to a 422.
+- A user's own message no longer draws blocks; its "Copy" is its text.
+- Thumbnails load lazily and a few at a time; the provider's blob cache is
+  bounded; the Artifacts panel keeps loaded pages when it reads again, and a
+  "Load more" under way then is neither lost nor shown twice; and
+  `listArtifacts` keeps `limit`, `offset` and `q` within the storage API's limits.
+- The files and artifacts panels keep Tab inside, as their `aria-modal` says,
+  and close on Escape only from inside the chat — not from the host's page
+  around it (Artifacts has since become a view without a trap — below). A host that pressed Escape in its own page with a panel open no
+  longer closes the panel. The expanded block's Tab trap no longer pulls focus
+  out of a popup a renderer portals from it.
+- `saveFile` / `saveArtifact` try a 404 `JOB_NOT_FOUND` again for 3 s: a Save
+  pressed before the platform wrote the turn's row used to fail outright.
+
+**Artifacts in place, and close buttons last (2026-10-14).** Still 4.1.0. From
+using it in a host: "Artifacts" opened a modal over the chat, an artifact a
+lightbox over that, and an expanded block's close button sat between Save and
+"More actions". Now:
+
+- **"Artifacts" is a view in the chat column, in place of the transcript and
+  the composer** — no scrim, no dialog, no focus trap; a labelled region. The
+  chat stays mounted behind it, hidden (a draft survives). An artifact opens in
+  full in the same column, with "Back to artifacts"; the list keeps its search,
+  filter, pages and scroll. See [Conversation files and artifacts](#conversation-files-and-artifacts).
+- `newChat()`, `selectConversation(id)` and `setComposerText(text)` close the
+  view — from the header or a host's button as well as the sidebar.
+- `ArtifactsPanel` fills the element it is rendered in instead of covering its
+  nearest positioned ancestor. `ChatContainer` hosts need nothing; a host with
+  its own layout renders it where the view belongs — see
+  [Your own layout](#your-own-layout). `openArtifacts`, `closeArtifacts` and
+  `isArtifactsPanelOpen` keep their names and meaning (open = showing).
+- `ChatContainer` wraps the transcript and the footer in
+  `.cb-chat-stage > .cb-chat-view` (a grid cell the view shares). A host style
+  that selected them as direct children of `.cb-chat-content` should drop the
+  `>`; descendant selectors are unaffected.
+- **Close buttons last:** the expanded block's header is now title, `toolbar`
+  actions, "More actions", Close (Expand, unexpanded, keeps its place before
+  the menu). The files panel, the views' headers and the attachment viewer
+  already ended with theirs, and are tested to.
+- Inside the library the attachment viewer is split into the loading, the
+  drawing and the lightbox, so an opened artifact draws its file as the viewer
+  does without the lightbox. `AttachmentViewerModal` is unchanged, and the
+  parts are not public API.
+- **New:** the label `backToArtifacts` ("Back to artifacts") and the icon
+  `back`. While the view shows, no conversation in the sidebar is marked
+  active; the "Artifacts" entry is, and the header's files button is hidden.
+- **New state:** `artifactsOpenings`, which counts `openArtifacts()` calls:
+  choosing "Artifacts" while the view shows takes it back to its list.
+- The header's "More options" menu closes on Escape, and only it closes.
+- An opened PDF is measured once it has loaded, so it is drawn at the
+  column's width; a page wider than its box (in the lightbox) starts at its
+  start edge instead of being cut off there.
+
+**Saved and not saved (2026-10-14).** Still 4.1.0. From the user: "the
+folder icon in the chat should show all the artifacts in the conversation,
+not only the saved ones, but the artifacts tab should differentiate between
+saved and not saved". Against the platform's job blocks (ADR-020, amended
+2026-10-14). See [Saved and not saved](#saved-and-not-saved).
+
+- **"Conversation files"** lists every block the answers drew beside the
+  files, with All · Visuals · Files chips and a Saved / Not saved mark on each
+  artifact (the *Artifact* / *Generated* badges are gone; "Generated" is in
+  the row's details). A block opens drawn live in the expanded overlay and has
+  "Show in chat"; a generated file nobody saved has Save. The panel is still a
+  modal dialog.
+- **"Artifacts"** lists saved and not-saved entries (`GET artifact-entries`
+  instead of `GET artifacts`), with a segmented All · Saved · Not saved
+  control above the kind chips, a mark on every row, and a not-saved block
+  drawn live in the column. Delete is offered for artifacts only.
+- **Changed:** `StorageClient.listConversationFiles` resolves to `{
+  conversation_uuid, files, blocks }` (it was the files array);
+  `ConversationFile` gains `saved`, `block_key` and `saved_from_uuid`;
+  `chat.files.changed` gains `blockKey` and `savedFromUuid`; `extractBlocks`
+  reads a fence the answer ended inside without the text's final line break,
+  as the renderer draws it (its `blockKey` was different); the English
+  `artifactsEmpty` now speaks of everything, not only what was saved; an
+  expanded block drawn without `onClose` has no close button.
+- **New:** `StorageClient.listArtifactEntries`, `getBlock`,
+  `saveGeneratedFile`; `SaveFileOptions.blockKey`; the action
+  `saveGeneratedFile`; `GatewayStreamClient.setBlockLanguages` /
+  `getBlockLanguages` and its `blockLanguages` config; `ExpandedBlock`,
+  `BlockDialog`, `scanBlocks`, `blockLanguagesOf`, `BLOCK_LANGUAGE_PATTERN`,
+  `MAX_BLOCK_LANGUAGES`, `ARTIFACT_STATUSES`, `normalizeBlockRecord`,
+  `normalizeArtifactEntry`; the types `ArtifactStatus`, `ArtifactEntry`,
+  `ArtifactEntryQuery`, `ArtifactEntryPage`, `BlockRecord`, `BlockWithSource`,
+  `ConversationContents`, `ScannedBlock`, `ExpandedBlockProps`; the labels and
+  icons listed under [Labels](#labels) and [Icons](#icons); `data-block-key` /
+  `data-job-uuid` on a drawn block's frame and `data-message-id` on a message
+  row; a reloaded answer's `MessageProps.timestamp` (its job's start).
+- **A host's renderer** should pass its `blockKey` prop to `saveArtifact`
+  and resolve references from `props.conversationId` (a block drawn from
+  Artifacts may be of another conversation than the open one).
+
+**The conversation files dialog (2026-10-14).** Still 4.1.0. From the user:
+"fix the design of the artifacts modal in the conversation, it should be
+better" — it ran the full height of the chat with square edges, an empty
+conversation one grey line at its top.
+
+- **"Conversation files"** is a dialog sized to its content, centred and
+  rounded (a bottom sheet in a narrow chat), with a subtitle (the
+  conversation, the item and saved counts — also its `aria-describedby`), the
+  filter as a segmented control with counts, "All" in Visuals and Files
+  sections, rows with a kind-tinted tile, a details line led by the kind and a
+  relative date, actions on hover or focus, rows' skeletons while loading, and
+  an empty state with a heading and a hint. Behaviour is unchanged.
+- **Shared with the Artifacts view** (its layout unchanged): the tile tinted
+  by kind — a plain file's icon now says image, PDF or spreadsheet — and the
+  Saved / Not saved pill (Saved in the accent, Not saved an outline in the
+  muted text; it was a green outline and a dashed grey box). A row's title in
+  another direction than the page's keeps to the page's start edge, and the
+  header title's `match-parent` now has the `-webkit-` spelling Chromium reads.
+- **New:** the labels `conversationFilesEmptyTitle`, `conversationFilesEmptyHint`,
+  `filesItemsOne`/`Other`, `filesSavedCount`, `itemKind*` (eight); the icons
+  `fileImage`, `filePdf`, `fileSpreadsheet`; the tokens `--cb-kind-*`.
+  `conversationFilesEmpty` is now the Files filter's empty line.
+- **Changed markup:** the filter is `.cb-files-segmented.cb-files-filter` with
+  `.cb-files-segment` buttons (a `.cb-files-segment-label` and a
+  `.cb-files-segment-count`), not `.cb-files-chip`; "All" renders
+  `.cb-files-section` blocks (an `h3.cb-files-section-title` naming its `ul`);
+  the empty state is `.cb-files-empty`; a row's tile carries `data-kind`.
+
+**Review fixes to saved and not saved (2026-10-14).** Still 4.1.0.
+
+- **The files panel** draws a block of the turn under way as still streaming
+  (`ExpandedBlock` gains `streaming`), reading its answer as it grows: a
+  report no longer offers its exports, or Save, over half an answer. It never
+  shows another conversation's list after a conversation is picked beside it,
+  and a failed read of the new one keeps none. A Save from a row puts focus on
+  that row and is said aloud (a polite live region).
+- **Artifacts:** a Save from a row follows the saved copy with focus (the list
+  lists it as a new entry, at the top) and is said aloud; a Save in an entry
+  open in full keeps the file on screen (it no longer downloads it again) with
+  focus on the header's first action, and Back brings the saved row into
+  view. Delete, armed, is the icon in a red ring in a narrow header, so the
+  close button stays in the column. An empty list says "your search" only for
+  a search typed (`noArtifactFilterResults` otherwise), and the Not saved
+  filter's empty line no longer claims everything is saved. The kind chips are
+  named `artifactKindFilter` ("Kind").
+- **History:** a reloaded handoff child's answer belongs to the turn that
+  handed over (its `MessageProps.jobUuid` is that turn's job), as live — its
+  blocks were two rows in the files panel and read Not saved after a save.
+- **StorageClient:** `offset` past 1,000,000 (`MAX_ARTIFACT_OFFSET`, new
+  export) answers an empty page without a request; a NUL is dropped from `q`.
+- **New labels:** `noArtifactFilterResults`, `artifactKindFilter`,
+  `fileSavedAnnouncement`; the English `artifactsUnsavedEmpty` changed.
+- Two known divergences between the drawn and the extracted key are
+  documented ([Saved and not saved](#saved-and-not-saved)).
+
+**Review fixes to the conversation files dialog (2026-10-14).** Still 4.1.0.
+Each colour was measured against WCAG 2.x (4.5:1 for small text, 3:1 for
+icons, rings and a control's state); `Files.styles.test.ts` now measures them
+from the tokens and fails when a rule falls below.
+
+- **Contrast, dark theme.** The filter's track and the empty state's circle
+  were `--cb-surface-sunken`, 1.05:1 on the dialog — invisible; both are a
+  lift now (1.2:1). The chosen option was the dialog's own colour behind a
+  10% hairline; it is `--cb-surface-selected` edged by `--cb-border-selected`
+  (3.6:1 on the track; 3.3:1 in the light theme, where the white chip's edge
+  was 1.1:1). A count's pill sinks into the track (its 11px count 6.1:1, was
+  4.4:1); every count is the secondary text, the tertiary having been 3.0:1.
+  The empty state's folder and Not saved's dashed icon are the secondary text
+  too (the tertiary was 2.5:1 on their lifted backgrounds).
+- **Contrast, light theme.** The chart tile and the header's folder draw
+  `--cb-accent-strong` (new): 4.3:1 on their tint, where the plain accent was
+  2.7:1.
+- **Focus.** The files lists' rings are `--cb-accent-strong`, solid (5.6:1 on
+  the dark dialog, 5.1:1 on white, 3.4:1 or more on a hovered row or the
+  filter); `--cb-border-focus` is the accent at 50%, about 2:1, and is left
+  as it is for the rest of the chat.
+- **Older browsers.** The rule keeping a busy row's actions shown (`:has()`)
+  is its own: in one list with `:hover` and `:focus-within`, a browser without
+  `:has()` (Firefox before 121) dropped all three, and the actions stayed
+  invisible. The opened artifact's details line (`.cb-artifact-detail-meta-text`)
+  has the `-webkit-match-parent` Chromium reads.
+- **Right-to-left.** The error box and the filter's options pad by logical
+  sides.
+- **Motion.** The scrim only fades (it used `cb-fade-in`, which also slides,
+  and left a strip of the chat bare as it opened); the dialog alone rises.
+- **A narrow chat** (the floating card, a docked panel) keeps each row's date
+  and size: the pill is its icon and the details wrap between parts, each
+  part with its dot in a `.cb-file-meta-part` (new markup, every list).
+- **Dates** count whole units (`formatRelativeDate`): 59.6 minutes is "59
+  minutes ago", not "60 minutes ago"; 23.7 hours "23 hours ago"; 6.8 days "6
+  days ago", never "7 days ago" a moment before the short date.
+- **Label:** `disclaimer` reads "…Verify results." (it read "Very results.").
 
 ## Migrating from 3.x
 

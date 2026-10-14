@@ -14,6 +14,9 @@ export {
     useLabels,
     useIcons,
     useAuthenticatedFetch,
+    useMarkdownConfig,
+    useStorageClient,
+    useActiveConversationId,
 } from './store/hooks';
 export { shallowEqual } from './store/createChatStore';
 export type {
@@ -23,6 +26,7 @@ export type {
     ChatEventType,
     ChatEventHandler,
     ConversationSearch,
+    FilesChangedPayload,
 } from './store/types';
 
 // --- Configuration: words, icons, which controls exist, welcome content ----
@@ -56,6 +60,52 @@ export type { ToolTogglesProps } from './components/ToolToggles/ToolToggles';
 export * from './components/MessageActions/MessageActions';
 export * from './components/BranchNavigator/BranchNavigator';
 export * from './components/AuthenticatedImage/AuthenticatedImage';
+export { AttachmentViewerModal, parseCsv } from './components/AttachmentViewer/AttachmentViewer';
+export type { AttachmentViewerProps } from './components/AttachmentViewer/AttachmentViewer';
+
+// --- Rich blocks: fences the host draws (`config.markdown.blockRenderers`) ---
+// The renderer every answer goes through, and the pure helpers a host uses to
+// export a message's blocks or copy it as text. The types (`MarkdownConfig`,
+// `BlockRenderer`, `BlockRenderProps`, `BlockAction`, `BlockDescriptor`,
+// `BlockPlaceholderProps`) come with the configuration above.
+export { MarkdownContent } from './components/MarkdownContent/MarkdownContent';
+export type { MarkdownContentProps } from './components/MarkdownContent/MarkdownContent';
+export {
+    toPlainText,
+    extractBlocks,
+    extractBlockTitle,
+    isFenceClosed,
+    fnv1a,
+    blockKeyOf,
+    rendererFor,
+    scanBlocks,
+    blockLanguagesOf,
+    BLOCK_LANGUAGE_PATTERN,
+    MAX_BLOCK_LANGUAGES,
+} from './common/markdownBlocks';
+export type { ScannedBlock } from './common/markdownBlocks';
+// A block drawn outside its message, by its host renderer: expanded, in the
+// library's overlay or in a host's own panel.
+export { ExpandedBlock, BlockDialog } from './components/MarkdownBlock/MarkdownBlock';
+export type { ExpandedBlockProps } from './components/MarkdownBlock/MarkdownBlock';
+
+// --- Conversation files and artifacts (storage API) ---------------------------
+export { ConversationFilesPanel } from './components/Files/ConversationFilesPanel';
+export { ArtifactsPanel } from './components/Files/ArtifactsPanel';
+export {
+    StorageClient,
+    StorageRequestError,
+    ARTIFACT_KINDS,
+    ARTIFACT_STATUSES,
+    normalizeConversationFile,
+    normalizeBlockRecord,
+    normalizeArtifactEntry,
+    saveBlob,
+    prepareSpec,
+    MAX_SPEC_BYTES,
+    MAX_ARTIFACT_OFFSET,
+} from './api/StorageClient';
+export type { StorageClientConfig } from './api/StorageClient';
 export { ConversationDrawer } from './components/ConversationDrawer/ConversationDrawer';
 export type { ConversationDrawerProps } from './components/ConversationDrawer/ConversationDrawer';
 
@@ -143,6 +193,19 @@ export type {
     UserCredits,
     CreditGrant,
     CreditBlock,
+    ConversationFile,
+    ConversationFileSource,
+    ArtifactKind,
+    SaveFileOptions,
+    ArtifactListQuery,
+    ArtifactPage,
+    ArtifactStatus,
+    ArtifactEntry,
+    ArtifactEntryQuery,
+    ArtifactEntryPage,
+    BlockRecord,
+    BlockWithSource,
+    ConversationContents,
 } from './api/types';
 export { ConversationClient } from './api/ConversationClient';
 export {

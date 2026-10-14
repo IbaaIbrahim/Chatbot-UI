@@ -341,3 +341,49 @@ describe('GatewayStreamClient — host context on the job', () => {
         error.mockRestore();
     });
 });
+
+describe('GatewayStreamClient — the block languages on the job', () => {
+    // 2026-10-14: the platform indexes the blocks of the languages a turn was
+    // sent with, so a drawn block is listed as "Not saved" until it is saved.
+    it('sends the languages the page draws as a JSON array: valid, distinct, sorted', async () => {
+        const client = new GatewayStreamClient({ gatewayUrl: GATEWAY_URL });
+        client.setBlockLanguages(['table', 'chart', 'kpi', 'chart', 'Report', '1chart', 'x'.repeat(33), 'report']);
+
+        const form = await postedForm(client);
+
+        expect(JSON.parse(String(form.get('block_languages')))).toEqual(['chart', 'kpi', 'report', 'table']);
+        expect(client.getBlockLanguages()).toEqual(['chart', 'kpi', 'report', 'table']);
+    });
+
+    it('takes them from the config too, and sends at most 16', async () => {
+        const many = Array.from({ length: 20 }, (_, index) => `lang${String(index).padStart(2, '0')}`);
+        const client = new GatewayStreamClient({ gatewayUrl: GATEWAY_URL, blockLanguages: many });
+
+        const form = await postedForm(client);
+
+        expect(JSON.parse(String(form.get('block_languages')))).toEqual(many.slice(0, 16));
+    });
+
+    it('sends no field with none, or none valid', async () => {
+        const client = new GatewayStreamClient({ gatewayUrl: GATEWAY_URL });
+        expect((await postedForm(client)).has('block_languages')).toBe(false);
+
+        client.setBlockLanguages(['Chart', '']);
+        fetchMock.mockClear();
+        expect((await postedForm(client)).has('block_languages')).toBe(false);
+
+        client.setBlockLanguages(null);
+        fetchMock.mockClear();
+        expect((await postedForm(client)).has('block_languages')).toBe(false);
+    });
+
+    it('rides on an agent-bound job as on a central one', async () => {
+        const client = new GatewayStreamClient({ gatewayUrl: GATEWAY_URL, agentId: 'agent-1', blockLanguages: ['chart'] });
+
+        const form = await postedForm(client);
+
+        expect(form.get('agent_id')).toBe('agent-1');
+        expect(form.get('block_languages')).toBe('["chart"]');
+        expect(form.has('direct_tool_slug')).toBe(false);
+    });
+});

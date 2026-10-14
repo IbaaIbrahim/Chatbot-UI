@@ -59,6 +59,11 @@
   --cb-accent-primary: #6390f1 !important;
   --cb-accent-hover: #093ce3 !important;
   --cb-accent-gradient: linear-gradient(135deg, #2d67f8 0%, #265bee 100%) !important;
+  /* The accent where it must keep 3:1 against a light surface or a tint of
+   * itself: an icon on its tile, a focus ring (2026-10-14). The accent here;
+   * mixed toward the text in the light theme, where #6390f1 on its own 14%
+   * tint came out at 2.7:1. A host's rebrand of the accent carries over. */
+  --cb-accent-strong: var(--cb-accent-primary) !important;
 
   /* Glassmorphism */
   --cb-glass-bg: rgba(30, 30, 30, 0.7) !important;
@@ -83,6 +88,15 @@
   --cb-surface-raised: rgba(255, 255, 255, 0.04) !important;
   --cb-surface-sunken: rgba(0, 0, 0, 0.2) !important;
   --cb-surface-hover: rgba(255, 255, 255, 0.07) !important;
+  /* The chosen option of a segmented control, raised above its track
+   * (`--cb-surface-hover`): a lift here, white in the light theme. Until
+   * 2026-10-14 the files dialog's used `--cb-bg-elevated` — in the dark theme
+   * the dialog's own colour, so the choice showed as a 10% hairline alone. */
+  --cb-surface-selected: rgba(255, 255, 255, 0.1) !important;
+  /* The edge of that chosen option: 3:1 or more against the track, so the
+   * choice is seen by more than its fill (1.4:1) and its weight — 3.6:1 here,
+   * 3.3:1 in the light theme (review of 2026-10-14). */
+  --cb-border-selected: rgba(255, 255, 255, 0.4) !important;
   --cb-border-strong: rgba(255, 255, 255, 0.16) !important;
   /* Between subtle and strong. Referenced by the sidebar and the message
    * spinners long before it was defined, which voided every `border` that
@@ -99,6 +113,20 @@
   --cb-status-running: #6390f1 !important;
   --cb-status-success: #4caf50 !important;
   --cb-status-failed: #ef4444 !important;
+
+  /* What a file or a visual is, as the files lists tint its row's tile
+   * (2026-10-14): one hue per kind, used for the icon and, mixed with
+   * transparency, for the tile behind it. A chart follows the accent (its
+   * strong form, so it keeps its contrast in the light theme too) and a
+   * plain file the secondary text, so a host's rebrand carries over. */
+  --cb-kind-chart: var(--cb-accent-strong) !important;
+  --cb-kind-table: #2dd4bf !important;
+  --cb-kind-kpi: #fbbf24 !important;
+  --cb-kind-report: #a78bfa !important;
+  --cb-kind-image: #f472b6 !important;
+  --cb-kind-pdf: #f87171 !important;
+  --cb-kind-spreadsheet: #4ade80 !important;
+  --cb-kind-file: var(--cb-text-secondary) !important;
 
   /* Spacing */
   --cb-space-1: 4px !important;
@@ -209,6 +237,11 @@
   --cb-surface-raised: rgba(17, 24, 39, 0.03) !important;
   --cb-surface-sunken: rgba(17, 24, 39, 0.06) !important;
   --cb-surface-hover: rgba(17, 24, 39, 0.06) !important;
+  --cb-surface-selected: #ffffff !important;
+  --cb-border-selected: rgba(17, 24, 39, 0.5) !important;
+
+  /* The accent darkened toward the text: 4.3:1 on its own tint, 5.1:1 on white. */
+  --cb-accent-strong: color-mix(in srgb, var(--cb-accent-primary) 70%, var(--cb-text-primary)) !important;
 
   /* Dimming by opacity is much harsher on white than on near-black, so the
    * steps are pulled back rather than reused. */
@@ -219,6 +252,14 @@
   --cb-status-running: #2563eb !important;
   --cb-status-success: #15803d !important;
   --cb-status-failed: #b91c1c !important;
+
+  /* Darker hues on white, so an icon keeps its contrast on its tinted tile. */
+  --cb-kind-table: #0f766e !important;
+  --cb-kind-kpi: #b45309 !important;
+  --cb-kind-report: #7c3aed !important;
+  --cb-kind-image: #db2777 !important;
+  --cb-kind-pdf: #dc2626 !important;
+  --cb-kind-spreadsheet: #15803d !important;
 }
 
 @media (prefers-color-scheme: light) {
@@ -244,6 +285,10 @@
     --cb-surface-raised: rgba(17, 24, 39, 0.03) !important;
     --cb-surface-sunken: rgba(17, 24, 39, 0.06) !important;
     --cb-surface-hover: rgba(17, 24, 39, 0.06) !important;
+    --cb-surface-selected: #ffffff !important;
+    --cb-border-selected: rgba(17, 24, 39, 0.5) !important;
+
+    --cb-accent-strong: color-mix(in srgb, var(--cb-accent-primary) 70%, var(--cb-text-primary)) !important;
 
     --cb-dim-strong: 0.95 !important;
     --cb-dim: 0.75 !important;
@@ -252,6 +297,13 @@
     --cb-status-running: #2563eb !important;
     --cb-status-success: #15803d !important;
     --cb-status-failed: #b91c1c !important;
+
+    --cb-kind-table: #0f766e !important;
+    --cb-kind-kpi: #b45309 !important;
+    --cb-kind-report: #7c3aed !important;
+    --cb-kind-image: #db2777 !important;
+    --cb-kind-pdf: #dc2626 !important;
+    --cb-kind-spreadsheet: #15803d !important;
   }
 }
 

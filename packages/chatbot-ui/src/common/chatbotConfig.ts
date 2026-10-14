@@ -1,6 +1,8 @@
 import type React from 'react';
 import { ChatLabels, DEFAULT_LABELS } from './labels';
 import { ChatIcons, DEFAULT_ICONS } from './icons';
+import type { ChatMode } from '../components/ChatContainer/presentation';
+import { isBlockRenderer } from './markdownBlocks';
 
 /**
  * Everything a host can change about the chat without writing a component:
@@ -28,6 +30,140 @@ export interface ChatbotConfig {
     quickActions?: QuickActionItem[];
     /** Cards under the pills on the expanded welcome screen. */
     featureCards?: FeatureCardItem[];
+    /** Fenced code blocks the host draws itself — charts, tables, cards. See {@link MarkdownConfig}. */
+    markdown?: MarkdownConfig;
+}
+
+/**
+ * Fenced code blocks the host draws itself ("rich blocks", since 4.1).
+ *
+ * Generic on purpose: the library knows no chart. A host maps a fence's
+ * language to a component, and every answer that contains such a fence shows
+ * the component in its place — inline, beside the sentence that refers to it,
+ * live while the answer streams and the same after a reload (the block is part
+ * of the persisted message text). A language with no renderer stays an
+ * ordinary code block, so a host without renderers degrades to readable JSON.
+ */
+export interface MarkdownConfig {
+    /**
+     * Keyed by the fence's language (```chart → `'chart'`). `null` in a layer
+     * removes a renderer set beneath it — a screen that must not draw charts.
+     *
+     * Memoise the map, or define it at module level: its identity is compared
+     * per layer, and a new one re-renders every answer.
+     */
+    blockRenderers?: Record<string, BlockRenderer | null>;
+    /**
+     * Takes over "Expand" — to show the block in a panel of the host's own, say.
+     * Return `true` when handled; otherwise the library's overlay opens.
+     */
+    onExpandBlock?: (block: BlockDescriptor) => boolean;
+}
+
+/** How one fence language is drawn. */
+export interface BlockRenderer {
+    /**
+     * A component, not a render function, so it can use hooks. Rendered only
+     * once the fence is closed (or the answer ended without closing it), with
+     * the fence's whole body — never a prefix of it. A renderer whose
+     * `component` React cannot render is ignored with a warning.
+     */
+    component: React.ComponentType<BlockRenderProps>;
+    /** Shown while the fence is still streaming. Default: the library's skeleton. */
+    placeholder?: React.ComponentType<BlockPlaceholderProps>;
+    /** Plain text replacing the fence in "Copy". Default: `[<label>: <title>]`. */
+    toText?: (source: string) => string;
+    /** Height (px) the skeleton reserves while streaming, so the transcript does not jump. Default 160. */
+    minHeight?: number;
+    /** The word the skeleton and the fallback use ("chart", "table"). Default: the language. */
+    label?: string;
+    /** Draw the library's frame: border, title, toolbar, expand, error fallback. Default `true`. */
+    frame?: boolean;
+}
+
+/** Which block, independent of how it is shown. */
+export interface BlockDescriptor {
+    language: string;
+    /** The fence's body. */
+    source: string;
+    /** The info string after the language (```chart wide → `'wide'`), or `null`. */
+    meta: string | null;
+    /** `fnv1a(language + '\n' + source)`: the same live and after a reload. */
+    blockKey: string;
+    /** The message the block is in. */
+    messageId: string;
+}
+
+/** What a block's component is given. */
+export interface BlockRenderProps extends BlockDescriptor {
+    /**
+     * The turn is still in flight, so a reference to one of its steps may not
+     * have a result yet: wait rather than fail.
+     */
+    streaming: boolean;
+    /** Rendering inside the expanded overlay. */
+    expanded: boolean;
+    /**
+     * The width the component can draw in, in px: the block body's content
+     * box, inside its padding — the same box on the first measurement and on
+     * every later one. Kept current as the chat resizes; `0` until measured.
+     */
+    width: number;
+    /** Resolved: a `'system'` chat reports what the OS chose. */
+    theme: 'light' | 'dark';
+    /** The direction of the text around the block. */
+    direction: 'ltr' | 'rtl';
+    /** `floating`, `sidebar` (docked) or `fullscreen`. */
+    mode: ChatMode;
+    /**
+     * The job (turn) that produced this message — what a host saves the block
+     * against (`useChatActions().saveArtifact(jobUuid, …)`). `null` while a live
+     * turn has not reported its job yet, and for a message that has none.
+     */
+    jobUuid: string | null;
+    /** The conversation the message belongs to, or `null` before it has one. */
+    conversationId: string | null;
+    /** All text of this message, for a block that exports its siblings (a report). */
+    getMessageSource: () => string;
+    /**
+     * The block's toolbar contributions (download, save, refresh…). The library
+     * adds Expand and "Copy source" itself. Calling it again with the same ids,
+     * labels and states changes nothing, so it is safe in an effect.
+     */
+    setActions: (actions: BlockAction[]) => void;
+    /** The title shown in the frame's header; `null` shows none. */
+    setTitle: (title: string | null) => void;
+    openExpanded: () => void;
+    /** Switch to the library's fallback with this reason; the source stays viewable. */
+    fail: (reason: string) => void;
+}
+
+/** What a block's placeholder is given while its fence streams. */
+export interface BlockPlaceholderProps {
+    language: string;
+    /** The body so far. */
+    partialSource: string;
+    label: string;
+}
+
+/** One entry in a block's toolbar. */
+export interface BlockAction {
+    id: string;
+    label: string;
+    icon?: React.ReactNode;
+    /**
+     * `element` is the block's frame (title, body); `messageElement` the whole
+     * message it sits in, for an action over the answer (a report's export).
+     */
+    run: (ctx: { element: HTMLElement; messageElement: HTMLElement | null }) => void | Promise<void>;
+    /**
+     * `'menu'` (the default) lists it under "More"; `'toolbar'` shows it as a
+     * button in the header — its `icon` when it has one, its label otherwise.
+     * Keep the toolbar to one or two: the chat can be 330px wide.
+     */
+    placement?: 'toolbar' | 'menu';
+    /** Shown but not clickable — "Saved", say. */
+    disabled?: boolean;
 }
 
 /** @deprecated Renamed to {@link ChatbotConfig} in 3.0. */
@@ -76,6 +212,13 @@ export interface HeaderConfig {
      * without `deleteConversation` refuses, and nothing is removed on screen.
      */
     deleteConversation?: boolean;
+    /**
+     * The "Conversation files" button: every file of the open conversation —
+     * the user's uploads, files the app generated, saved artifacts — with
+     * preview and download. Shown only while a conversation is open and the
+     * provider has a `storageApiUrl` and an `accessToken`.
+     */
+    files?: boolean;
     close?: boolean;
 }
 
@@ -136,6 +279,12 @@ export interface SidebarConfig {
     /** `false` removes the sidebar and its toggle entirely. */
     enabled?: boolean;
     newChat?: boolean;
+    /**
+     * The "Artifacts" entry under "New chat": everything the user saved, from
+     * every conversation, to search, preview, download and delete. Shown only
+     * while the provider has a `storageApiUrl` and an `accessToken`.
+     */
+    artifacts?: boolean;
     /** Navigation entries under "New chat" — none by default. */
     items?: SidebarItem[];
     /** Shown only while the Gateway reports `starred_at` on conversations. */
@@ -233,6 +382,25 @@ export interface ResolvedChatbotConfig {
     suggestions: SuggestionItem[];
     quickActions: QuickActionItem[];
     featureCards: FeatureCardItem[];
+    markdown: ResolvedMarkdownConfig;
+}
+
+/** {@link MarkdownConfig} with every layer applied and the removed renderers gone. */
+export interface ResolvedMarkdownConfig {
+    /**
+     * Only renderers the chat can draw, in a map **without a prototype**: a
+     * fence's language is text from the answer, and ` ```constructor ` must
+     * not find `Object.prototype.constructor`. Read it by key, with
+     * `Object.keys`, or with `rendererFor(map, language)` — not with
+     * `map.hasOwnProperty(…)`, which it does not have.
+     */
+    blockRenderers: Record<string, BlockRenderer>;
+    onExpandBlock?: (block: BlockDescriptor) => boolean;
+}
+
+/** A renderer map with no prototype, so no language finds an inherited member. */
+function emptyRendererMap(): Record<string, BlockRenderer> {
+    return Object.create(null) as Record<string, BlockRenderer>;
 }
 
 /**
@@ -254,6 +422,7 @@ export const DEFAULT_CHATBOT_CONFIG: ResolvedChatbotConfig = {
         copyConversationId: true,
         creditUsage: true,
         deleteConversation: true,
+        files: true,
         close: true,
     },
     composer: {
@@ -268,6 +437,7 @@ export const DEFAULT_CHATBOT_CONFIG: ResolvedChatbotConfig = {
     sidebar: {
         enabled: true,
         newChat: true,
+        artifacts: true,
         items: [],
         starred: true,
         search: true,
@@ -278,7 +448,47 @@ export const DEFAULT_CHATBOT_CONFIG: ResolvedChatbotConfig = {
     suggestions: [],
     quickActions: [],
     featureCards: [],
+    markdown: { blockRenderers: Object.freeze(emptyRendererMap()) },
 };
+
+/**
+ * Lay one layer's `markdown` over the one beneath: renderers merge by
+ * language, and a `null` removes the language's renderer.
+ *
+ * A layer that says nothing about renderers keeps the map beneath it *as the
+ * same object*. Its identity is what an answer's blocks are memoised on, so a
+ * screen's layer that only changes labels must not re-render every chart.
+ *
+ * The merged map has no prototype (see {@link ResolvedMarkdownConfig}), and a
+ * renderer React cannot draw — no `component`, or one that is not a component
+ * — is left out with a warning, keeping whatever the layer beneath set for
+ * that language. Drawn, it would throw while its error boundary is being
+ * reconciled, where no boundary of the chat's can catch it.
+ */
+function mergeMarkdown(base: ResolvedMarkdownConfig, layer: MarkdownConfig | undefined): ResolvedMarkdownConfig {
+    if (!layer) return base;
+    let blockRenderers = base.blockRenderers;
+    if (layer.blockRenderers) {
+        blockRenderers = Object.assign(emptyRendererMap(), base.blockRenderers);
+        for (const [language, renderer] of Object.entries(layer.blockRenderers)) {
+            if (renderer === null) {
+                delete blockRenderers[language];
+            } else if (renderer === undefined) {
+                // Not set: what is beneath stays.
+            } else if (isBlockRenderer(renderer)) {
+                blockRenderers[language] = renderer;
+            } else {
+                console.warn(
+                    `[chatbot-ui] config.markdown.blockRenderers['${language}'] has no component React can render; `
+                    + 'it is ignored, and the fence is drawn as before.'
+                );
+            }
+        }
+    }
+    const onExpandBlock = layer.onExpandBlock ?? base.onExpandBlock;
+    if (blockRenderers === base.blockRenderers && onExpandBlock === base.onExpandBlock) return base;
+    return onExpandBlock ? { blockRenderers, onExpandBlock } : { blockRenderers };
+}
 
 /** The keys a layer actually set; `undefined` means "keep what is beneath". */
 function definedEntries<Group extends object>(group: Group | undefined): Partial<Group> {
@@ -304,6 +514,7 @@ export function mergeChatbotConfig(base: ResolvedChatbotConfig, layer: ChatbotCo
         suggestions: layer.suggestions ?? base.suggestions,
         quickActions: layer.quickActions ?? base.quickActions,
         featureCards: layer.featureCards ?? base.featureCards,
+        markdown: mergeMarkdown(base.markdown, layer.markdown),
     };
 }
 

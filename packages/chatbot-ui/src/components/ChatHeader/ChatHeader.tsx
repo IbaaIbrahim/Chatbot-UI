@@ -44,6 +44,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
     const canCopyLink = useChatState(s => s.canCopyConversationLink);
     const canSwitchMode = useChatState(s => s.canSwitchMode);
     const canShowCredits = useChatState(s => s.canShowCredits);
+    const canUseFiles = useChatState(s => s.storageClient !== null);
+    const isArtifactsOpen = useChatState(s => s.isArtifactsPanelOpen);
     const hostHandlesOpenChange = useChatState(s => s.hostHandlesOpenChange);
     const actions = useChatActions();
     const labels = useLabels();
@@ -55,6 +57,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
     const [copied, setCopied] = useState(false);
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const moreRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
         if (!isMenuOpen) return undefined;
@@ -63,8 +66,27 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
                 setIsMenuOpen(false);
             }
         };
+        // Escape closes the menu, and only the menu: pressed in it, or with
+        // nothing focused (a click on "More options" does not focus it in
+        // every browser). Taken in the capture phase and stopped there, before
+        // the chat's other Escapes — an overlay sidebar's, the Artifacts
+        // view's, which stands below the header (2026-10-14) — see it.
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key !== 'Escape' || !menuRef.current) return;
+            const target = e.target;
+            const nothingFocused = !target || target === document.body || target === document.documentElement;
+            if (!nothingFocused && !(target instanceof Node && menuRef.current.contains(target))) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setIsMenuOpen(false);
+            if (!nothingFocused) moreRef.current?.focus();
+        };
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleEscape, true);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleEscape, true);
+        };
     }, [isMenuOpen]);
 
     // The list of views starts folded, and a delete unconfirmed, every time the
@@ -103,6 +125,12 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
         : [];
     const showSwitchView = views.some(view => !view.active);
     const showCreditUsage = header.creditUsage && canShowCredits;
+    // A conversation's files exist only once it does, and the storage API
+    // needs the user's token to list them. Not while the Artifacts view
+    // stands in the conversation's place: the conversation the panel would
+    // describe is not on screen, and opening it would close the view, with
+    // its search and the artifact open in it (2026-10-14).
+    const showFiles = header.files && canUseFiles && Boolean(activeConversationId) && !isArtifactsOpen;
     const showCopyId = header.copyConversationId && Boolean(activeConversationId);
     const showDeleteThread = header.deleteConversation && Boolean(activeConversationId);
     const hasOtherMenuItems = showCreditUsage || showCopyId || showDeleteThread || header.menuItems.length > 0;
@@ -149,6 +177,19 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
             <div className="cb-actions">
                 {header.actions}
 
+                {showFiles && (
+                    <button
+                        type="button"
+                        className="cb-header-btn cb-files-btn"
+                        onClick={actions.openFiles}
+                        title={labels.conversationFiles}
+                        aria-label={labels.conversationFiles}
+                        aria-haspopup="dialog"
+                    >
+                        {icons.files}
+                    </button>
+                )}
+
                 {header.share && canShare && (
                     <button
                         type="button"
@@ -177,6 +218,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
                 {header.menu && hasMenuItems && (
                     <div className="cb-header-menu-container" ref={menuRef}>
                         <button
+                            ref={moreRef}
                             type="button"
                             className="cb-header-btn cb-more-btn"
                             onClick={() => setIsMenuOpen(open => !open)}

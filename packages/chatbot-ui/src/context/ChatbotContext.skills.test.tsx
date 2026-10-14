@@ -122,3 +122,24 @@ describe('ChatbotProvider — skills', () => {
             .not.toThrow();
     });
 });
+
+describe('ChatbotProvider — block languages', () => {
+    // 2026-10-14: every job names the fence languages the page draws, so the
+    // platform indexes those blocks (the files panel and Artifacts list them).
+    const Chart: React.FC = () => null;
+
+    it('hands the client the languages of the merged renderers, and follows a screen that adds or removes one', () => {
+        const client = new GatewayStreamClient({ gatewayUrl: GATEWAY_URL });
+        const base = { ...CONFIG, markdown: { blockRenderers: { table: { component: Chart }, chart: { component: Chart } } } };
+
+        render(<ChatbotProvider client={client} config={base}>{null}</ChatbotProvider>);
+        expect(client.getBlockLanguages()).toEqual(['chart', 'table']);
+
+        const fewer = { ...CONFIG, markdown: { blockRenderers: { chart: { component: Chart }, Weird: { component: Chart } } } };
+        render(<ChatbotProvider client={client} config={fewer}>{null}</ChatbotProvider>);
+        expect(client.getBlockLanguages()).toEqual(['chart']);
+
+        render(<ChatbotProvider client={client} config={CONFIG}>{null}</ChatbotProvider>);
+        expect(client.getBlockLanguages()).toEqual([]);
+    });
+});

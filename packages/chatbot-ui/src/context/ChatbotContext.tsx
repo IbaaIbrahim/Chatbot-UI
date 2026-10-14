@@ -2,6 +2,8 @@ import React from 'react';
 import { netFetch, configureLocalNetworkAccess, warnIfLocalNetworkUrl } from '../common/localNetwork';
 import { StreamClient, StreamChatClient } from '../api/StreamClient';
 import { GatewayStreamClient, EnablableTool } from '../api/GatewayStreamClient';
+import { StorageClient, StorageRequestError } from '../api/StorageClient';
+import { BlobUrlCache } from '../common/blobCache';
 import { useStreamChat, UseStreamChatOptions } from '../hooks/useStreamChat';
 import {
     collectPendingApprovals,
@@ -14,6 +16,7 @@ import { isHostRequestSlug } from '../common/hostCatalogue';
 import type { AttachedFile, ConversationDetail, UserCredits } from '../api/types';
 import { summarizeUsage } from '../common/usageSummary';
 import { resolveChatbotConfig } from '../common/chatbotConfig';
+import { blockLanguagesOf } from '../common/markdownBlocks';
 import type { ChatbotConfig } from '../common/chatbotConfig';
 import type { QuestionSpec } from '../components/Questionnaire/QuestionnaireForm';
 import type { ChatMode } from '../components/ChatContainer/presentation';
@@ -87,7 +90,7 @@ function writeStoredToolIds(next: string[], listedIds: ReadonlySet<string>): voi
     }
 }
 
-const CONFIG_GROUPS = ['labels', 'icons', 'header', 'composer', 'sidebar', 'greeting'] as const;
+const CONFIG_GROUPS = ['labels', 'icons', 'header', 'composer', 'sidebar', 'greeting', 'markdown'] as const;
 const CONFIG_LISTS = ['suggestions', 'quickActions', 'featureCards'] as const;
 
 /**
@@ -218,7 +221,11 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     );
 
     // --- Authenticated storage access ---
-    const blobCacheRef = useRef<Map<string, string>>(new Map());
+    // Object URLs of fetched files, by URL, least recently used first — see
+    // `common/blobCache.ts` for why it is bounded.
+    const blobCacheRef = useRef<BlobUrlCache>(new BlobUrlCache());
+    // A fetch already under way for a URL, so two thumbnails of one file share it.
+    const pendingBlobsRef = useRef<Map<string, Promise<string>>>(new Map());
 
     const fetchAuthenticatedUrl = useCallback(
         async (url: string): Promise<string> => {
@@ -230,25 +237,35 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
             if (cached) {
                 return cached;
             }
+            const pending = pendingBlobsRef.current.get(resolvedUrl);
+            if (pending) return pending;
 
             if (!accessToken) {
                 throw new Error('No access token available for authenticated fetch');
             }
 
-            const response = await netFetch(resolvedUrl, {
-                headers: {
-                    Authorization: `Bearer ${accessToken}`,
-                },
-            });
+            const load = (async () => {
+                const response = await netFetch(resolvedUrl, {
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                    },
+                });
 
-            if (!response.ok) {
-                throw new Error(`Failed to fetch authenticated URL: ${response.status}`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch authenticated URL: ${response.status}`);
+                }
+
+                const blob = await response.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                blobCacheRef.current.set(resolvedUrl, blobUrl, blob.size);
+                return blobUrl;
+            })();
+            pendingBlobsRef.current.set(resolvedUrl, load);
+            try {
+                return await load;
+            } finally {
+                pendingBlobsRef.current.delete(resolvedUrl);
             }
-
-            const blob = await response.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            blobCacheRef.current.set(resolvedUrl, blobUrl);
-            return blobUrl;
         },
         [accessToken, storageApiUrl]
     );
@@ -280,13 +297,22 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         [accessToken, storageApiUrl]
     );
 
+    // --- Conversation files and artifacts (storage API) ---
+    // One client per URL and token, so a panel's effects that depend on it run
+    // when the user's session changes and not on every render.
+    const storageClient = useMemo(
+        () => (storageApiUrl && accessToken ? new StorageClient({ storageApiUrl, token: accessToken }) : null),
+        [storageApiUrl, accessToken]
+    );
+    const [isFilesPanelOpen, setFilesPanelOpen] = useState(false);
+    const [isArtifactsPanelOpen, setArtifactsPanelOpen] = useState(false);
+    const [artifactsOpenings, setArtifactsOpenings] = useState(0);
+    const [filesRevision, setFilesRevision] = useState(0);
+
     // Cleanup blob URLs on unmount
     useEffect(() => {
         const cache = blobCacheRef.current;
         return () => {
-            cache.forEach(blobUrl => {
-                URL.revokeObjectURL(blobUrl);
-            });
             cache.clear();
         };
     }, []);
@@ -332,6 +358,18 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
             (activeClient as GatewayStreamClient).setSkills(skills);
         }
     }, [activeClient, skills]);
+
+    // The fence languages this page draws, sent with every job as
+    // `block_languages` so the platform indexes the turn's blocks (the files
+    // panel and Artifacts list them as "Not saved" until saved). Keyed on the
+    // list's text, so a renderer map rebuilt with the same languages changes
+    // nothing. Duck-typed like `setTools`: only the gateway client sends it.
+    const blockLanguagesKey = blockLanguagesOf(Object.keys(resolvedConfig.markdown.blockRenderers)).join(',');
+    useEffect(() => {
+        if (activeClient && 'setBlockLanguages' in activeClient) {
+            (activeClient as GatewayStreamClient).setBlockLanguages(blockLanguagesKey ? blockLanguagesKey.split(',') : []);
+        }
+    }, [activeClient, blockLanguagesKey]);
 
     // --- Tools the user may switch on per conversation ---
     const [enablableTools, setEnablableTools] = useState<EnablableTool[]>([]);
@@ -582,6 +620,10 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         reset();
         setPendingQuestionnaire(null);
         setStaleClientCall(false);
+        // The files panel lists the open conversation's files, and a new chat
+        // has none: left open it would show the empty state of a thread that
+        // does not exist yet.
+        setFilesPanelOpen(false);
         focusComposer();
     }, [newChat, reset, focusComposer]);
 
@@ -650,6 +692,12 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         canShowCredits,
         isCreditUsageOpen: canShowCredits && isCreditUsageOpen,
 
+        storageClient,
+        isFilesPanelOpen: Boolean(storageClient) && isFilesPanelOpen,
+        isArtifactsPanelOpen: Boolean(storageClient) && isArtifactsPanelOpen,
+        artifactsOpenings,
+        filesRevision,
+
         messages,
         isThinking,
         isResuming,
@@ -677,6 +725,49 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     // --- What the actions do, as of this render ---
     const [events] = useState(createEventBus);
 
+    const saveFile: ChatActions['saveFile'] = async (jobUuid, file, options) => {
+        if (!storageClient) {
+            throw new StorageRequestError(
+                'Saving a file needs the provider\'s storageApiUrl and accessToken.', 0
+            );
+        }
+        const stored = await storageClient.saveFile(jobUuid, file, options);
+        // After the server accepted, never before: a panel that read again on
+        // a refused save would show nothing new, and a host listening for the
+        // event would count a file that does not exist.
+        setFilesRevision(revision => revision + 1);
+        events.emit('chat.files.changed', {
+            change: 'saved',
+            attachmentUuid: stored.attachment_uuid,
+            file: stored,
+            conversationId: stored.conversation_uuid ?? currentConversationId,
+            jobUuid,
+            blockKey: stored.block_key ?? (options?.isArtifact && options.blockKey ? options.blockKey : null),
+            savedFromUuid: stored.saved_from_uuid,
+        });
+        return stored;
+    };
+
+    const saveGeneratedFile: ChatActions['saveGeneratedFile'] = async attachmentUuid => {
+        if (!storageClient) {
+            throw new StorageRequestError(
+                'Saving a file needs the provider\'s storageApiUrl and accessToken.', 0
+            );
+        }
+        const stored = await storageClient.saveGeneratedFile(attachmentUuid);
+        setFilesRevision(revision => revision + 1);
+        events.emit('chat.files.changed', {
+            change: 'saved',
+            attachmentUuid: stored.attachment_uuid,
+            file: stored,
+            conversationId: stored.conversation_uuid ?? currentConversationId,
+            jobUuid: stored.job_uuid,
+            blockKey: null,
+            savedFromUuid: stored.saved_from_uuid ?? attachmentUuid,
+        });
+        return stored;
+    };
+
     const actionsNow: ChatActions = {
         open: () => setOpen(true),
         close: () => setOpen(false),
@@ -688,6 +779,47 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         share: () => onShare?.(),
         openCreditUsage: () => setCreditUsageOpen(true),
         closeCreditUsage: () => setCreditUsageOpen(false),
+        // One at a time: the files panel covers the chat, the Artifacts view
+        // takes its place, and the view can open a conversation the files
+        // panel would then describe.
+        openFiles: () => {
+            setArtifactsPanelOpen(false);
+            setFilesPanelOpen(true);
+        },
+        closeFiles: () => setFilesPanelOpen(false),
+        openArtifacts: () => {
+            setFilesPanelOpen(false);
+            setArtifactsPanelOpen(true);
+            // Counted, so "Artifacts" chosen while it already shows takes the
+            // view back to its list (an artifact may be open) and focus to it.
+            setArtifactsOpenings(count => count + 1);
+        },
+        closeArtifacts: () => setArtifactsPanelOpen(false),
+
+        saveFile,
+        saveArtifact: (jobUuid, file, options) => saveFile(jobUuid, file, { ...options, isArtifact: true }),
+        saveGeneratedFile,
+        deleteArtifact: async (attachmentUuid) => {
+            if (!storageClient) {
+                throw new StorageRequestError(
+                    'Deleting an artifact needs the provider\'s storageApiUrl and accessToken.', 0
+                );
+            }
+            await storageClient.deleteArtifact(attachmentUuid);
+            // Its bytes, if a thumbnail or a preview fetched them, are of a
+            // file that no longer exists: let them go now, not at unmount.
+            blobCacheRef.current.forgetAttachment(attachmentUuid);
+            setFilesRevision(revision => revision + 1);
+            events.emit('chat.files.changed', {
+                change: 'deleted',
+                attachmentUuid,
+                file: null,
+                conversationId: null,
+                jobUuid: null,
+                blockKey: null,
+                savedFromUuid: null,
+            });
+        },
 
         sendMessage: async (text, attachedFiles) => {
             events.emit('message.sent', { text });
@@ -700,11 +832,17 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         rejectApproval,
         submitQuestionnaire,
 
+        // A new chat, a conversation picked or a prompt put in the composer
+        // is a chat the user wants to see: the Artifacts view, which stands
+        // in its place (2026-10-14), gives the column back — from the
+        // sidebar, the header or a host's own button alike.
         newChat: () => {
+            setArtifactsPanelOpen(false);
             handleNewChat();
             events.emit('conversation.created', {});
         },
         selectConversation: async (conversationId) => {
+            setArtifactsPanelOpen(false);
             const selected = await handleSelectConversation(conversationId);
             if (selected) events.emit('conversation.selected', { conversationId });
             return selected;
@@ -732,7 +870,13 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         focusComposer,
         setComposerText: (text) => {
             composerRef.current?.setText(text);
-            composerRef.current?.focus();
+            if (isArtifactsPanelOpen) {
+                // Hidden behind the view until the next render: focus once it is back.
+                setArtifactsPanelOpen(false);
+                focusComposer();
+            } else {
+                composerRef.current?.focus();
+            }
         },
     };
     const servicesNow: ChatServices = { fetchAuthenticatedUrl, getFileDownloadUrl, fetchCredits };
@@ -815,6 +959,14 @@ function delegateActions(latest: React.MutableRefObject<ChatActions>): ChatActio
         share: () => latest.current.share(),
         openCreditUsage: () => latest.current.openCreditUsage(),
         closeCreditUsage: () => latest.current.closeCreditUsage(),
+        openFiles: () => latest.current.openFiles(),
+        closeFiles: () => latest.current.closeFiles(),
+        openArtifacts: () => latest.current.openArtifacts(),
+        closeArtifacts: () => latest.current.closeArtifacts(),
+        saveFile: (jobUuid, file, options) => latest.current.saveFile(jobUuid, file, options),
+        saveArtifact: (jobUuid, file, options) => latest.current.saveArtifact(jobUuid, file, options),
+        saveGeneratedFile: attachmentUuid => latest.current.saveGeneratedFile(attachmentUuid),
+        deleteArtifact: attachmentUuid => latest.current.deleteArtifact(attachmentUuid),
         sendMessage: (text, attachedFiles) => latest.current.sendMessage(text, attachedFiles),
         stopTurn: () => latest.current.stopTurn(),
         retryTurn: () => latest.current.retryTurn(),

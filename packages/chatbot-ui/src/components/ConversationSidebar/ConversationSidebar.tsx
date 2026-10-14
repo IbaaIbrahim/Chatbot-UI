@@ -281,12 +281,15 @@ const Spinner: React.FC = () => (
 );
 
 /**
- * The conversation sidebar: new chat, the host's navigation entries, starred
- * conversations and recent ones, with search over all of them.
+ * The conversation sidebar: new chat, the user's artifacts, the host's
+ * navigation entries, starred conversations and recent ones, with search over
+ * all of them.
  *
  * Starred appears only when the Gateway reports `starred_at` — on one that does
  * not, starring could not persist — and renaming only when the client can
- * rename. Each is also a `config.sidebar` flag, as deleting is.
+ * rename. Artifacts appears only with a storage API to list them from (the
+ * provider's `storageApiUrl` and `accessToken`). Each is also a
+ * `config.sidebar` flag, as deleting is.
  */
 export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     embedded = false,
@@ -303,6 +306,8 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     const isLoadingMore = useChatState(s => s.isLoadingMore);
     const hasMore = useChatState(s => s.hasMore);
     const search = useChatState(s => s.search);
+    const canUseFiles = useChatState(s => s.storageClient !== null);
+    const isArtifactsOpen = useChatState(s => s.isArtifactsPanelOpen);
     const actions = useChatActions();
     const labels = useLabels();
     const icons = useIcons();
@@ -329,13 +334,34 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         if (!embedded && !sidebarInline) actions.closeSidebar();
     };
 
+    // "New chat" and a conversation picked leave the Artifacts view for the
+    // chat: the actions themselves close it (2026-10-14).
     const startNewChat = () => {
         actions.newChat();
         afterPick();
     };
 
     const selectConversation = (id: string) => {
-        void actions.selectConversation(id);
+        // A conversation picked while the files panel covers the chat is one
+        // the user wants to read, not to see behind the panel.
+        actions.closeFiles();
+        if (isArtifactsOpen && id === activeConversationId) {
+            // The conversation behind the Artifacts view: back to it as it
+            // was, not loaded again — a load replaces the transcript, cutting
+            // off an answer still streaming and losing the scroll position.
+            // As the view's own "Open conversation" does (2026-10-14).
+            actions.closeArtifacts();
+            actions.focusComposer();
+        } else {
+            void actions.selectConversation(id);
+        }
+        afterPick();
+    };
+
+    // The view takes the chat's place; a drawer closes, as for a conversation.
+    // Chosen again while it shows, it goes back to its list.
+    const openArtifacts = () => {
+        actions.openArtifacts();
         afterPick();
     };
 
@@ -361,7 +387,9 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         <ConversationRow
             key={conversation.uuid}
             conversation={conversation}
-            isActive={activeConversationId === conversation.uuid}
+            // While the Artifacts view shows, it is the current entry: the
+            // open conversation is behind it, not on screen.
+            isActive={!isArtifactsOpen && activeConversationId === conversation.uuid}
             canStar={showStarred}
             canRename={sidebar.rename && renamingSupported}
             canDelete={sidebar.deleteConversation}
@@ -475,6 +503,19 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                     <button type="button" className="cb-sidebar-nav-item cb-sidebar-nav-primary" onClick={startNewChat}>
                         <span className="cb-sidebar-nav-icon">{icons.newChat}</span>
                         <span className="cb-sidebar-nav-label">{labels.newChat}</span>
+                    </button>
+                )}
+                {/* What the user saved, across conversations: the first entry
+                    after "New chat", before the host's own. */}
+                {sidebar.artifacts && canUseFiles && (
+                    <button
+                        type="button"
+                        className={`cb-sidebar-nav-item cb-sidebar-nav-artifacts${isArtifactsOpen ? ' active' : ''}`}
+                        aria-current={isArtifactsOpen ? 'page' : undefined}
+                        onClick={openArtifacts}
+                    >
+                        <span className="cb-sidebar-nav-icon">{icons.artifacts}</span>
+                        <span className="cb-sidebar-nav-label">{labels.artifacts}</span>
                     </button>
                 )}
                 {sidebar.items.map(item => (

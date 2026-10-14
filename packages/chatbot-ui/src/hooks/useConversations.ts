@@ -299,11 +299,50 @@ export function collectPendingApprovals(
     return byApproval;
 }
 
+/**
+ * Each job's turn: the top of the chain of jobs that started it
+ * (`triggered_by_job_uuid`), over the conversation's jobs and their nested
+ * sub-agents — the platform's `root_job_uuid`, which every job of a turn
+ * shares, a handoff child's included.
+ *
+ * A handoff child is listed at the top level of the history, beside the job
+ * that handed over; live, the stream keeps the turn the parent's (a handoff
+ * child is a sub-agent there). Until 2026-10-14 its reloaded answer was keyed
+ * by its own job, so its blocks were one row from the transcript and another
+ * from the platform's index (`turn_job_uuid`) in the files panel, and a host
+ * offered to save again a block already saved against the turn. A parent the
+ * history does not list is still the closest known turn.
+ */
+export function turnJobsOf(jobs: ConversationJob[]): Map<string, string> {
+    const parentOf = new Map<string, string | null>();
+    const walk = (list: ConversationJob[]) => {
+        for (const job of list) {
+            parentOf.set(job.uuid, job.triggered_by_job_uuid ?? null);
+            walk(job.sub_agent_jobs ?? []);
+        }
+    };
+    walk(jobs);
+    const turns = new Map<string, string>();
+    parentOf.forEach((_parent, uuid) => {
+        let turn = uuid;
+        const seen = new Set<string>([uuid]);
+        let parent = parentOf.get(turn) ?? null;
+        while (parent && !seen.has(parent)) {
+            seen.add(parent);
+            turn = parent;
+            parent = parentOf.get(turn) ?? null;
+        }
+        turns.set(uuid, turn);
+    });
+    return turns;
+}
+
 export function jobsToMessageProps(
     jobs: ConversationJob[],
     storageApiUrl?: string
 ): MessageProps[] {
     const messages: MessageProps[] = [];
+    const turnOf = turnJobsOf(jobs);
 
     for (const job of jobs) {
         // An agent-started job has no user message: the *user* did not write its
@@ -337,6 +376,7 @@ export function jobsToMessageProps(
                 role: 'user',
                 content: job.user_prompt,
                 attachments,
+                jobUuid: job.uuid,
             });
         }
 
@@ -353,10 +393,18 @@ export function jobsToMessageProps(
         if (!finalText && steps.length === 0) continue;
 
         const { usage, context, subAgentRuns, tree } = usageFromJob(job);
+        const startedAt = job.created_at ? new Date(job.created_at) : undefined;
         messages.push({
             id: `${job.uuid}-assistant`,
             role: 'assistant',
             content: finalText,
+            // What the live turn learnt from its first frame: the turn a block
+            // in this answer is saved against — a handoff child's is the job
+            // that handed over (`turnJobsOf`).
+            jobUuid: turnOf.get(job.uuid) ?? job.uuid,
+            // When the turn started: what the files panel orders the blocks it
+            // finds in this answer by, beside the conversation's files.
+            timestamp: startedAt && !Number.isNaN(startedAt.getTime()) ? startedAt : undefined,
             steps,
             // The agent that ran this job, when the history names one. No
             // stream event names the agent, so a live turn has no sender and

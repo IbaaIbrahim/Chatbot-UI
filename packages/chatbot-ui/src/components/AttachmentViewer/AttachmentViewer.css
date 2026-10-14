@@ -1,0 +1,420 @@
+/* The attachment viewer: a lightbox over the page for one file — an image, a
+ * PDF (react-pdf), a CSV as a table, text, or a download for anything else.
+ * Moved here from MessageBubble.css in 4.1, when the conversation files and
+ * artifacts panels began to open it too. A lightbox is dark in both themes,
+ * as photo viewers are, which is why its colours are literals. */
+
+.cb-attachment-viewer-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.88);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    animation: cb-fade-in 0.15s ease-out;
+}
+
+.cb-attachment-viewer-inner {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 90vw;
+    height: 90vh;
+    max-width: 1200px;
+    max-height: 900px;
+    background: rgba(20, 20, 25, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+}
+
+.cb-attachment-viewer-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+}
+
+.cb-attachment-viewer-filename {
+    font-size: 14px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.9);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+:root .cb-attachment-viewer-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+    flex-shrink: 0;
+}
+
+.cb-attachment-viewer-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.cb-attachment-viewer-content {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    overflow: auto;
+}
+
+.cb-attachment-viewer-content img {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 10px;
+    object-fit: contain;
+    display: block;
+}
+
+/* `safe center`: a page wider than the box starts at its start edge rather
+ * than overflowing both sides, the first of which no scroll reaches. The
+ * plain `center` first, for a browser that cannot read `safe`. */
+.cb-pdf-viewer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    align-items: safe center;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    gap: 12px;
+}
+
+.cb-pdf-viewer .react-pdf__Document {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    align-items: safe center;
+}
+
+.cb-pdf-viewer .react-pdf__Page {
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.4);
+}
+
+.cb-pdf-pagination {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.8);
+    flex-shrink: 0;
+}
+
+.cb-pdf-pagination button {
+    font-size: 18px;
+    line-height: 1;
+    padding: 2px 8px;
+}
+
+.cb-attachment-viewer-content pre {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    color: var(--cb-text-primary, rgba(255, 255, 255, 0.9));
+    font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.cb-attachment-viewer-loading {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cb-attachment-viewer-error {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px;
+    text-align: center;
+}
+
+.cb-attachment-viewer-error-icon {
+    font-size: 32px;
+    color: var(--cb-accent-primary, #e57373);
+}
+
+.cb-attachment-viewer-error-msg {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+    max-width: 400px;
+}
+
+.cb-attachment-viewer-fallback {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 32px;
+    text-align: center;
+}
+
+.cb-attachment-viewer-fallback-icon {
+    font-size: 48px;
+}
+
+.cb-attachment-viewer-fallback-name {
+    font-size: 15px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.cb-attachment-viewer-fallback-size {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.cb-attachment-viewer-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+:root .cb-attachment-viewer-action-btn {
+    padding: 8px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.9);
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.cb-attachment-viewer-action-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.cb-attachment-viewer-action-btn.primary {
+    background: var(--cb-accent-gradient, linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%));
+    color: #ffffff;
+    border: none;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.cb-attachment-viewer-action-btn.primary:hover {
+    filter: brightness(1.1);
+}
+
+/* The toolbar's buttons: download, then close — last (4.1). */
+.cb-attachment-viewer-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+:root .cb-attachment-viewer-download {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.cb-attachment-viewer-download:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+:root .cb-attachment-viewer-download:focus-visible,
+:root .cb-attachment-viewer-close:focus-visible {
+    outline: 2px solid rgba(147, 197, 253, 0.9);
+    outline-offset: 2px;
+}
+
+/* A CSV, as the first rows of a table. */
+.cb-attachment-viewer-table-wrap {
+    align-self: stretch;
+    width: 100%;
+    max-height: 100%;
+    overflow: auto;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+}
+
+.cb-attachment-viewer-table {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 13px;
+}
+
+.cb-attachment-viewer-table th,
+.cb-attachment-viewer-table td {
+    max-width: 320px;
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+    text-align: start;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cb-attachment-viewer-table th {
+    position: sticky;
+    top: 0;
+    background: rgba(30, 30, 36, 0.98);
+    font-weight: 600;
+}
+
+.cb-attachment-viewer-note {
+    margin: 0 0 8px;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 12px;
+}
+
+.cb-attachment-viewer-csv {
+    display: flex;
+    flex-direction: column;
+    align-self: stretch;
+    width: 100%;
+    max-height: 100%;
+    min-height: 0;
+}
+
+/* --- The preview without the lightbox (2026-10-14) ----------------------- */
+
+/* What the lightbox shows below its toolbar — and, `.is-inline`, an artifact
+ * opened in place in the Artifacts view. The wrapper passes the column's
+ * height on to the spinner, the error or the file. */
+.cb-attachment-preview {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* In place the chat's own colours apply, not the lightbox's dark: the view
+ * follows the chat's theme (light, dark or the system's). */
+.cb-attachment-preview.is-inline .cb-attachment-viewer-content {
+    align-items: flex-start;
+    padding: var(--cb-space-4);
+}
+
+/* An image as wide as the column at most, and as tall as it needs: the
+ * column scrolls rather than the image shrinking to its height. */
+.cb-attachment-preview.is-inline .cb-attachment-viewer-content > img {
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    max-height: none;
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-md);
+}
+
+/* In place a page is drawn at the box's width; the scrollbar's room is kept
+ * whether or not a page is taller than the column, so the width does not
+ * change — and the page redraw — as the scrollbar comes and goes. */
+.cb-attachment-preview.is-inline .cb-pdf-viewer {
+    scrollbar-gutter: stable;
+}
+
+.cb-attachment-preview.is-inline .cb-pdf-viewer .react-pdf__Page {
+    box-shadow: var(--cb-shadow-md);
+}
+
+.cb-attachment-preview.is-inline .cb-pdf-pagination {
+    background: var(--cb-surface-raised);
+    color: var(--cb-text-secondary);
+}
+
+.cb-attachment-preview.is-inline .cb-attachment-viewer-content pre {
+    background: var(--cb-surface-sunken);
+    border-color: var(--cb-border-subtle);
+    color: var(--cb-text-primary);
+}
+
+.cb-attachment-preview.is-inline .cb-attachment-viewer-table-wrap {
+    border-color: var(--cb-border-subtle);
+}
+
+.cb-attachment-preview.is-inline .cb-attachment-viewer-table {
+    color: var(--cb-text-primary);
+}
+
+.cb-attachment-preview.is-inline .cb-attachment-viewer-table th,
+.cb-attachment-preview.is-inline .cb-attachment-viewer-table td {
+    border-bottom-color: var(--cb-border-subtle);
+}
+
+.cb-attachment-preview.is-inline .cb-attachment-viewer-table th {
+    background: var(--cb-bg-secondary);
+}
+
+.cb-attachment-preview.is-inline .cb-attachment-viewer-note,
+.cb-attachment-preview.is-inline .cb-attachment-viewer-fallback-size {
+    color: var(--cb-text-tertiary);
+}
+
+.cb-attachment-preview.is-inline .cb-attachment-viewer-error-msg {
+    color: var(--cb-text-secondary);
+}
+
+.cb-attachment-preview.is-inline .cb-attachment-viewer-fallback-name {
+    color: var(--cb-text-primary);
+}
+
+:root .cb-attachment-preview.is-inline .cb-attachment-viewer-action-btn:not(.primary) {
+    border-color: var(--cb-border-subtle);
+    background: var(--cb-surface-raised);
+    color: var(--cb-text-primary);
+}
+
+:root .cb-attachment-preview.is-inline .cb-attachment-viewer-action-btn:not(.primary):hover:not(:disabled) {
+    background: var(--cb-surface-hover);
+}
+
+:root .cb-attachment-preview.is-inline .cb-attachment-viewer-action-btn:focus-visible {
+    outline: 2px solid var(--cb-border-focus);
+    outline-offset: 1px;
+}

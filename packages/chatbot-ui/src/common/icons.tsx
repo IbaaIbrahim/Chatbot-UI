@@ -47,6 +47,42 @@ export interface ChatIcons {
     send: React.ReactNode;
     stop: React.ReactNode;
     scrollDown: React.ReactNode;
+    /** The header's "Conversation files" button. */
+    files: React.ReactNode;
+    /** The sidebar's "Artifacts" entry. */
+    artifacts: React.ReactNode;
+    download: React.ReactNode;
+    /** A rich block's "Expand". */
+    expand: React.ReactNode;
+    /** "Open conversation", on an artifact. */
+    openConversation: React.ReactNode;
+    /**
+     * An artifact's "Back to artifacts": an arrow to the start. Drawn pointing
+     * left; the library mirrors it in a right-to-left page.
+     */
+    back: React.ReactNode;
+    /** What an artifact is, beside its title — one per `ArtifactKind`. */
+    artifactChart: React.ReactNode;
+    artifactTable: React.ReactNode;
+    artifactKpi: React.ReactNode;
+    artifactReport: React.ReactNode;
+    artifactFile: React.ReactNode;
+    /**
+     * What a plain file is, in the files lists' rows, by its type (2026-10-14):
+     * an image (until its thumbnail arrives, or when too large for one), a PDF,
+     * a spreadsheet (CSV, Excel). Anything else is {@link artifactFile}.
+     */
+    fileImage: React.ReactNode;
+    filePdf: React.ReactNode;
+    fileSpreadsheet: React.ReactNode;
+    /** The "Saved" mark: a filled bookmark. */
+    saved: React.ReactNode;
+    /** The "Not saved" mark: an empty, dashed bookmark. */
+    notSaved: React.ReactNode;
+    /** A not-saved generated file's Save button. */
+    save: React.ReactNode;
+    /** A block's "Show in chat", in the files panel. */
+    showInChat: React.ReactNode;
 }
 
 const stroke = {
@@ -256,6 +292,134 @@ export const DEFAULT_ICONS: ChatIcons = {
     scrollDown: (
         <svg width="16" height="16" viewBox="0 0 24 24" {...stroke}>
             <path d="M12 5v14M19 12l-7 7-7-7" />
+        </svg>
+    ),
+    // A folder, not two sheets: two sheets read as "copy" beside the copy icon.
+    files: (
+        <svg width="16" height="16" viewBox="0 0 24 24" {...stroke}>
+            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <path d="M3 10h18" />
+        </svg>
+    ),
+    artifacts: (
+        <svg width="16" height="16" viewBox="0 0 24 24" {...stroke}>
+            <path d="m12 2 9 5-9 5-9-5 9-5z" />
+            <path d="m3 12 9 5 9-5" />
+            <path d="m3 17 9 5 9-5" />
+        </svg>
+    ),
+    download: (
+        <svg width="15" height="15" viewBox="0 0 24 24" {...stroke}>
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+    ),
+    expand: (
+        <svg width="15" height="15" viewBox="0 0 24 24" {...stroke}>
+            <polyline points="15 3 21 3 21 9" />
+            <polyline points="9 21 3 21 3 15" />
+            <line x1="21" y1="3" x2="14" y2="10" />
+            <line x1="3" y1="21" x2="10" y2="14" />
+        </svg>
+    ),
+    openConversation: (
+        <svg width="15" height="15" viewBox="0 0 24 24" {...stroke}>
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            <path d="M9 10h6" />
+            <path d="m13 8 2 2-2 2" />
+        </svg>
+    ),
+    back: (
+        <svg width="16" height="16" viewBox="0 0 24 24" {...stroke}>
+            <path d="M19 12H5" />
+            <path d="m12 19-7-7 7-7" />
+        </svg>
+    ),
+    artifactChart: (
+        <svg width="16" height="16" viewBox="0 0 24 24" {...stroke}>
+            <path d="M3 3v18h18" />
+            <path d="M7 15l4-4 3 3 5-6" />
+        </svg>
+    ),
+    artifactTable: (
+        <svg width="16" height="16" viewBox="0 0 24 24" {...stroke}>
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M3 10h18" />
+            <path d="M3 15h18" />
+            <path d="M10 4v16" />
+        </svg>
+    ),
+    artifactKpi: (
+        <svg width="16" height="16" viewBox="0 0 24 24" {...stroke}>
+            <rect x="3" y="4" width="8" height="7" rx="1.5" />
+            <rect x="13" y="4" width="8" height="7" rx="1.5" />
+            <rect x="3" y="13" width="8" height="7" rx="1.5" />
+            <rect x="13" y="13" width="8" height="7" rx="1.5" />
+        </svg>
+    ),
+    artifactReport: (
+        <svg width="16" height="16" viewBox="0 0 24 24" {...stroke}>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <path d="M14 2v6h6" />
+            <path d="M8 13h8" />
+            <path d="M8 17h5" />
+        </svg>
+    ),
+    artifactFile: (
+        <svg width="16" height="16" viewBox="0 0 24 24" {...stroke}>
+            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+        </svg>
+    ),
+    fileImage: (
+        <svg width="16" height="16" viewBox="0 0 24 24" {...stroke}>
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <circle cx="9" cy="9" r="2" />
+            <path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21" />
+        </svg>
+    ),
+    filePdf: (
+        <svg width="16" height="16" viewBox="0 0 24 24" {...stroke}>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <path d="M14 2v6h6" />
+            <rect x="7" y="12" width="10" height="6" rx="1" />
+        </svg>
+    ),
+    fileSpreadsheet: (
+        <svg width="16" height="16" viewBox="0 0 24 24" {...stroke}>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <path d="M14 2v6h6" />
+            <path d="M8 13h2" />
+            <path d="M14 13h2" />
+            <path d="M8 17h2" />
+            <path d="M14 17h2" />
+        </svg>
+    ),
+    saved: (
+        <svg width="12" height="12" viewBox="0 0 24 24" {...stroke} fill="currentColor">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+        </svg>
+    ),
+    notSaved: (
+        <svg width="12" height="12" viewBox="0 0 24 24" {...stroke} strokeDasharray="3 3">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+        </svg>
+    ),
+    save: (
+        <svg width="15" height="15" viewBox="0 0 24 24" {...stroke}>
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            <path d="M12 7v6" />
+            <path d="M9 10h6" />
+        </svg>
+    ),
+    showInChat: (
+        <svg width="15" height="15" viewBox="0 0 24 24" {...stroke}>
+            <circle cx="12" cy="12" r="7" />
+            <circle cx="12" cy="12" r="2.5" />
+            <path d="M12 2v3" />
+            <path d="M12 19v3" />
+            <path d="M2 12h3" />
+            <path d="M19 12h3" />
         </svg>
     ),
 };

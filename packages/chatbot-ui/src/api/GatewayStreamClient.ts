@@ -8,6 +8,7 @@ import { isClientTool, isServerTool } from '../common/toolConfig';
 import type { ClientSkillDefinition, ClientToolConfig, ToolConfig } from '../common/toolConfig';
 import { answerHostRequest, isHostRequestSlug } from '../common/hostCatalogue';
 import type { HostRequestAnswer } from '../common/hostCatalogue';
+import { blockLanguagesOf } from '../common/markdownBlocks';
 
 // The tool contract moved to ../common/toolConfig so that one module owns it
 // end to end; these two are re-exported here because they were part of this
@@ -34,6 +35,13 @@ export interface GatewayStreamClientConfig {
      * {@link HostContext} and {@link GatewayStreamClient.setHostContext}.
      */
     hostContext?: HostContext | HostContextProvider | null;
+    /**
+     * The fence languages this page draws as rich blocks, sent as
+     * `block_languages` with every job — see
+     * {@link GatewayStreamClient.setBlockLanguages}. The provider sets it from
+     * `config.markdown.blockRenderers`; a host rarely needs this.
+     */
+    blockLanguages?: readonly string[] | null;
 }
 
 /** One fact's value. A list is joined with ", "; `null` leaves the fact out. */
@@ -398,6 +406,8 @@ export class GatewayStreamClient implements StreamChatClient {
     private conversationId: string | null;
     private agentId: string | null;
     private hostContext: HostContext | HostContextProvider | null;
+    /** Sent as `block_languages`; see {@link setBlockLanguages}. */
+    private blockLanguages: string[] = [];
     private conversationClient: ConversationClient;
 
     /**
@@ -456,6 +466,7 @@ export class GatewayStreamClient implements StreamChatClient {
         this.conversationId = config.conversationId ?? restored.conversationId;
         this.agentId = config.agentId ?? null;
         this.hostContext = config.hostContext ?? null;
+        this.blockLanguages = blockLanguagesOf(config.blockLanguages);
         this.conversationClient = new ConversationClient(this.gatewayUrl, this.token);
         this._rehydrateSessions(restored.liveTurns ?? {});
     }
@@ -566,6 +577,28 @@ export class GatewayStreamClient implements StreamChatClient {
             if (value !== null && value !== undefined) facts[label] = value;
         }
         return Object.keys(facts).length > 0 ? facts : null;
+    }
+
+    /**
+     * The fence languages this page draws as rich blocks — the keys of
+     * `config.markdown.blockRenderers`, which the provider passes here
+     * whenever they change. Sent with every job as `block_languages` (a JSON
+     * array), so the platform indexes those blocks of the turn's answer when
+     * it ends: a block the user did not save is listed as "Not saved" in the
+     * conversation's files and under Artifacts, and its Save is matched to it.
+     *
+     * Kept as the platform takes them: lower-case `^[a-z][a-z0-9_-]{0,31}$`,
+     * each once, sorted, at most 16 (`blockLanguagesOf`). With none the field
+     * is left out. Every job the chat sends is an agent-mode job — the only
+     * kind the platform takes it with.
+     */
+    setBlockLanguages(languages: readonly string[] | null | undefined) {
+        this.blockLanguages = blockLanguagesOf(languages);
+    }
+
+    /** What the next job sends as `block_languages`; empty when it sends none. */
+    getBlockLanguages(): string[] {
+        return [...this.blockLanguages];
     }
 
     setToken(token: string | null) {
@@ -1131,6 +1164,13 @@ export class GatewayStreamClient implements StreamChatClient {
         const hostContext = this.resolveHostContext();
         if (hostContext) {
             body.append('host_context', JSON.stringify(hostContext));
+        }
+
+        // The languages this page draws as rich blocks, so the platform indexes
+        // the turn's blocks when it ends (2026-10-14). Omitted with none: the
+        // platform reads an empty list as none too, but the field is noise.
+        if (this.blockLanguages.length > 0) {
+            body.append('block_languages', JSON.stringify(this.blockLanguages));
         }
 
         let jobResponse: Response;

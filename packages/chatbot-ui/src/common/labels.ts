@@ -173,12 +173,128 @@ export interface ChatLabels {
     /** Between the phrases of a finished header. */
     activitySeparator: string;
 
+    // Rich blocks: fences a host draws (`config.markdown.blockRenderers`).
+    // `{label}` is the renderer's word for the block ("chart", "table").
+    /** The skeleton while the fence streams. */
+    blockPreparing: string;
+    /** The fallback's first line; the reason follows after a colon. */
+    blockFailed: string;
+    blockShowSource: string;
+    blockExpand: string;
+    /** The block's "more actions" menu button. */
+    blockMore: string;
+    blockCopySource: string;
+    /** Closes the expanded overlay. */
+    blockClose: string;
+
     // Attachment viewer
     close: string;
     closeAttachment: string;
     attachmentLoadFailed: string;
     attachmentNoAuth: string;
     pdfLoadFailed: string;
+    /** The viewer's download button, and every file row's. */
+    downloadFile: string;
+    downloadFailed: string;
+    /** Above a CSV preview cut short: `{shown}` of `{total}` rows. */
+    previewTruncated: string;
+
+    // Conversation files (the header's files button) and artifacts (the
+    // sidebar's entry): what a conversation has stored, and what the user saved.
+    conversationFiles: string;
+    conversationFilesEmpty: string;
+    filesLoadFailed: string;
+    /** The badge on a saved artifact. */
+    fileArtifactBadge: string;
+    /** The badge on a file the application produced (an export). */
+    fileGeneratedBadge: string;
+    previewFile: string;
+    artifacts: string;
+    artifactsEmpty: string;
+    artifactsLoadFailed: string;
+    searchArtifacts: string;
+    /** The Artifacts view with nothing for the search typed. */
+    noArtifactResults: string;
+    /** The Artifacts view with nothing for a kind chip, nothing typed (2026-10-14). */
+    noArtifactFilterResults: string;
+    /** The kind chips' group, as a screen reader names it (2026-10-14). */
+    artifactKindFilter: string;
+    /** The kind filter's first chip. */
+    artifactKindAll: string;
+    artifactKindChart: string;
+    artifactKindTable: string;
+    artifactKindKpi: string;
+    artifactKindReport: string;
+    artifactKindFile: string;
+    openConversation: string;
+    /** An opened artifact's way back to the list (2026-10-14). */
+    backToArtifacts: string;
+    deleteArtifact: string;
+    /** The delete entry after one click, asking for the second. */
+    confirmDeleteArtifact: string;
+    artifactDeleteFailed: string;
+
+    // Saved and not saved (2026-10-14): everything the agent drew or
+    // generated is an artifact; Save keeps it.
+    /** The mark on a kept artifact — a block, a generated file, an artifact. */
+    savedBadge: string;
+    /** The mark on one drawn or generated and never saved. */
+    notSavedBadge: string;
+    /** A not-saved generated file's Save button. */
+    saveFile: string;
+    saveFileFailed: string;
+    /** Said (a polite live region) when a Save from a list lands: `{title}` is the file's. */
+    fileSavedAnnouncement: string;
+    /** A block's "take me there" in the files panel. */
+    showInChat: string;
+    /** Why "Show in chat" is off: the answer is not in the transcript on screen. */
+    showInChatUnavailable: string;
+    /** A block without a title: `{label}` is its renderer's word ("chart"). */
+    blockUntitled: string;
+    /** A block whose language this page has no renderer for. */
+    blockNoRenderer: string;
+    blockLoadFailed: string;
+    /** The files panel's filter: its group's name, then its chips. */
+    filesFilter: string;
+    filesFilterAll: string;
+    filesFilterVisuals: string;
+    filesFilterFiles: string;
+    /** The files panel's Visuals filter with nothing in it. */
+    conversationVisualsEmpty: string;
+    /**
+     * The files panel of a conversation with nothing in it (2026-10-14): a
+     * heading, and a line saying what will appear. `conversationFilesEmpty`
+     * is now the Files filter's empty message.
+     */
+    conversationFilesEmptyTitle: string;
+    conversationFilesEmptyHint: string;
+    /** The files panel's subtitle: `{count}` items, one/other, then `{count}` saved. */
+    filesItemsOne: string;
+    filesItemsOther: string;
+    filesSavedCount: string;
+    /** What a row is, first in its details line — one per kind of file or visual. */
+    itemKindChart: string;
+    itemKindTable: string;
+    itemKindKpi: string;
+    itemKindReport: string;
+    itemKindFile: string;
+    itemKindImage: string;
+    itemKindPdf: string;
+    itemKindSpreadsheet: string;
+    /** The Artifacts view's saved filter: its group's name, then its options. */
+    artifactStatus: string;
+    artifactStatusAll: string;
+    artifactStatusSaved: string;
+    artifactStatusUnsaved: string;
+    /** The Artifacts view with nothing saved yet (the Saved filter). */
+    artifactsSavedEmpty: string;
+    /**
+     * The Artifacts view with nothing listed as not saved (the Not saved
+     * filter). Not a claim that everything is saved: the platform lists a
+     * turn's visuals only once it has ended, and never indexed turns from
+     * before 4.1.
+     */
+    artifactsUnsavedEmpty: string;
 
     // Questionnaire
     answerPlaceholder: string;
@@ -311,7 +427,7 @@ export const DEFAULT_LABELS: ChatLabels = {
     waitingForUploads: 'Waiting for uploads…',
     stop: 'Stop generating',
     stopping: 'Stopping…',
-    disclaimer: 'This is AI, and can make mistakes. Very results.',
+    disclaimer: 'This is AI, and can make mistakes. Verify results.',
 
     assistantName: 'Assistant',
     copy: 'Copy',
@@ -369,11 +485,82 @@ export const DEFAULT_LABELS: ChatLabels = {
     activityFailed: '{count} failed',
     activitySeparator: ' · ',
 
+    blockPreparing: 'Preparing {label}…',
+    blockFailed: "Couldn't display this {label}",
+    blockShowSource: 'Show source',
+    blockExpand: 'Expand',
+    blockMore: 'More actions',
+    blockCopySource: 'Copy source',
+    blockClose: 'Close',
+
     close: 'Close',
     closeAttachment: 'Close attachment',
     attachmentLoadFailed: 'Failed to load attachment',
     attachmentNoAuth: 'No authentication context available',
     pdfLoadFailed: 'Failed to load PDF.',
+    downloadFile: 'Download',
+    downloadFailed: "Couldn't download the file.",
+    previewTruncated: 'First {shown} of {total} rows',
+
+    conversationFiles: 'Conversation files',
+    conversationFilesEmpty: 'No files in this conversation yet.',
+    filesLoadFailed: "Couldn't load the files.",
+    fileArtifactBadge: 'Artifact',
+    fileGeneratedBadge: 'Generated',
+    previewFile: 'Preview',
+    artifacts: 'Artifacts',
+    artifactsEmpty: 'Nothing here yet. Charts, tables, reports and files from your answers appear here.',
+    artifactsLoadFailed: "Couldn't load your artifacts.",
+    searchArtifacts: 'Search artifacts',
+    noArtifactResults: 'No artifacts match your search.',
+    noArtifactFilterResults: 'Nothing matches these filters.',
+    artifactKindFilter: 'Kind',
+    artifactKindAll: 'All',
+    artifactKindChart: 'Charts',
+    artifactKindTable: 'Tables',
+    artifactKindKpi: 'KPIs',
+    artifactKindReport: 'Reports',
+    artifactKindFile: 'Files',
+    openConversation: 'Open conversation',
+    backToArtifacts: 'Back to artifacts',
+    deleteArtifact: 'Delete',
+    confirmDeleteArtifact: 'Click again to delete',
+    artifactDeleteFailed: "Couldn't delete the artifact.",
+
+    savedBadge: 'Saved',
+    notSavedBadge: 'Not saved',
+    saveFile: 'Save',
+    saveFileFailed: "Couldn't save the file.",
+    fileSavedAnnouncement: 'Saved: {title}',
+    showInChat: 'Show in chat',
+    showInChatUnavailable: "This answer isn't in the chat on screen.",
+    blockUntitled: 'Untitled {label}',
+    blockNoRenderer: "This {label} can't be drawn here.",
+    blockLoadFailed: "Couldn't load this visual.",
+    filesFilter: 'Show',
+    filesFilterAll: 'All',
+    filesFilterVisuals: 'Visuals',
+    filesFilterFiles: 'Files',
+    conversationVisualsEmpty: 'No charts, tables or reports in this conversation yet.',
+    conversationFilesEmptyTitle: 'No files yet',
+    conversationFilesEmptyHint: 'Charts, tables and files the assistant creates here — and files you attach — will appear in this list.',
+    filesItemsOne: '{count} item',
+    filesItemsOther: '{count} items',
+    filesSavedCount: '{count} saved',
+    itemKindChart: 'Chart',
+    itemKindTable: 'Table',
+    itemKindKpi: 'KPI card',
+    itemKindReport: 'Report',
+    itemKindFile: 'File',
+    itemKindImage: 'Image',
+    itemKindPdf: 'PDF',
+    itemKindSpreadsheet: 'Spreadsheet',
+    artifactStatus: 'Saved or not',
+    artifactStatusAll: 'All',
+    artifactStatusSaved: 'Saved',
+    artifactStatusUnsaved: 'Not saved',
+    artifactsSavedEmpty: 'Nothing saved yet. Save a chart, table or report from an answer and it appears here.',
+    artifactsUnsavedEmpty: "Nothing unsaved to show. Charts, tables and files you haven't saved appear here.",
 
     answerPlaceholder: 'Type your answer…',
     otherOption: 'Other',

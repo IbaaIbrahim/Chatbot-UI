@@ -3,6 +3,8 @@ import './ChatContainer.css';
 import { ChatHeader } from '../ChatHeader/ChatHeader';
 import { ConversationSidebar } from '../ConversationSidebar/ConversationSidebar';
 import { CreditUsageDialog } from '../CreditUsage/CreditUsageDialog';
+import { ArtifactsPanel } from '../Files/ArtifactsPanel';
+import { ConversationFilesPanel } from '../Files/ConversationFilesPanel';
 import { MainChat } from '../MainChat/MainChat';
 import { useChatActions, useChatState, useIcons, useLabels } from '../../store/hooks';
 import {
@@ -68,6 +70,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 }) => {
     const isOpen = useChatState(s => s.isOpen);
     const isSidebarOpen = useChatState(s => s.isSidebarOpen);
+    const isArtifactsOpen = useChatState(s => s.isArtifactsPanelOpen);
     const sidebarEnabled = useChatState(s => s.config.sidebar.enabled);
     const actions = useChatActions();
     const labels = useLabels();
@@ -144,8 +147,24 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
                     <div className="cb-chat-content">
                         {header === undefined ? <ChatHeader /> : header}
-                        {children ?? <MainChat />}
-                        {footer && <div className="cb-chat-footer">{footer}</div>}
+                        {/* The transcript and the composer — or, while
+                            "Artifacts" is chosen, the Artifacts view in their
+                            place, under the header and beside the sidebar.
+                            Both sit in one cell of the stage, so the view takes
+                            exactly their room; the chat stays mounted but
+                            hidden, from the eye and from assistive technology,
+                            so a draft, an upload under way and the scroll
+                            position are there when the user comes back. */}
+                        <div className={`cb-chat-stage${isArtifactsOpen ? ' is-showing-artifacts' : ''}`}>
+                            <div className="cb-chat-view" aria-hidden={isArtifactsOpen || undefined}>
+                                {children ?? <MainChat />}
+                                {footer && <div className="cb-chat-footer">{footer}</div>}
+                            </div>
+                            <ArtifactsPanel />
+                        </div>
+                        {/* Over the chat column only, so fullscreen's inline
+                            sidebar stays beside it. */}
+                        <ConversationFilesPanel />
                     </div>
                 </div>
                 <CreditUsageDialog />

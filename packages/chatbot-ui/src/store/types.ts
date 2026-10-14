@@ -1,6 +1,7 @@
 import type { StreamChatClient } from '../api/StreamClient';
 import type { EnablableTool, GatewayStreamClient } from '../api/GatewayStreamClient';
-import type { AttachedFile, ConversationSummary, UserCredits } from '../api/types';
+import type { AttachedFile, ConversationFile, ConversationSummary, SaveFileOptions, UserCredits } from '../api/types';
+import type { StorageClient } from '../api/StorageClient';
 import type { ChatbotConfig, ResolvedChatbotConfig } from '../common/chatbotConfig';
 import type { ToolConfig } from '../common/toolConfig';
 import type { TurnUsageSummary } from '../common/usageSummary';
@@ -51,6 +52,32 @@ export interface ChatSnapshot {
     /** The client can read the user's own allowance, so "Credit usage" has something to show. */
     canShowCredits: boolean;
     isCreditUsageOpen: boolean;
+
+    // --- Files: the conversation's files and the user's artifacts ---
+    /**
+     * The storage API's client for this user, built from the provider's
+     * `storageApiUrl` and `accessToken`; `null` without both, and then no
+     * files button, no Artifacts entry and nothing to save with.
+     */
+    storageClient: StorageClient | null;
+    /** The "Conversation files" panel is open. */
+    isFilesPanelOpen: boolean;
+    /**
+     * The "Artifacts" view is showing. Since 2026-10-14 it stands in the chat
+     * column in place of the transcript and the composer (`ArtifactsPanel`),
+     * rather than over them; the name is the 4.1 one.
+     */
+    isArtifactsPanelOpen: boolean;
+    /**
+     * Counts the calls to `openArtifacts()`. The view reads it to go back to
+     * its list when "Artifacts" is chosen while it already shows.
+     */
+    artifactsOpenings: number;
+    /**
+     * Counts every file saved or deleted through the chat since it mounted —
+     * a panel that lists files reads it to know when to read again.
+     */
+    filesRevision: number;
 
     // --- The turn ---
     messages: MessageProps[];
@@ -105,6 +132,46 @@ export interface ChatActions {
     /** Opens the "Credit usage" dialog, which reads the allowance afresh each time. */
     openCreditUsage: () => void;
     closeCreditUsage: () => void;
+    /** The "Conversation files" panel, for the open conversation. */
+    openFiles: () => void;
+    closeFiles: () => void;
+    /**
+     * The "Artifacts" view: what the user saved, across conversations, in
+     * the chat column in place of the transcript. `newChat`,
+     * `selectConversation` and `setComposerText` close it too — each is a
+     * chat the user wants to see.
+     */
+    openArtifacts: () => void;
+    closeArtifacts: () => void;
+
+    /**
+     * Store a file in the conversation against the turn `jobUuid` (a block's
+     * `jobUuid` prop) — an export, by default, or an artifact with
+     * `isArtifact: true`. Resolves to the stored file, after which the panels
+     * read again and `chat.files.changed` fires; rejects with the server's
+     * reason, or at once when there is no storage API or no `jobUuid`. A turn
+     * the storage API has not stored yet (404 `JOB_NOT_FOUND`) is tried again
+     * for 3 s first.
+     */
+    saveFile: (jobUuid: string, file: Blob, options?: SaveFileOptions) => Promise<ConversationFile>;
+    /**
+     * `saveFile` with `isArtifact: true`: the user chose to keep it, and it is
+     * listed under "Artifacts". A block's Save passes its `blockKey` prop
+     * (`options.blockKey`), which marks that block "Saved" in the
+     * conversation's files and under Artifacts.
+     */
+    saveArtifact: (jobUuid: string, file: Blob, options?: Omit<SaveFileOptions, 'isArtifact'>) => Promise<ConversationFile>;
+    /**
+     * Saves a file the application generated (an export) as an artifact —
+     * a copy the storage API makes, listed under "Artifacts" (2026-10-14).
+     * Resolves to that artifact (the existing one when it was saved before),
+     * after which the panels read again and `chat.files.changed` fires;
+     * rejects with the server's reason (409 `NOT_GENERATED` for an upload or
+     * an artifact), or at once without a storage API.
+     */
+    saveGeneratedFile: (attachmentUuid: string) => Promise<ConversationFile>;
+    /** Removes one of the user's artifacts; rejects when the server refuses. */
+    deleteArtifact: (attachmentUuid: string) => Promise<void>;
 
     sendMessage: (text: string, attachedFiles?: AttachedFile[]) => Promise<void>;
     stopTurn: () => Promise<void>;
@@ -150,6 +217,23 @@ export interface ChatEventMap {
     'conversation.starred': { conversationId: string; starred: boolean };
     'conversation.renamed': { conversationId: string; title: string };
     'conversation.deleted': { conversationId: string };
+    /** A file was saved to, or an artifact deleted from, a conversation through the chat. */
+    'chat.files.changed': FilesChangedPayload;
+}
+
+/** What `chat.files.changed` says about the change. */
+export interface FilesChangedPayload {
+    change: 'saved' | 'deleted';
+    attachmentUuid: string;
+    /** The stored file; `null` for a deletion. */
+    file: ConversationFile | null;
+    /** The conversation the file is in, when known. */
+    conversationId: string | null;
+    jobUuid: string | null;
+    /** A saved block's key (`SaveFileOptions.blockKey`): that block is now "Saved". `null` otherwise. */
+    blockKey: string | null;
+    /** A saved generated file's uuid (`saveGeneratedFile`): that file is now "Saved". `null` otherwise. */
+    savedFromUuid: string | null;
 }
 
 export type ChatEventType = keyof ChatEventMap;

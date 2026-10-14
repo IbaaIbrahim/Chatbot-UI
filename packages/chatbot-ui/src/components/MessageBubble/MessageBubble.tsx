@@ -1,9 +1,7 @@
 import React from 'react';
-import ReactDOM from 'react-dom';
 const { useState, useEffect, useRef, useCallback } = React;
 import './MessageBubble.css';
 import { parseToolOutput } from '../../api/toolOutput';
-import { netFetch } from '../../common/localNetwork';
 import { ToolInvocation, ToolActionControl } from '../ToolInvocation/ToolInvocation';
 import { hasHostDisplayName, resolveToolDisplayName, type ToolActionPlacement, type ToolConfig, type ToolPresentation } from '../../common/toolConfig';
 import { describeMetaTool, isMetaTool } from '../../common/metaTools';
@@ -14,25 +12,22 @@ import { AuthenticatedImage } from '../AuthenticatedImage/AuthenticatedImage';
 import { BlinkingIndicator } from '../BlinkingIndicator/BlinkingIndicator';
 import { MessageActions } from '../MessageActions/MessageActions';
 import { BranchNavigator } from '../BranchNavigator/BranchNavigator';
-import { useAuthenticatedFetch, useLabels } from '../../store/hooks';
+import { useLabels, useMarkdownConfig } from '../../store/hooks';
 import type { ChatLabels } from '../../common/labels';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Document, Page, pdfjs } from 'react-pdf';
-import 'react-pdf/dist/Page/AnnotationLayer.css';
-import 'react-pdf/dist/Page/TextLayer.css';
+import { toPlainText } from '../../common/markdownBlocks';
+import { MarkdownContent } from '../MarkdownContent/MarkdownContent';
+import {
+    AttachmentViewerModal,
+    formatFileSize,
+    getFileIcon,
+    inferContentType,
+    type Attachment,
+} from '../AttachmentViewer/AttachmentViewer';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-
-export interface Attachment {
-    id: string;
-    type: 'image' | 'file';
-    url: string;
-    name?: string;
-    size?: number;
-    contentType?: string;
-    localUrl?: string;
-}
+// The attachment shape and its viewer live in ../AttachmentViewer since 4.1,
+// shared with the conversation files panel; re-exported here, where the
+// package has always exported `Attachment` from.
+export type { Attachment } from '../AttachmentViewer/AttachmentViewer';
 
 export type MessageStepType = 'text' | 'thinking' | 'tool-call' | 'confirm-request' | 'sub-agent' | 'error' | 'notice';
 
@@ -84,6 +79,13 @@ export interface MessageProps {
     id: string;
     role: 'user' | 'assistant' | 'system';
     content?: string;
+    /**
+     * The job (turn) this message belongs to — the turn a host saves a file or
+     * an artifact against. From the job's uuid on a history load, and from the
+     * stream's first frame on a live turn; absent until then. A rich block
+     * receives it as `jobUuid`.
+     */
+    jobUuid?: string | null;
     steps?: MessageStep[];
     timestamp?: Date;
     attachments?: Attachment[];
@@ -174,209 +176,6 @@ export interface MessageProps {
     branchIds?: string[];
 }
 
-const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
-
-const getFileIcon = (contentType?: string): string => {
-    if (!contentType) return '\u{1F4CE}';
-    if (contentType.startsWith('image/')) return '\u{1F5BC}\u{FE0F}';
-    if (contentType === 'application/pdf') return '\u{1F4C4}';
-    if (contentType.startsWith('text/')) return '\u{1F4DD}';
-    return '\u{1F4CE}';
-};
-
-const inferContentType = (filename?: string, hint?: string): string => {
-    if (hint && hint.trim()) return hint;
-    if (!filename) return 'application/octet-stream';
-    const ext = filename.split('.').pop()?.toLowerCase();
-    switch (ext) {
-        case 'pdf': return 'application/pdf';
-        case 'png': return 'image/png';
-        case 'jpg':
-        case 'jpeg': return 'image/jpeg';
-        case 'gif': return 'image/gif';
-        case 'webp': return 'image/webp';
-        case 'svg': return 'image/svg+xml';
-        case 'txt': return 'text/plain';
-        case 'csv': return 'text/csv';
-        case 'json': return 'application/json';
-        case 'md': return 'text/markdown';
-        default: return 'application/octet-stream';
-    }
-};
-
-// --- Attachment Viewer Modal (unified for all attachment types) ---
-const AttachmentViewerModal: React.FC<{
-    attachment: Attachment | null;
-    isOpen: boolean;
-    onClose: () => void;
-}> = ({ attachment, isOpen, onClose }) => {
-    const [blobUrl, setBlobUrl] = useState<string | null>(null);
-    const [textContent, setTextContent] = useState<string | null>(null);
-    const [state, setState] = useState<'loading' | 'error' | 'ready'>('loading');
-    const [errorMsg, setErrorMsg] = useState<string>('');
-    const [pdfPageNumber, setPdfPageNumber] = useState(1);
-    const [pdfNumPages, setPdfNumPages] = useState<number | null>(null);
-    const fetchAuthenticatedUrl = useAuthenticatedFetch();
-    const labels = useLabels();
-    const downloadLinkRef = useRef<HTMLAnchorElement | null>(null);
-
-    useEffect(() => {
-        if (!isOpen || !attachment) return;
-        let cancelled = false;
-
-        const load = async () => {
-            setState('loading');
-            setBlobUrl(null);
-            setTextContent(null);
-            setErrorMsg('');
-
-            if (!fetchAuthenticatedUrl) {
-                setState('error');
-                setErrorMsg(labels.attachmentNoAuth);
-                return;
-            }
-
-            try {
-                const url = await fetchAuthenticatedUrl(attachment.url);
-                if (cancelled) return;
-                setBlobUrl(url);
-
-                const ct = attachment.contentType ?? '';
-                if (ct.startsWith('text/') || ct === 'text/csv') {
-                    const text = await netFetch(url).then(r => r.text());
-                    if (cancelled) return;
-                    setTextContent(text);
-                }
-
-                setState('ready');
-            } catch (e) {
-                if (cancelled) return;
-                setState('error');
-                setErrorMsg(e instanceof Error ? e.message : labels.attachmentLoadFailed);
-            }
-        };
-
-        load();
-        return () => { cancelled = true; };
-    }, [isOpen, attachment, fetchAuthenticatedUrl, labels]);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-        if (isOpen) {
-            document.addEventListener('keydown', onKey);
-            return () => document.removeEventListener('keydown', onKey);
-        }
-    }, [isOpen, onClose]);
-
-    const handleDownload = () => {
-        if (blobUrl && attachment && downloadLinkRef.current) {
-            downloadLinkRef.current.href = blobUrl;
-            downloadLinkRef.current.download = attachment.name || 'download';
-            downloadLinkRef.current.click();
-        }
-    };
-
-    if (!isOpen || !attachment) return null;
-
-    const ct = inferContentType(attachment.name, attachment.contentType);
-
-    return ReactDOM.createPortal(
-        <div className="cb-attachment-viewer-overlay" onClick={onClose}>
-            <div className="cb-attachment-viewer-inner" onClick={(e) => e.stopPropagation()}>
-                <div className="cb-attachment-viewer-toolbar">
-                    <span className="cb-attachment-viewer-filename">{attachment.name || 'Attachment'}</span>
-                    <button
-                        className="cb-attachment-viewer-close"
-                        onClick={onClose}
-                        title={`${labels.close} (Esc)`}
-                        aria-label={labels.closeAttachment}
-                    >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                    </button>
-                </div>
-
-                {state === 'loading' && (
-                    <div className="cb-attachment-viewer-loading">
-                        <span className="cb-att-chip-spinner" aria-hidden />
-                    </div>
-                )}
-
-                {state === 'error' && (
-                    <div className="cb-attachment-viewer-error">
-                        <div className="cb-attachment-viewer-error-icon">&#x26A0;</div>
-                        <div className="cb-attachment-viewer-error-msg">{errorMsg}</div>
-                        <div className="cb-attachment-viewer-actions">
-                            <button className="cb-attachment-viewer-action-btn" onClick={onClose}>{labels.close}</button>
-                        </div>
-                    </div>
-                )}
-
-                {state === 'ready' && blobUrl && (
-                    <div className="cb-attachment-viewer-content">
-
-                        {ct.startsWith('image/') ? (
-                            <img src={blobUrl} alt={attachment.name || 'Attachment'} />
-                        ) : ct === 'application/pdf' ? (
-                            <div className="cb-pdf-viewer">
-                                <Document
-                                    file={blobUrl}
-                                    onLoadSuccess={({ numPages }) => {
-                                        setPdfNumPages(numPages);
-                                        setPdfPageNumber(1);
-                                    }}
-                                    loading={<div className="cb-attachment-viewer-loading"><span className="cb-att-chip-spinner" aria-hidden /></div>}
-                                    error={<div className="cb-attachment-viewer-error-msg">{labels.pdfLoadFailed}</div>}
-                                >
-                                    <Page pageNumber={pdfPageNumber} width={undefined} />
-                                </Document>
-                                {pdfNumPages != null && pdfNumPages > 1 && (
-                                    <div className="cb-pdf-pagination">
-                                        <button
-                                            className="cb-attachment-viewer-action-btn"
-                                            onClick={() => setPdfPageNumber(p => Math.max(1, p - 1))}
-                                            disabled={pdfPageNumber <= 1}
-                                        >&#8249;</button>
-                                        <span>{pdfPageNumber} / {pdfNumPages}</span>
-                                        <button
-                                            className="cb-attachment-viewer-action-btn"
-                                            onClick={() => setPdfPageNumber(p => Math.min(pdfNumPages, p + 1))}
-                                            disabled={pdfPageNumber >= pdfNumPages}
-                                        >&#8250;</button>
-                                    </div>
-                                )}
-                            </div>
-                        ) : (ct.startsWith('text/') || ct === 'text/csv') && textContent != null ? (
-                            <pre>{textContent}</pre>
-                        ) : (
-                            <div className="cb-attachment-viewer-fallback">
-                                <div className="cb-attachment-viewer-fallback-icon">{getFileIcon(ct)}</div>
-                                <div className="cb-attachment-viewer-fallback-name">{attachment.name || 'File'}</div>
-                                {attachment.size != null && (
-                                    <div className="cb-attachment-viewer-fallback-size">{formatFileSize(attachment.size)}</div>
-                                )}
-                                <div className="cb-attachment-viewer-actions">
-                                    <button className="cb-attachment-viewer-action-btn primary" onClick={handleDownload}>
-                                        Download
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                <a ref={downloadLinkRef} style={{ display: 'none' }} />
-            </div>
-        </div>,
-        document.body
-    );
-};
-
 // --- Attachment Chip (Claude-style compact chip above message) ---
 const AttachmentChip: React.FC<{ att: Attachment }> = ({ att }) => {
     const [modalOpen, setModalOpen] = useState(false);
@@ -440,9 +239,35 @@ const AttachmentList: React.FC<{ attachments: Attachment[] }> = ({ attachments }
     </div>
 );
 
-const MessageBubbleView: React.FC<MessageProps> = (props) => {
+/**
+ * What the bubble is given from inside the library, beyond the public props.
+ * A nested bubble — one sub-agent's steps — knows its own run's state from
+ * `isTurnComplete`; this says whether the turn around it is still in flight,
+ * which outlives the sub-agent's run.
+ */
+interface MessageBubbleViewProps extends MessageProps {
+    enclosingTurnInFlight?: boolean;
+}
+
+/**
+ * The turn this bubble's steps belong to is still in flight: this bubble's
+ * own run, or — for a nested bubble — the turn that contains it. What a rich
+ * block is told as `streaming`: a reference to one of the turn's steps may not
+ * have a result yet.
+ */
+function isTurnInFlight(props: MessageBubbleViewProps): boolean {
+    return props.isTurnComplete === false || Boolean(props.enclosingTurnInFlight);
+}
+
+const MessageBubbleView: React.FC<MessageBubbleViewProps> = (props) => {
     const { role, steps, shouldAnimate = true } = props;
     const labels = useLabels();
+    const { blockRenderers } = useMarkdownConfig();
+    // Rich blocks are how the assistant presents an answer. A user's message
+    // stays as they wrote it — a fence they pasted is code, and "Copy" gives
+    // their own text back (design §3.4; review of 2026-10-14).
+    const drawsBlocks = role === 'assistant';
+    const turnInFlight = isTurnInFlight(props);
 
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState('');
@@ -540,9 +365,16 @@ const MessageBubbleView: React.FC<MessageProps> = (props) => {
         };
     }, [selectionPopup]);
 
+    // The whole message's text, for a rich block that exports its siblings (a
+    // report). One stable reader per bubble, so the blocks — memoised on their
+    // props — are not re-rendered by text that streams in after them.
+    const messageTextRef = useRef('');
+    messageTextRef.current = getStepsTextContent();
+    const getMessageSource = useCallback(() => messageTextRef.current, []);
+
     // If steps are present, use steps rendering
     if (steps && steps.length > 0) {
-        const textContent = getStepsTextContent();
+        const textContent = messageTextRef.current;
 
         // Streamed tokens live on trailing ``'text'`` steps (see
         // useStreamChat.updateAssistantContent) and persisted text arrives as
@@ -567,7 +399,13 @@ const MessageBubbleView: React.FC<MessageProps> = (props) => {
             : collectHoistedActions(steps, props, props.isTurnComplete !== false, labels);
 
         return (
-            <div ref={bubbleRef} className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`}>
+            <div
+                ref={bubbleRef}
+                className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`}
+                // What the files panel's "Show in chat" falls back to for a
+                // block not drawn (in a collapsed sub-agent run).
+                data-message-id={props.embedded ? undefined : props.id}
+            >
                 {role === 'assistant' && !props.embedded && (
                     <div className="cb-avatar-container">
                         <div className="cb-avatar-assistant">
@@ -673,6 +511,8 @@ const MessageBubbleView: React.FC<MessageProps> = (props) => {
                                             key={step.id}
                                             step={step}
                                             handlers={props}
+                                            jobUuid={props.jobUuid ?? null}
+                                            turnInFlight={turnInFlight}
                                         />
                                     );
                                 }
@@ -726,6 +566,16 @@ const MessageBubbleView: React.FC<MessageProps> = (props) => {
                                                 content={step.content || ''}
                                                 shouldAnimate={shouldAnimate && isLast}
                                                 onComplete={isLast ? props.onAnimationComplete : undefined}
+                                                // Only the last text of a live run can still be
+                                                // arriving; every earlier one ended when a step
+                                                // came after it. A nested bubble's run is its
+                                                // sub-agent's: `isTurnComplete` is `!isRunning`.
+                                                streaming={props.isTurnComplete === false && isLast}
+                                                turnInFlight={turnInFlight}
+                                                messageId={props.id}
+                                                jobUuid={props.jobUuid ?? null}
+                                                getMessageSource={getMessageSource}
+                                                blocks={drawsBlocks}
                                             />
                                             {isLast && props.isWaitingForDeltas && (!step.content || step.content.trim().length === 0) && (
                                                 <BlinkingIndicator />
@@ -756,7 +606,10 @@ const MessageBubbleView: React.FC<MessageProps> = (props) => {
 
                     {textContent && !isEditing && (
                         <MessageActions
-                            content={textContent}
+                            // A copied answer reads as text: each host-drawn
+                            // block becomes its plain-text summary, not its JSON.
+                            // A user's message drew no blocks, and copies as written.
+                            content={drawsBlocks ? toPlainText(textContent, blockRenderers) : textContent}
                             role={role as 'user' | 'assistant'}
                             messageId={props.id}
                             onReply={props.onReply ? () => props.onReply!(props) : undefined}
@@ -798,7 +651,10 @@ const MessageBubbleView: React.FC<MessageProps> = (props) => {
  * Memoised: a streamed token changes only the last message, so in a long
  * thread every earlier bubble — handed the same props — skips re-rendering.
  */
-export const MessageBubble = React.memo(MessageBubbleView);
+const MemoMessageBubble = React.memo(MessageBubbleView);
+
+/** Typed with the public props only: `enclosingTurnInFlight` is the library's own. */
+export const MessageBubble: React.NamedExoticComponent<MessageProps> = MemoMessageBubble;
 
 // Collapsible Thinking Block
 /**
@@ -929,9 +785,18 @@ function collectHoistedActions(
 const SubAgentBlock = ({
     step,
     handlers,
+    jobUuid = null,
+    turnInFlight = false,
 }: {
     step: MessageStep;
     handlers: Pick<MessageProps, 'tools'>;
+    /** The turn's job, for the blocks in the sub-agent's answer. */
+    jobUuid?: string | null;
+    /**
+     * The turn that started the sub-agent is still in flight. It outlives
+     * the sub-agent's own run, and a block in its answer is told so.
+     */
+    turnInFlight?: boolean;
 }) => {
     const labels = useLabels();
     const [isOpen, setIsOpen] = useState(false);
@@ -1006,12 +871,21 @@ const SubAgentBlock = ({
 
             {isOpen && (subSteps.length > 0 || step.content) && (
                 <div className="cb-sub-agent-body">
-                    <MessageBubble
+                    <MemoMessageBubble
                         id={`${step.id}-inner`}
                         role="assistant"
                         steps={subSteps}
                         shouldAnimate={false}
+                        jobUuid={jobUuid}
                         embedded
+                        // The nested bubble's run is the sub-agent's: while it
+                        // runs, its last text may still be arriving, and a fence
+                        // in it is a skeleton until it closes. Without this the
+                        // bubble took its run for finished and handed the host
+                        // every prefix of a streaming spec, remounting the block
+                        // per token (review of 2026-10-14).
+                        isTurnComplete={!isRunning}
+                        enclosingTurnInFlight={turnInFlight}
                         // Forwarded so a nested step can render its own control
                         // when its placement is `'step'`. Without this a tool a
                         // sub-agent called had no button at all, at any depth.
@@ -1020,7 +894,14 @@ const SubAgentBlock = ({
 
                     {step.content && (
                         <div className="cb-sub-agent-result">
-                            <TypewriterText content={step.content} shouldAnimate={false} />
+                            <TypewriterText
+                                content={step.content}
+                                shouldAnimate={false}
+                                streaming={isRunning}
+                                turnInFlight={isRunning || turnInFlight}
+                                messageId={`${step.id}-result`}
+                                jobUuid={jobUuid}
+                            />
                         </div>
                     )}
                 </div>
@@ -1219,7 +1100,7 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
  * words, with a spinner; once done, a count of what happened. Opened, every
  * step renders exactly as it would on its own. See common/activity.ts.
  */
-const ActivityGroup: React.FC<{ steps: MessageStep[]; props: MessageProps; live: boolean }> = ({ steps, props, live }) => {
+const ActivityGroup: React.FC<{ steps: MessageStep[]; props: MessageBubbleViewProps; live: boolean }> = ({ steps, props, live }) => {
     const labels = useLabels();
     const [open, setOpen] = useState(false);
     const toolName = (name: string) => resolveToolDisplayName(name, props.tools);
@@ -1272,7 +1153,17 @@ const ActivityGroup: React.FC<{ steps: MessageStep[]; props: MessageProps; live:
                 <div className="cb-activity-items">
                     {steps.map(step => {
                         if (step.type === 'thinking') return <ThinkingBlock key={step.id} step={step} />;
-                        if (step.type === 'sub-agent') return <SubAgentBlock key={step.id} step={step} handlers={props} />;
+                        if (step.type === 'sub-agent') {
+                            return (
+                                <SubAgentBlock
+                                    key={step.id}
+                                    step={step}
+                                    handlers={props}
+                                    jobUuid={props.jobUuid ?? null}
+                                    turnInFlight={isTurnInFlight(props)}
+                                />
+                            );
+                        }
                         return <ModernToolCallRow key={step.id} step={step} props={props} />;
                     })}
                 </div>
@@ -1331,8 +1222,33 @@ const ThinkingBlock = ({ step }: { step: MessageStep }) => {
     );
 };
 
+interface TypewriterTextProps {
+    content: string;
+    shouldAnimate: boolean;
+    onComplete?: () => void;
+    /** This text is still arriving — see `MarkdownContent`'s `streaming`. */
+    streaming?: boolean;
+    /** The turn is still in flight — what a rich block is told as `streaming`. */
+    turnInFlight?: boolean;
+    messageId?: string;
+    jobUuid?: string | null;
+    getMessageSource?: () => string;
+    /** Draw the host's rich blocks — `false` for a user's message. Default `true`. */
+    blocks?: boolean;
+}
+
 // Typewriter with DUAL-TIMER strategy for background resilience
-const TypewriterText = ({ content, shouldAnimate, onComplete }: { content: string, shouldAnimate: boolean, onComplete?: () => void }) => {
+const TypewriterText = ({
+    content,
+    shouldAnimate,
+    onComplete,
+    streaming = false,
+    turnInFlight,
+    messageId,
+    jobUuid = null,
+    getMessageSource,
+    blocks = true,
+}: TypewriterTextProps) => {
     const [displayContent, setDisplayContent] = useState(shouldAnimate ? '' : content);
     const hasFiredCompleteRef = useRef(false);
 
@@ -1399,9 +1315,19 @@ const TypewriterText = ({ content, shouldAnimate, onComplete }: { content: strin
         // path — and a per-thread or per-app setting would get one of the two
         // languages wrong.
         <div className="cb-markdown-content" dir="auto">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {displayContent}
-            </ReactMarkdown>
+            {/* One renderer for every markdown path, so a host's blocks draw
+                wherever an answer appears: here, a sub-agent's result, and the
+                legacy bubble below. */}
+            <MarkdownContent
+                content={displayContent}
+                // A typewriter still revealing its text is still "arriving".
+                streaming={streaming || displayContent.length < content.length}
+                turnInFlight={turnInFlight ?? streaming}
+                messageId={messageId}
+                jobUuid={jobUuid}
+                getMessageSource={getMessageSource}
+                blocks={blocks}
+            />
             {shouldAnimate && content && displayContent.length < content.length && (
                 <span className="cb-cursor">|</span>
             )}
@@ -1413,6 +1339,10 @@ const TypewriterText = ({ content, shouldAnimate, onComplete }: { content: strin
 const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
     const { role, content, attachments, toolInvocation, shouldAnimate = true } = props;
     const labels = useLabels();
+    const { blockRenderers } = useMarkdownConfig();
+    // As in the steps path: blocks are the assistant's; a user's message is
+    // drawn and copied as they wrote it.
+    const drawsBlocks = role === 'assistant';
 
     const [displayContent, setDisplayContent] = useState('');
     const [isEditing, setIsEditing] = useState(false);
@@ -1578,7 +1508,7 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
     }
 
     return (
-        <div ref={legacyBubbleRef} className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`}>
+        <div ref={legacyBubbleRef} className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`} data-message-id={props.id}>
             {role === 'assistant' && (
                 <div className="cb-avatar-container">
                     <div className="cb-avatar-assistant">
@@ -1641,9 +1571,19 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                 ) : (
                     <div className={`cb-message-bubble ${role}`}>
                 <div className="cb-markdown-content" dir="auto">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {displayContent}
-                            </ReactMarkdown>
+                            <MarkdownContent
+                                content={displayContent}
+                                // One text for the whole turn here (a client that
+                                // streams without step sequences), so while the turn
+                                // runs, its text is still arriving.
+                                streaming={Boolean(props.isWaitingForDeltas)
+                                    || props.isTurnComplete === false
+                                    || displayContent.length < (content || '').length}
+                                turnInFlight={Boolean(props.isWaitingForDeltas) || props.isTurnComplete === false}
+                                messageId={props.id}
+                                jobUuid={props.jobUuid ?? null}
+                                blocks={drawsBlocks}
+                            />
                             {/* {role === 'assistant' && shouldAnimate && content && displayContent.length < content.length && (
                                 <span className="cb-cursor">|</span>
                             )} */}
@@ -1656,7 +1596,7 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
 
                 {content && !isEditing && (
                     <MessageActions
-                        content={content}
+                        content={drawsBlocks ? toPlainText(content, blockRenderers) : content}
                         role={role as 'user' | 'assistant'}
                         messageId={props.id}
                         onReply={props.onReply ? () => props.onReply!(props) : undefined}

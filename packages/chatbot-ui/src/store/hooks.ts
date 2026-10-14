@@ -1,7 +1,8 @@
 import React from 'react';
 import { useSyncExternalStoreWithSelector } from 'use-sync-external-store/shim/with-selector';
 import { DEFAULT_CHATBOT_CONFIG } from '../common/chatbotConfig';
-import type { ChatbotConfig, ResolvedChatbotConfig } from '../common/chatbotConfig';
+import type { ChatbotConfig, ResolvedChatbotConfig, ResolvedMarkdownConfig } from '../common/chatbotConfig';
+import type { StorageClient } from '../api/StorageClient';
 import type { ChatIcons } from '../common/icons';
 import type { ChatLabels } from '../common/labels';
 import { createChatStore } from './createChatStore';
@@ -131,6 +132,7 @@ const DEFAULTS_ONLY: ConfigSource = createChatStore({ config: DEFAULT_CHATBOT_CO
 const selectConfig = (snapshot: { config: ResolvedChatbotConfig }) => snapshot.config;
 const selectLabels = (snapshot: { config: ResolvedChatbotConfig }) => snapshot.config.labels;
 const selectIcons = (snapshot: { config: ResolvedChatbotConfig }) => snapshot.config.icons;
+const selectMarkdown = (snapshot: { config: ResolvedChatbotConfig }) => snapshot.config.markdown;
 
 function useConfigSource(): ConfigSource {
     return useOptionalChatRuntime()?.store ?? DEFAULTS_ONLY;
@@ -144,6 +146,46 @@ export function useLabels(): ChatLabels {
 export function useIcons(): ChatIcons {
     const source = useConfigSource();
     return useSyncExternalStoreWithSelector(source.subscribe, source.getState, source.getState, selectIcons);
+}
+
+/**
+ * The rich-block configuration in force — the defaults (no renderers) outside
+ * a provider, for the same reason as the labels: a transcript component drawn
+ * on its own must not require one.
+ */
+export function useMarkdownConfig(): ResolvedMarkdownConfig {
+    const source = useConfigSource();
+    return useSyncExternalStoreWithSelector(source.subscribe, source.getState, source.getState, selectMarkdown);
+}
+
+/** What the conversation-scoped hooks below read when no provider is above: nothing. */
+const NO_SESSION = createChatStore<Partial<ChatSnapshot>>({});
+
+function useOptionalSlice<Selected>(selector: (snapshot: Partial<ChatSnapshot>) => Selected): Selected {
+    const store = useOptionalChatRuntime()?.store ?? NO_SESSION;
+    return useSyncExternalStoreWithSelector(
+        store.subscribe,
+        store.getState as () => Partial<ChatSnapshot>,
+        store.getState as () => Partial<ChatSnapshot>,
+        selector
+    );
+}
+
+const selectActiveConversationId = (snapshot: Partial<ChatSnapshot>) => snapshot.activeConversationId ?? null;
+const selectStorageClient = (snapshot: Partial<ChatSnapshot>) => snapshot.storageClient ?? null;
+
+/** The open conversation's id, or `null` — also outside a provider. */
+export function useActiveConversationId(): string | null {
+    return useOptionalSlice(selectActiveConversationId);
+}
+
+/**
+ * The storage API client for the signed-in user — list a conversation's files
+ * or the user's artifacts, fetch or download one. `null` outside a provider,
+ * or when the provider has no `storageApiUrl` or no `accessToken`.
+ */
+export function useStorageClient(): StorageClient | null {
+    return useOptionalSlice(selectStorageClient);
 }
 
 /**

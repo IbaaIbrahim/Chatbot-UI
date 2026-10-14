@@ -1,0 +1,304 @@
+/* A rich block: a fence the host draws (`config.markdown.blockRenderers`).
+ *
+ * Tokens only, and logical properties, so the frame follows the theme and the
+ * direction of the answer it sits in. The body is inside the message's
+ * `.cb-markdown-content`, so that container's rules (`p`, `table`, `code`…)
+ * reach a renderer's elements too: a renderer that wants none of them scopes
+ * its own rules with a class of its own. */
+
+.cb-md-block {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0 0 0.75em;
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-md);
+    background-color: var(--cb-surface-raised);
+    color: var(--cb-text-primary);
+    font-size: var(--cb-text-sm);
+    line-height: 1.5;
+}
+
+.cb-md-block-header {
+    display: flex;
+    align-items: center;
+    gap: var(--cb-space-2);
+    min-height: 36px;
+    padding-block: var(--cb-space-1);
+    padding-inline: var(--cb-space-3) var(--cb-space-1);
+    border-bottom: 1px solid var(--cb-border-subtle);
+}
+
+.cb-md-block-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 600;
+    color: var(--cb-text-primary);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.cb-md-block-toolbar {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 2px;
+}
+
+:root .cb-md-block-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: var(--cb-control-sm);
+    height: var(--cb-control-sm);
+    padding: 0;
+    border: none;
+    border-radius: var(--cb-radius-sm);
+    background: transparent;
+    color: var(--cb-text-secondary);
+    font-family: inherit;
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+/* An action without an icon shows its label. */
+:root .cb-md-block-btn.has-text {
+    width: auto;
+    padding: 0 var(--cb-space-2);
+    font-size: var(--cb-text-xs);
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+:root .cb-md-block-btn:hover:not(:disabled) {
+    background-color: var(--cb-surface-hover);
+    color: var(--cb-text-primary);
+}
+
+:root .cb-md-block-btn:focus-visible {
+    outline: 2px solid var(--cb-border-focus);
+    outline-offset: 1px;
+}
+
+:root .cb-md-block-btn:disabled {
+    cursor: default;
+    opacity: var(--cb-dim-soft);
+}
+
+.cb-md-block-btn svg {
+    flex-shrink: 0;
+}
+
+.cb-md-block-menu-container {
+    position: relative;
+    display: inline-flex;
+}
+
+.cb-md-block-menu {
+    position: absolute;
+    top: calc(100% + var(--cb-space-1));
+    inset-inline-end: 0;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 180px;
+    max-width: min(280px, 80vw);
+    padding: var(--cb-space-1);
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-md);
+    background-color: var(--cb-bg-elevated);
+    box-shadow: var(--cb-shadow-lg);
+    animation: cb-fade-in 0.12s ease-out;
+}
+
+:root .cb-md-block-menu-item {
+    display: flex;
+    align-items: center;
+    gap: var(--cb-space-2);
+    width: 100%;
+    padding: 7px 10px;
+    border: none;
+    border-radius: var(--cb-radius-sm);
+    background: transparent;
+    color: var(--cb-text-primary);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: start;
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+:root .cb-md-block-menu-item:hover:not(:disabled) {
+    background-color: var(--cb-surface-hover);
+}
+
+:root .cb-md-block-menu-item:focus-visible {
+    outline: 2px solid var(--cb-border-focus);
+    outline-offset: -2px;
+}
+
+:root .cb-md-block-menu-item:disabled {
+    cursor: default;
+    opacity: var(--cb-dim-soft);
+}
+
+.cb-md-block-menu-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--cb-text-secondary);
+}
+
+.cb-md-block-body {
+    min-width: 0;
+    padding: var(--cb-space-3);
+    overflow-x: auto;
+}
+
+/* `frame: false`: the host draws everything; only the width is measured. */
+.cb-md-block-bare {
+    min-width: 0;
+    max-width: 100%;
+    margin: 0 0 0.75em;
+}
+
+.cb-md-block-bare-body {
+    min-width: 0;
+}
+
+/* --- While the fence streams ------------------------------------------- */
+
+.cb-md-block-skeleton {
+    justify-content: center;
+    gap: var(--cb-space-2);
+    padding: var(--cb-space-3);
+    background-color: var(--cb-surface-sunken);
+}
+
+.cb-md-block-pending {
+    min-width: 0;
+    max-width: 100%;
+    margin: 0 0 0.75em;
+}
+
+.cb-md-block-skeleton-title {
+    overflow: hidden;
+    font-weight: 600;
+    color: var(--cb-text-primary);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.cb-md-block-skeleton-shimmer {
+    flex: 1 1 auto;
+    min-height: 48px;
+    border-radius: var(--cb-radius-sm);
+    background: linear-gradient(
+        90deg,
+        var(--cb-surface-raised) 0%,
+        var(--cb-surface-hover) 50%,
+        var(--cb-surface-raised) 100%
+    );
+    background-size: 200% 100%;
+    animation: cb-md-block-shimmer 1.4s ease-in-out infinite;
+}
+
+.cb-md-block-skeleton-text {
+    color: var(--cb-text-secondary);
+    font-size: var(--cb-text-xs);
+}
+
+@keyframes cb-md-block-shimmer {
+    from { background-position: 100% 0; }
+    to { background-position: -100% 0; }
+}
+
+/* --- Could not be drawn ------------------------------------------------- */
+
+.cb-md-block-fallback {
+    color: var(--cb-text-secondary);
+}
+
+.cb-md-block-fallback-text {
+    margin: 0 0 var(--cb-space-2);
+    color: var(--cb-status-failed);
+    font-weight: 500;
+}
+
+.cb-md-block-source summary {
+    color: var(--cb-text-secondary);
+    font-size: var(--cb-text-xs);
+    cursor: pointer;
+}
+
+.cb-md-block-source pre {
+    max-height: 240px;
+    margin: var(--cb-space-2) 0 0;
+    overflow: auto;
+    /* Source is not prose: right-to-left would reorder its punctuation. */
+    direction: ltr;
+    text-align: left;
+    white-space: pre;
+}
+
+/* --- Expanded ------------------------------------------------------------ */
+
+/* Portalled to the page's body, outside `.cb-chat-container`: `.cb-root` on
+   this element is what brings the tokens. */
+.cb-md-block-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--cb-space-4);
+    background-color: var(--cb-scrim);
+    animation: cb-fade-in 0.15s ease-out;
+}
+
+.cb-md-block-dialog {
+    display: flex;
+    flex-direction: column;
+    width: min(1100px, 100%);
+    max-height: 100%;
+    overflow: hidden;
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-lg);
+    background-color: var(--cb-bg-primary);
+    box-shadow: var(--cb-shadow-lg);
+    color: var(--cb-text-primary);
+    font-family: var(--cb-font-family);
+}
+
+.cb-md-block.is-expanded {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+.cb-md-block.is-expanded .cb-md-block-header {
+    min-height: 48px;
+    padding-inline: var(--cb-space-4) var(--cb-space-2);
+}
+
+.cb-md-block.is-expanded .cb-md-block-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: var(--cb-space-4);
+    overflow: auto;
+}
+
+@media (max-width: 480px) {
+    .cb-md-block-overlay {
+        padding: var(--cb-space-2);
+    }
+}
