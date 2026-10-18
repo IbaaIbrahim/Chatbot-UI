@@ -6,8 +6,14 @@
     margin-left: 8px;
 }
 
-.cb-conversation-item:hover .cb-sidebar-item-actions {
+.cb-conversation-item:hover .cb-sidebar-item-actions,
+.cb-conversation-item.is-menu-open .cb-sidebar-item-actions {
     opacity: 1;
+}
+
+/* The row anchors its menu. */
+.cb-conversation-item {
+    position: relative;
 }
 
 :root .cb-sidebar-delete-btn {
@@ -33,4 +39,257 @@
     width: 100%;
     max-width: 320px;
     height: 100%;
+}
+
+/* Keyboard users reach a row's actions too: they show on focus as on hover. */
+.cb-conversation-item:focus-within .cb-sidebar-item-actions,
+.cb-conversation-item:focus-visible .cb-sidebar-item-actions {
+    opacity: 1;
+}
+
+.cb-conversation-item:focus-visible {
+    outline: 2px solid var(--cb-focus-ring);
+    outline-offset: -2px;
+}
+
+/* --- Navigation: new chat and the host's own entries ---------------------- */
+
+.cb-sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--cb-space-2) var(--cb-space-3) var(--cb-space-1);
+}
+
+:root .cb-sidebar-nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--cb-space-2);
+    width: 100%;
+    padding: 7px 10px;
+    border: none;
+    border-radius: var(--cb-radius-md);
+    background: transparent;
+    color: var(--cb-text-primary);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: start;
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+:root .cb-sidebar-nav-item:hover {
+    background: var(--cb-surface-hover);
+}
+
+:root .cb-sidebar-nav-item:focus-visible {
+    outline: 2px solid var(--cb-focus-ring);
+    outline-offset: -2px;
+}
+
+:root .cb-sidebar-nav-item.active {
+    background: #ede9fe;
+}
+
+[data-theme='dark'] .cb-sidebar-nav-item.active,
+.cb-chat-container:not([data-theme='light']) .cb-sidebar-nav-item.active {
+    background: rgba(99, 102, 241, 0.22);
+}
+
+.cb-sidebar-nav-primary {
+    font-weight: 600;
+}
+
+.cb-sidebar-nav-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    color: var(--cb-text-secondary);
+    flex-shrink: 0;
+}
+
+.cb-sidebar-nav-label {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cb-sidebar-nav-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: var(--cb-radius-full);
+    background: var(--cb-surface-sunken);
+    color: var(--cb-text-secondary);
+}
+
+/* --- Sections: Starred, Recents, search results --------------------------- */
+
+.cb-sidebar-section {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: var(--cb-space-3);
+}
+
+:root .cb-sidebar-section-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px;
+    border: none;
+    border-radius: var(--cb-radius-sm);
+    background: transparent;
+    color: var(--cb-text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: start;
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+:root .cb-sidebar-section-toggle:hover {
+    color: var(--cb-text-primary);
+    background: var(--cb-surface-hover);
+}
+
+.cb-sidebar-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--cb-text-secondary);
+    padding: 6px 6px 4px;
+}
+
+.cb-sidebar-hint {
+    margin: 2px 6px var(--cb-space-2);
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--cb-text-tertiary);
+}
+
+/* --- Row actions: star ----------------------------------------------------- */
+
+:root .cb-sidebar-star-btn {
+    background: transparent;
+    border: none;
+    color: var(--cb-text-tertiary);
+    cursor: pointer;
+    padding: 3px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--cb-transition-state);
+}
+
+:root .cb-sidebar-star-btn:hover {
+    color: var(--cb-text-primary);
+    background: var(--cb-surface-hover);
+}
+
+:root .cb-sidebar-star-btn.is-starred {
+    color: #f59e0b;
+}
+
+.cb-drawer-search-input::-webkit-search-cancel-button {
+    cursor: pointer;
+}
+
+/* The title gives way to the row's actions instead of pushing them out. */
+.cb-conversation-item .cb-conversation-title {
+    flex: 1;
+    min-width: 0;
+}
+
+/* --- Row actions: the "more" button and its menu --------------------------- */
+
+:root .cb-sidebar-row-menu-btn {
+    background: transparent;
+    border: none;
+    color: var(--cb-text-tertiary);
+    cursor: pointer;
+    padding: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--cb-transition-state);
+}
+
+:root .cb-sidebar-row-menu-btn:hover,
+.cb-conversation-item.is-menu-open .cb-sidebar-row-menu-btn {
+    color: var(--cb-text-primary);
+    background: var(--cb-surface-hover);
+}
+
+.cb-sidebar-row-menu-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* The header's dropdown, smaller, under the row's end — or above it when the
+   row is near the bottom of the list, whose overflow would otherwise hide it. */
+.cb-sidebar-row-menu {
+    position: absolute;
+    top: calc(100% + 2px);
+    right: 4px;
+    z-index: 20;
+    min-width: 172px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px;
+    background-color: var(--cb-bg-elevated, #ffffff);
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-md, 8px);
+    box-shadow: var(--cb-shadow-lg, 0 10px 25px -5px rgba(0, 0, 0, 0.15));
+    animation: cb-fade-in 0.15s ease-out;
+    cursor: default;
+}
+
+.cb-sidebar-row-menu.opens-upward {
+    top: auto;
+    bottom: calc(100% + 2px);
+}
+
+.cb-sidebar-row-menu .cb-header-menu-item {
+    padding: 7px 10px;
+    font-size: 13px;
+}
+
+.cb-sidebar-row-menu .cb-header-menu-item.is-starred svg {
+    color: #f59e0b;
+}
+
+/* The second click's state: the entry itself is the question. */
+.cb-header-menu-item.cb-header-menu-item-danger.is-confirming {
+    background-color: rgba(239, 68, 68, 0.1);
+    font-weight: 600;
+}
+
+/* --- Renaming in place ------------------------------------------------------ */
+
+.cb-conversation-item.is-renaming {
+    padding-top: 4px;
+    padding-bottom: 4px;
+    cursor: default;
+}
+
+.cb-conversation-rename-input {
+    flex: 1;
+    min-width: 0;
+    height: 26px;
+    padding: 0 8px;
+    border: 1px solid var(--cb-accent-primary, #6366f1);
+    border-radius: var(--cb-radius-sm, 6px);
+    background: var(--cb-bg-primary);
+    color: var(--cb-text-primary);
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
 }

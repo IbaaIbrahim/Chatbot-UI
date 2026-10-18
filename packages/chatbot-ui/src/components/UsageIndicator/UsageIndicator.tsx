@@ -2,6 +2,9 @@ import React from 'react';
 import type { TurnUsageSummary } from '../../common/usageSummary';
 import type { UsageFigures } from '../../api/types';
 import { useStableId } from '../../common/useStableId';
+import { formatCount, formatLabel } from '../../common/labels';
+import type { ChatLabels } from '../../common/labels';
+import { useLabels } from '../../store/hooks';
 import './UsageIndicator.css';
 
 /** Where the orchestrator itself starts warning about the window. */
@@ -22,12 +25,13 @@ function formatPercent(ratio: number): string {
     return percent < 10 ? `${percent.toFixed(1)}%` : `${Math.round(percent)}%`;
 }
 
-function plural(count: number, noun: string): string {
-    return `${count} ${noun}${count === 1 ? '' : 's'}`;
-}
-
 export interface UsageIndicatorProps {
     summary: TurnUsageSummary;
+    /**
+     * Whether a click opens the breakdown card. `false` draws the ring and the
+     * total alone, as a figure rather than a button (`config.composer.usageDetails`).
+     */
+    details?: boolean;
 }
 
 interface RingProps {
@@ -78,8 +82,12 @@ interface MeterRowProps {
     sub?: boolean;
 }
 
-function describeFigures(figures: UsageFigures): string {
-    return `${formatTokens(figures.input_tokens)} in · ${formatTokens(figures.output_tokens)} out · ${plural(figures.steps, 'step')}`;
+function describeFigures(figures: UsageFigures, labels: ChatLabels): string {
+    return formatLabel(labels.usageTokens, {
+        input: formatTokens(figures.input_tokens),
+        output: formatTokens(figures.output_tokens),
+        steps: formatCount(figures.steps, labels.stepsOne, labels.stepsOther),
+    });
 }
 
 /**
@@ -105,19 +113,24 @@ const MeterRow: React.FC<MeterRowProps> = ({ label, value, ratio, warn, note, su
 /**
  * The consumption indicator under the composer.
  *
- * At rest: a ring for the context window and the percentage beside it (or the
- * turn's credits when the model's window is not known). On click — and closed
- * only by a second click on the trigger, a click outside, or Escape — a card
- * with the context window against the model's limit, this turn's and
+ * At rest: a ring for the context window and, beside it, the conversation's
+ * total credits — the number that only grows, rather than the latest turn's,
+ * which read as the whole cost and dropped back with every new turn. On click —
+ * and closed only by a second click on the trigger, a click outside, or Escape —
+ * a card with the context window against the model's limit, this turn's and
  * this conversation's credits, the tokens, any waived free calls, and the
- * sub-agent tree against its ceiling when one is set.
+ * sub-agent tree against its ceiling when one is set. With `details` off there
+ * is no card and nothing to click: the ring and the total are the whole of it.
+ * *Until 3.1 the number was the window's percentage when the model's window was
+ * known, and the latest turn's credits otherwise.*
  *
  * The figures are what the orchestrator reports after every settled step — the
  * `usage` stream event, or the job's totals when the thread was loaded from
  * history. Cumulative values are replaced on each event, never summed here, so
  * a replayed stream cannot double-count.
  */
-export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary }) => {
+export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary, details = true }) => {
+    const labels = useLabels();
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const popoverId = useStableId('cb-usage');
@@ -126,7 +139,7 @@ export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary }) => {
     // click on it, a click outside the indicator, or Escape — never because
     // the pointer left, so the figures stay readable while the turn updates.
     useEffect(() => {
-        if (!open) return;
+        if (!open || !details) return;
 
         const handlePointerDown = (event: MouseEvent) => {
             if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -156,19 +169,42 @@ export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary }) => {
     const showTree = tree !== null && (ceiling !== null || Boolean(tree.ceiling_reached));
     const treeRatio = ceiling ? Math.min(1, tree!.credits_spent / ceiling) : null;
 
-    const atRestLabel = ratio !== null
-        ? formatPercent(ratio)
-        : plural(turn.credits_charged, 'credit');
-    const summaryForScreenReader = ratio !== null && window !== null
-        ? `Context window ${formatPercent(ratio)} used; ${plural(turn.credits_charged, 'credit')} this turn; ${plural(conversationCredits, 'credit')} this conversation.`
-        : `${plural(turn.credits_charged, 'credit')} this turn; ${plural(conversationCredits, 'credit')} this conversation.`;
+    const credits = (count: number) => formatCount(count, labels.creditsOne, labels.creditsOther);
+    const limitUnknown = (tokens: number) => formatLabel(labels.usageLimitUnknown, { tokens: formatTokens(tokens) });
+
+    const atRestLabel = credits(conversationCredits);
+    const summaryForScreenReader = formatLabel(
+        ratio !== null && window !== null ? labels.usageSummaryWithWindow : labels.usageSummary,
+        {
+            percent: ratio !== null ? formatPercent(ratio) : '',
+            turnCredits: credits(turn.credits_charged),
+            conversationCredits: credits(conversationCredits),
+        }
+    );
+
+    if (!details) {
+        return (
+            <div className="cb-usage-indicator">
+                {/* A figure, not a control: the summary is its accessible name, and
+                    there is nothing to press. */}
+                <span
+                    role="img"
+                    className={`cb-usage-trigger cb-usage-trigger--static${pressured ? ' cb-usage-trigger--warn' : ''}`}
+                    aria-label={summaryForScreenReader}
+                >
+                    <Ring ratio={ratio} warn={pressured} live={live} />
+                    <span className="cb-usage-trigger-label">{atRestLabel}</span>
+                </span>
+            </div>
+        );
+    }
 
     return (
         <div className="cb-usage-indicator" ref={containerRef}>
             <button
                 type="button"
                 className={`cb-usage-trigger${pressured ? ' cb-usage-trigger--warn' : ''}`}
-                aria-label={`Consumption. ${summaryForScreenReader}`}
+                aria-label={formatLabel(labels.usageTrigger, { summary: summaryForScreenReader })}
                 aria-describedby={open ? popoverId : undefined}
                 aria-expanded={open}
                 onClick={() => setOpen(value => !value)}
@@ -179,86 +215,84 @@ export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary }) => {
 
             <div id={popoverId} role="tooltip" className="cb-usage-popover" hidden={!open}>
                 <MeterRow
-                    label="Context window"
+                    label={labels.usageContextWindow}
                     value={window !== null && ratio !== null
                         ? `${formatTokens(context!.input_tokens)} / ${formatTokens(window)} (${formatPercent(ratio)})`
-                        : `${formatTokens(context?.input_tokens ?? ownRun.input_tokens)} · limit unknown`}
+                        : limitUnknown(context?.input_tokens ?? ownRun.input_tokens)}
                     ratio={ratio}
                     warn={pressured}
-                    note={subAgents ? "this agent's last prompt" : undefined}
+                    note={subAgents ? labels.usageLastPromptNote : undefined}
                 />
                 {subAgentContext && (
                     <MeterRow
                         sub
-                        label={`Sub-agent · ${subAgentContext.agentName ?? 'largest prompt'}`}
+                        label={formatLabel(labels.usageSubAgentContext, { name: subAgentContext.agentName ?? labels.usageLargestPrompt })}
                         value={subAgentContext.context.max_input_tokens !== null && subAgentRatio !== null
                             ? `${formatTokens(subAgentContext.context.input_tokens)} / ${formatTokens(subAgentContext.context.max_input_tokens)} (${formatPercent(subAgentRatio)})`
-                            : `${formatTokens(subAgentContext.context.input_tokens)} · limit unknown`}
+                            : limitUnknown(subAgentContext.context.input_tokens)}
                         ratio={null}
                         warn={subAgentRatio !== null && subAgentRatio >= NEAR_WINDOW_RATIO}
-                        note="its own context; ends with the run"
+                        note={labels.usageOwnContextNote}
                     />
                 )}
                 {pressured && (
-                    <p className="cb-usage-hint">
-                        The conversation is near the model's limit. Start a new one to keep answers reliable.
-                    </p>
+                    <p className="cb-usage-hint">{labels.usageNearLimit}</p>
                 )}
 
                 <div className="cb-usage-section">
-                    <span>Your usage · this conversation</span>
-                    {live && <span className="cb-usage-live">updating</span>}
+                    <span>{labels.usageTitle}</span>
+                    {live && <span className="cb-usage-live">{labels.usageUpdating}</span>}
                 </div>
                 <MeterRow
-                    label="This turn"
-                    value={plural(turn.credits_charged, 'credit')}
+                    label={labels.usageThisTurn}
+                    value={credits(turn.credits_charged)}
                     ratio={conversationCredits > 0 ? turn.credits_charged / conversationCredits : null}
-                    note={describeFigures(turn)}
+                    note={describeFigures(turn, labels)}
                 />
                 {subAgents && (
                     <>
                         <MeterRow
                             sub
-                            label="This agent"
-                            value={plural(ownRun.credits_charged, 'credit')}
+                            label={labels.usageThisAgent}
+                            value={credits(ownRun.credits_charged)}
                             ratio={null}
-                            note={describeFigures(ownRun)}
+                            note={describeFigures(ownRun, labels)}
                         />
                         <MeterRow
                             sub
-                            label={`Sub-agents (${subAgents.count})`}
-                            value={plural(subAgents.figures.credits_charged, 'credit')}
+                            label={formatLabel(labels.usageSubAgents, { count: subAgents.count })}
+                            value={credits(subAgents.figures.credits_charged)}
                             ratio={null}
-                            note={describeFigures(subAgents.figures)}
+                            note={describeFigures(subAgents.figures, labels)}
                         />
                     </>
                 )}
                 <MeterRow
-                    label="Whole conversation"
-                    value={plural(conversationCredits, 'credit')}
+                    label={labels.usageWholeConversation}
+                    value={credits(conversationCredits)}
                     ratio={null}
-                    note={plural(turns, 'turn')}
+                    note={formatCount(turns, labels.turnsOne, labels.turnsOther)}
                 />
                 {turn.credits_waived > 0 && (
                     <MeterRow
-                        label="Free calls this turn"
-                        value={`${plural(turn.credits_waived, 'credit')} waived`}
+                        label={labels.usageFreeCalls}
+                        value={formatLabel(labels.usageWaived, { credits: credits(turn.credits_waived) })}
                         ratio={null}
                     />
                 )}
                 {showTree && tree && (
                     <MeterRow
-                        label="Sub-agent tree"
+                        label={labels.usageSubAgentTree}
                         value={ceiling !== null
                             ? `${tree.credits_spent} / ${ceiling} (${formatPercent(tree.credits_spent / ceiling)})`
-                            : plural(tree.credits_spent, 'credit')}
+                            : credits(tree.credits_spent)}
                         ratio={treeRatio}
                         warn={Boolean(tree.ceiling_reached)}
-                        note={tree.ceiling_reached ? 'limit reached — no new sub-agents this turn' : undefined}
+                        note={tree.ceiling_reached ? labels.usageTreeLimitReached : undefined}
                     />
                 )}
 
-                <p className="cb-usage-foot">Updates after every step. Each step is charged once it completes.</p>
+                <p className="cb-usage-foot">{labels.usageFootnote}</p>
             </div>
         </div>
     );

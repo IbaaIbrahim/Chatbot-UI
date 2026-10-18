@@ -1,35 +1,33 @@
 import React from 'react';
-import ReactDOM from 'react-dom';
 const { useState, useEffect, useRef, useCallback } = React;
 import './MessageBubble.css';
 import { parseToolOutput } from '../../api/toolOutput';
-import { netFetch } from '../../common/localNetwork';
 import { ToolInvocation, ToolActionControl } from '../ToolInvocation/ToolInvocation';
-import { resolveToolDisplayName, type ToolActionPlacement, type ToolConfig, type ToolPresentation } from '../../common/toolConfig';
+import { hasHostDisplayName, resolveToolDisplayName, type ToolActionPlacement, type ToolConfig, type ToolPresentation } from '../../common/toolConfig';
+import { describeMetaTool, isMetaTool } from '../../common/metaTools';
+import { describeLatestActivity, groupActivity, isStepRunning, summarizeActivity, type ActivityLine } from '../../common/activity';
 import { ConfirmButtons, ConfirmStatus } from '../ConfirmButtons/ConfirmButtons';
 import type { ContextFigures, RunUsage, TreeFigures, UsageFigures } from '../../api/types';
 import { AuthenticatedImage } from '../AuthenticatedImage/AuthenticatedImage';
 import { BlinkingIndicator } from '../BlinkingIndicator/BlinkingIndicator';
 import { MessageActions } from '../MessageActions/MessageActions';
 import { BranchNavigator } from '../BranchNavigator/BranchNavigator';
-import { useChatbotContext } from '../../context/ChatbotContext';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Document, Page, pdfjs } from 'react-pdf';
-import 'react-pdf/dist/Page/AnnotationLayer.css';
-import 'react-pdf/dist/Page/TextLayer.css';
+import { useLabels, useMarkdownConfig } from '../../store/hooks';
+import type { ChatLabels } from '../../common/labels';
+import { toPlainText } from '../../common/markdownBlocks';
+import { MarkdownContent } from '../MarkdownContent/MarkdownContent';
+import {
+    AttachmentViewerModal,
+    formatFileSize,
+    getFileIcon,
+    inferContentType,
+    type Attachment,
+} from '../AttachmentViewer/AttachmentViewer';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-
-export interface Attachment {
-    id: string;
-    type: 'image' | 'file';
-    url: string;
-    name?: string;
-    size?: number;
-    contentType?: string;
-    localUrl?: string;
-}
+// The attachment shape and its viewer live in ../AttachmentViewer since 4.1,
+// shared with the conversation files panel; re-exported here, where the
+// package has always exported `Attachment` from.
+export type { Attachment } from '../AttachmentViewer/AttachmentViewer';
 
 export type MessageStepType = 'text' | 'thinking' | 'tool-call' | 'confirm-request' | 'sub-agent' | 'error' | 'notice';
 
@@ -81,6 +79,13 @@ export interface MessageProps {
     id: string;
     role: 'user' | 'assistant' | 'system';
     content?: string;
+    /**
+     * The job (turn) this message belongs to — the turn a host saves a file or
+     * an artifact against. From the job's uuid on a history load, and from the
+     * stream's first frame on a live turn; absent until then. A rich block
+     * receives it as `jobUuid`.
+     */
+    jobUuid?: string | null;
     steps?: MessageStep[];
     timestamp?: Date;
     attachments?: Attachment[];
@@ -103,9 +108,9 @@ export interface MessageProps {
      */
     embedded?: boolean;
     /**
-     * Who produced this message. Defaults to "Assistant". A conversation can
-     * change hands (a handoff), so the label is per message rather than a
-     * constant.
+     * Who produced this message. Defaults to `labels.assistantName`. A
+     * conversation can change hands (a handoff), so the label is per message
+     * rather than a constant.
      */
     senderName?: string;
     /**
@@ -171,208 +176,6 @@ export interface MessageProps {
     branchIds?: string[];
 }
 
-const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
-
-const getFileIcon = (contentType?: string): string => {
-    if (!contentType) return '\u{1F4CE}';
-    if (contentType.startsWith('image/')) return '\u{1F5BC}\u{FE0F}';
-    if (contentType === 'application/pdf') return '\u{1F4C4}';
-    if (contentType.startsWith('text/')) return '\u{1F4DD}';
-    return '\u{1F4CE}';
-};
-
-const inferContentType = (filename?: string, hint?: string): string => {
-    if (hint && hint.trim()) return hint;
-    if (!filename) return 'application/octet-stream';
-    const ext = filename.split('.').pop()?.toLowerCase();
-    switch (ext) {
-        case 'pdf': return 'application/pdf';
-        case 'png': return 'image/png';
-        case 'jpg':
-        case 'jpeg': return 'image/jpeg';
-        case 'gif': return 'image/gif';
-        case 'webp': return 'image/webp';
-        case 'svg': return 'image/svg+xml';
-        case 'txt': return 'text/plain';
-        case 'csv': return 'text/csv';
-        case 'json': return 'application/json';
-        case 'md': return 'text/markdown';
-        default: return 'application/octet-stream';
-    }
-};
-
-// --- Attachment Viewer Modal (unified for all attachment types) ---
-const AttachmentViewerModal: React.FC<{
-    attachment: Attachment | null;
-    isOpen: boolean;
-    onClose: () => void;
-}> = ({ attachment, isOpen, onClose }) => {
-    const [blobUrl, setBlobUrl] = useState<string | null>(null);
-    const [textContent, setTextContent] = useState<string | null>(null);
-    const [state, setState] = useState<'loading' | 'error' | 'ready'>('loading');
-    const [errorMsg, setErrorMsg] = useState<string>('');
-    const [pdfPageNumber, setPdfPageNumber] = useState(1);
-    const [pdfNumPages, setPdfNumPages] = useState<number | null>(null);
-    const context = useChatbotContext();
-    const downloadLinkRef = useRef<HTMLAnchorElement | null>(null);
-
-    useEffect(() => {
-        if (!isOpen || !attachment) return;
-        let cancelled = false;
-
-        const load = async () => {
-            setState('loading');
-            setBlobUrl(null);
-            setTextContent(null);
-            setErrorMsg('');
-
-            if (!context) {
-                setState('error');
-                setErrorMsg('No authentication context available');
-                return;
-            }
-
-            try {
-                const url = await context.fetchAuthenticatedUrl(attachment.url);
-                if (cancelled) return;
-                setBlobUrl(url);
-
-                const ct = attachment.contentType ?? '';
-                if (ct.startsWith('text/') || ct === 'text/csv') {
-                    const text = await netFetch(url).then(r => r.text());
-                    if (cancelled) return;
-                    setTextContent(text);
-                }
-
-                setState('ready');
-            } catch (e) {
-                if (cancelled) return;
-                setState('error');
-                setErrorMsg(e instanceof Error ? e.message : 'Failed to load attachment');
-            }
-        };
-
-        load();
-        return () => { cancelled = true; };
-    }, [isOpen, attachment, context]);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-        if (isOpen) {
-            document.addEventListener('keydown', onKey);
-            return () => document.removeEventListener('keydown', onKey);
-        }
-    }, [isOpen, onClose]);
-
-    const handleDownload = () => {
-        if (blobUrl && attachment && downloadLinkRef.current) {
-            downloadLinkRef.current.href = blobUrl;
-            downloadLinkRef.current.download = attachment.name || 'download';
-            downloadLinkRef.current.click();
-        }
-    };
-
-    if (!isOpen || !attachment) return null;
-
-    const ct = inferContentType(attachment.name, attachment.contentType);
-
-    return ReactDOM.createPortal(
-        <div className="cb-attachment-viewer-overlay" onClick={onClose}>
-            <div className="cb-attachment-viewer-inner" onClick={(e) => e.stopPropagation()}>
-                <div className="cb-attachment-viewer-toolbar">
-                    <span className="cb-attachment-viewer-filename">{attachment.name || 'Attachment'}</span>
-                    <button
-                        className="cb-attachment-viewer-close"
-                        onClick={onClose}
-                        title="Close (Esc)"
-                        aria-label="Close attachment"
-                    >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                    </button>
-                </div>
-
-                {state === 'loading' && (
-                    <div className="cb-attachment-viewer-loading">
-                        <span className="cb-att-chip-spinner" aria-hidden />
-                    </div>
-                )}
-
-                {state === 'error' && (
-                    <div className="cb-attachment-viewer-error">
-                        <div className="cb-attachment-viewer-error-icon">&#x26A0;</div>
-                        <div className="cb-attachment-viewer-error-msg">{errorMsg}</div>
-                        <div className="cb-attachment-viewer-actions">
-                            <button className="cb-attachment-viewer-action-btn" onClick={onClose}>Close</button>
-                        </div>
-                    </div>
-                )}
-
-                {state === 'ready' && blobUrl && (
-                    <div className="cb-attachment-viewer-content">
-
-                        {ct.startsWith('image/') ? (
-                            <img src={blobUrl} alt={attachment.name || 'Attachment'} />
-                        ) : ct === 'application/pdf' ? (
-                            <div className="cb-pdf-viewer">
-                                <Document
-                                    file={blobUrl}
-                                    onLoadSuccess={({ numPages }) => {
-                                        setPdfNumPages(numPages);
-                                        setPdfPageNumber(1);
-                                    }}
-                                    loading={<div className="cb-attachment-viewer-loading"><span className="cb-att-chip-spinner" aria-hidden /></div>}
-                                    error={<div className="cb-attachment-viewer-error-msg">Failed to load PDF.</div>}
-                                >
-                                    <Page pageNumber={pdfPageNumber} width={undefined} />
-                                </Document>
-                                {pdfNumPages != null && pdfNumPages > 1 && (
-                                    <div className="cb-pdf-pagination">
-                                        <button
-                                            className="cb-attachment-viewer-action-btn"
-                                            onClick={() => setPdfPageNumber(p => Math.max(1, p - 1))}
-                                            disabled={pdfPageNumber <= 1}
-                                        >&#8249;</button>
-                                        <span>{pdfPageNumber} / {pdfNumPages}</span>
-                                        <button
-                                            className="cb-attachment-viewer-action-btn"
-                                            onClick={() => setPdfPageNumber(p => Math.min(pdfNumPages, p + 1))}
-                                            disabled={pdfPageNumber >= pdfNumPages}
-                                        >&#8250;</button>
-                                    </div>
-                                )}
-                            </div>
-                        ) : (ct.startsWith('text/') || ct === 'text/csv') && textContent != null ? (
-                            <pre>{textContent}</pre>
-                        ) : (
-                            <div className="cb-attachment-viewer-fallback">
-                                <div className="cb-attachment-viewer-fallback-icon">{getFileIcon(ct)}</div>
-                                <div className="cb-attachment-viewer-fallback-name">{attachment.name || 'File'}</div>
-                                {attachment.size != null && (
-                                    <div className="cb-attachment-viewer-fallback-size">{formatFileSize(attachment.size)}</div>
-                                )}
-                                <div className="cb-attachment-viewer-actions">
-                                    <button className="cb-attachment-viewer-action-btn primary" onClick={handleDownload}>
-                                        Download
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                <a ref={downloadLinkRef} style={{ display: 'none' }} />
-            </div>
-        </div>,
-        document.body
-    );
-};
-
 // --- Attachment Chip (Claude-style compact chip above message) ---
 const AttachmentChip: React.FC<{ att: Attachment }> = ({ att }) => {
     const [modalOpen, setModalOpen] = useState(false);
@@ -436,48 +239,35 @@ const AttachmentList: React.FC<{ attachments: Attachment[] }> = ({ attachments }
     </div>
 );
 
-type RenderItem =
-    | { type: 'single'; step: MessageStep; originalIndex: number }
-    | { type: 'tool-group'; steps: MessageStep[]; originalIndex: number };
-
-function groupRenderSteps(renderSteps: MessageStep[]): RenderItem[] {
-    const items: RenderItem[] = [];
-    let currentToolGroup: MessageStep[] = [];
-    let firstIdxInGroup = 0;
-
-    for (let i = 0; i < renderSteps.length; i++) {
-        const step = renderSteps[i];
-        if (step.type === 'tool-call') {
-            if (currentToolGroup.length === 0) {
-                firstIdxInGroup = i;
-            }
-            currentToolGroup.push(step);
-        } else {
-            if (currentToolGroup.length > 0) {
-                if (currentToolGroup.length === 1) {
-                    items.push({ type: 'single', step: currentToolGroup[0], originalIndex: firstIdxInGroup });
-                } else {
-                    items.push({ type: 'tool-group', steps: currentToolGroup, originalIndex: firstIdxInGroup });
-                }
-                currentToolGroup = [];
-            }
-            items.push({ type: 'single', step, originalIndex: i });
-        }
-    }
-
-    if (currentToolGroup.length > 0) {
-        if (currentToolGroup.length === 1) {
-            items.push({ type: 'single', step: currentToolGroup[0], originalIndex: firstIdxInGroup });
-        } else {
-            items.push({ type: 'tool-group', steps: currentToolGroup, originalIndex: firstIdxInGroup });
-        }
-    }
-
-    return items;
+/**
+ * What the bubble is given from inside the library, beyond the public props.
+ * A nested bubble — one sub-agent's steps — knows its own run's state from
+ * `isTurnComplete`; this says whether the turn around it is still in flight,
+ * which outlives the sub-agent's run.
+ */
+interface MessageBubbleViewProps extends MessageProps {
+    enclosingTurnInFlight?: boolean;
 }
 
-export const MessageBubble: React.FC<MessageProps> = (props) => {
+/**
+ * The turn this bubble's steps belong to is still in flight: this bubble's
+ * own run, or — for a nested bubble — the turn that contains it. What a rich
+ * block is told as `streaming`: a reference to one of the turn's steps may not
+ * have a result yet.
+ */
+function isTurnInFlight(props: MessageBubbleViewProps): boolean {
+    return props.isTurnComplete === false || Boolean(props.enclosingTurnInFlight);
+}
+
+const MessageBubbleView: React.FC<MessageBubbleViewProps> = (props) => {
     const { role, steps, shouldAnimate = true } = props;
+    const labels = useLabels();
+    const { blockRenderers } = useMarkdownConfig();
+    // Rich blocks are how the assistant presents an answer. A user's message
+    // stays as they wrote it — a fence they pasted is code, and "Copy" gives
+    // their own text back (design §3.4; review of 2026-10-14).
+    const drawsBlocks = role === 'assistant';
+    const turnInFlight = isTurnInFlight(props);
 
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState('');
@@ -575,29 +365,47 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
         };
     }, [selectionPopup]);
 
+    // The whole message's text, for a rich block that exports its siblings (a
+    // report). One stable reader per bubble, so the blocks — memoised on their
+    // props — are not re-rendered by text that streams in after them.
+    const messageTextRef = useRef('');
+    messageTextRef.current = getStepsTextContent();
+    const getMessageSource = useCallback(() => messageTextRef.current, []);
+
     // If steps are present, use steps rendering
     if (steps && steps.length > 0) {
-        const textContent = getStepsTextContent();
+        const textContent = messageTextRef.current;
 
         // Streamed tokens live on trailing ``'text'`` steps (see
         // useStreamChat.updateAssistantContent) and persisted text arrives as
         // ``'text'`` steps via ``mapSteps`` in useConversations.ts, so the
         // natural ``steps`` array is the source of truth for ordering.
-        // For tools configured with showLastOnly (e.g. generate_checklist),
-        // we only display the last invocation if the agent tried multiple times.
-        const lastStepIds = findLastToolCallStepIds(steps, props.tools);
-        const renderSteps: MessageStep[] = filterStepsForDisplay(steps, props.tools, lastStepIds);
-        const groupedRenderItems = groupRenderSteps(renderSteps);
+        // Every step is shown, a repeated call and a sub-agent's earlier attempt
+        // included. Until 4.0 a `showLastOnly` option (on by default for one
+        // slug) hid all but the last call of a tool, and with it whole sub-agent
+        // runs — the work, and what it cost, vanished from the transcript. Each
+        // action is bound to its own step_uuid, so several cannot be confused.
+        //
+        // Runs of thinking, tool calls and sub-agents are drawn as one activity
+        // section each (common/activity.ts): the working between two pieces of
+        // the answer is one row, not one row per step.
+        const groupedRenderItems = groupActivity(steps);
 
         // Collected at this level only. A nested bubble renders the steps of one
         // sub-agent and knows nothing of the turn, so letting it build its own
         // row would put the same control on screen once per nesting level.
         const hoistedActions = props.embedded
             ? []
-            : collectHoistedActions(steps, props, props.isTurnComplete !== false, lastStepIds);
+            : collectHoistedActions(steps, props, props.isTurnComplete !== false, labels);
 
         return (
-            <div ref={bubbleRef} className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`}>
+            <div
+                ref={bubbleRef}
+                className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`}
+                // What the files panel's "Show in chat" falls back to for a
+                // block not drawn (in a collapsed sub-agent run).
+                data-message-id={props.embedded ? undefined : props.id}
+            >
                 {role === 'assistant' && !props.embedded && (
                     <div className="cb-avatar-container">
                         <div className="cb-avatar-assistant">
@@ -607,7 +415,7 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                 )}
 
                 <div className="cb-message-content-wrapper" style={{ width: '100%', position: 'relative' }}>
-                    {role === 'user' || props.embedded ? null : <div className="cb-sender-name">{props.senderName || 'Assistant'}</div>}
+                    {role === 'user' || props.embedded ? null : <div className="cb-sender-name">{props.senderName || labels.assistantName}</div>}
 
                     {props.branchPoint && props.branchCount && props.branchCount > 1 && (
                         <BranchNavigator
@@ -659,19 +467,23 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                         </div>
                     ) : (
                         <div className="cb-steps-container">
-                            {groupedRenderItems.map((item) => {
-                                const isLast = item.originalIndex === renderSteps.length - 1;
-
-                                if (item.type === 'tool-group') {
+                            {groupedRenderItems.map((item, itemIndex) => {
+                                if (item.type === 'activity') {
+                                    // Live while a step in it runs, or while it is
+                                    // the turn's latest item and the turn goes on.
+                                    const live = item.steps.some(isStepRunning)
+                                        || (props.isTurnComplete === false && itemIndex === groupedRenderItems.length - 1);
                                     return (
-                                        <ModernToolGroupRow
-                                            key={`group-${item.steps[0].id}`}
+                                        <ActivityGroup
+                                            key={`activity-${item.steps[0].id}`}
                                             steps={item.steps}
                                             props={props}
+                                            live={live}
                                         />
                                     );
                                 }
 
+                                const isLast = item.index === steps.length - 1;
                                 const step = item.step;
 
                                 if (step.type === 'thinking') {
@@ -699,6 +511,8 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                                             key={step.id}
                                             step={step}
                                             handlers={props}
+                                            jobUuid={props.jobUuid ?? null}
+                                            turnInFlight={turnInFlight}
                                         />
                                     );
                                 }
@@ -752,6 +566,16 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                                                 content={step.content || ''}
                                                 shouldAnimate={shouldAnimate && isLast}
                                                 onComplete={isLast ? props.onAnimationComplete : undefined}
+                                                // Only the last text of a live run can still be
+                                                // arriving; every earlier one ended when a step
+                                                // came after it. A nested bubble's run is its
+                                                // sub-agent's: `isTurnComplete` is `!isRunning`.
+                                                streaming={props.isTurnComplete === false && isLast}
+                                                turnInFlight={turnInFlight}
+                                                messageId={props.id}
+                                                jobUuid={props.jobUuid ?? null}
+                                                getMessageSource={getMessageSource}
+                                                blocks={drawsBlocks}
                                             />
                                             {isLast && props.isWaitingForDeltas && (!step.content || step.content.trim().length === 0) && (
                                                 <BlinkingIndicator />
@@ -771,6 +595,7 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                                     key={`hoisted-${action.step.id}`}
                                     onAction={action.onAction}
                                     payload={action.payload}
+                                    result={action.result}
                                     toolName={resolveToolDisplayName(action.step.toolName || action.step.toolSlug || 'Tool', props.tools)}
                                     label={action.label}
                                     render={action.render}
@@ -781,7 +606,10 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
 
                     {textContent && !isEditing && (
                         <MessageActions
-                            content={textContent}
+                            // A copied answer reads as text: each host-drawn
+                            // block becomes its plain-text summary, not its JSON.
+                            // A user's message drew no blocks, and copies as written.
+                            content={drawsBlocks ? toPlainText(textContent, blockRenderers) : textContent}
                             role={role as 'user' | 'assistant'}
                             messageId={props.id}
                             onReply={props.onReply ? () => props.onReply!(props) : undefined}
@@ -819,6 +647,15 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
     return <LegacyMessageBubble {...props} />;
 };
 
+/**
+ * Memoised: a streamed token changes only the last message, so in a long
+ * thread every earlier bubble — handed the same props — skips re-rendering.
+ */
+const MemoMessageBubble = React.memo(MessageBubbleView);
+
+/** Typed with the public props only: `enclosingTurnInFlight` is the library's own. */
+export const MessageBubble: React.NamedExoticComponent<MessageProps> = MemoMessageBubble;
+
 // Collapsible Thinking Block
 /**
  * One agent's run, rendered inside the turn of the agent that started it.
@@ -833,6 +670,8 @@ interface ResolvedStepAction {
     step: MessageStep;
     onAction: (data: any) => void;
     payload: any;
+    /** The step's parsed result, so a control can offer what the call did. */
+    result: any;
     label: string;
     render?: ToolPresentation['render'];
     placement: ToolActionPlacement;
@@ -847,9 +686,12 @@ interface ResolvedStepAction {
  * differently from the step-level one would hand the host app the wrong half of
  * the same call.
  */
+type ActionLabels = Pick<ChatLabels, 'openResult' | 'openPreview'>;
+
 function resolveStepAction(
     step: MessageStep,
     handlers: Pick<MessageProps, 'tools'>,
+    labels: ActionLabels,
 ): ResolvedStepAction | null {
     if (step.type !== 'tool-call') return null;
     const toolSlug = step.toolSlug || step.toolName;
@@ -868,14 +710,14 @@ function resolveStepAction(
     const resolvedSlug = step.toolSlug || toolSlug;
     let onAction: ((data: any) => void) | undefined;
     let rawPayload: any;
-    let label = 'Open Result';
+    let label = labels.openResult;
     if (config.preview) {
         const preview = config.preview;
         onAction = (data) => {
             void preview(data, { tool_slug: resolvedSlug, step_uuid: step.id, status: 'completed' });
         };
         rawPayload = step.toolResult;
-        label = 'Open Preview';
+        label = labels.openPreview;
     } else if (config.run) {
         const run = config.run;
         onAction = (data) => {
@@ -898,88 +740,11 @@ function resolveStepAction(
         step,
         onAction,
         payload,
+        result: parseToolOutput(step.toolResult),
         label: config.label ?? label,
         render: config.render,
         placement: config.placement ?? 'step',
     };
-}
-
-function isShowLastOnlyTool(
-    step: MessageStep,
-    tools?: Record<string, ToolConfig>
-): boolean {
-    const slug = step.toolSlug || step.toolName;
-    if (!slug) return false;
-    const config = tools?.[slug] || (step.toolName ? tools?.[step.toolName] : undefined);
-    if (config?.showLastOnly !== undefined) {
-        return Boolean(config.showLastOnly);
-    }
-    return slug === 'generate_checklist';
-}
-
-function findLastToolCallStepIds(
-    steps: MessageStep[],
-    tools?: Record<string, ToolConfig>
-): Map<string, string> {
-    const lastIdByTool = new Map<string, string>();
-
-    function walk(list: MessageStep[]) {
-        for (const s of list) {
-            if (s.subSteps && s.subSteps.length > 0) {
-                walk(s.subSteps);
-            }
-            if (s.type === 'tool-call') {
-                const slug = s.toolSlug || s.toolName;
-                if (slug && isShowLastOnlyTool(s, tools)) {
-                    lastIdByTool.set(slug, s.id);
-                }
-            }
-        }
-    }
-
-    walk(steps);
-    return lastIdByTool;
-}
-
-function filterStepsForDisplay(
-    steps: MessageStep[],
-    tools: Record<string, ToolConfig> | undefined,
-    lastStepIds: Map<string, string>
-): MessageStep[] {
-    const result: MessageStep[] = [];
-    for (const step of steps) {
-        if (step.type === 'tool-call') {
-            const slug = step.toolSlug || step.toolName;
-            if (slug && isShowLastOnlyTool(step, tools)) {
-                const lastId = lastStepIds.get(slug);
-                if (lastId && step.id !== lastId) {
-                    continue;
-                }
-            }
-            result.push(step);
-        } else if (step.type === 'sub-agent') {
-            const filteredSubSteps = step.subSteps
-                ? filterStepsForDisplay(step.subSteps, tools, lastStepIds)
-                : [];
-            const hadShowLastOnlyTool = step.subSteps?.some(s =>
-                s.type === 'tool-call' && isShowLastOnlyTool(s, tools)
-            );
-            const hasRemainingShowLastOnlyTool = filteredSubSteps.some(s =>
-                s.type === 'tool-call' && isShowLastOnlyTool(s, tools)
-            );
-            if (hadShowLastOnlyTool && !hasRemainingShowLastOnlyTool && step.toolStatus !== 'failed') {
-                // Entire sub-agent was an earlier superseded attempt of a showLastOnly tool
-                continue;
-            }
-            result.push({
-                ...step,
-                subSteps: filteredSubSteps,
-            });
-        } else {
-            result.push(step);
-        }
-    }
-    return result;
 }
 
 /**
@@ -995,9 +760,8 @@ function collectHoistedActions(
     steps: MessageStep[],
     handlers: Pick<MessageProps, 'tools'>,
     isTurnComplete: boolean,
-    lastStepIds?: Map<string, string>,
+    labels: ActionLabels,
 ): ResolvedStepAction[] {
-    const lastIds = lastStepIds ?? findLastToolCallStepIds(steps, handlers.tools);
     const found: ResolvedStepAction[] = [];
 
     function collect(list: MessageStep[]) {
@@ -1006,17 +770,9 @@ function collectHoistedActions(
                 collect(step.subSteps);
             }
             if (step.toolStatus !== 'completed') continue;
-            const resolved = resolveStepAction(step, handlers);
+            const resolved = resolveStepAction(step, handlers, labels);
             if (!resolved || resolved.placement === 'step') continue;
             if (resolved.placement === 'turn-end' && !isTurnComplete) continue;
-
-            const slug = step.toolSlug || step.toolName;
-            if (slug && isShowLastOnlyTool(step, handlers.tools)) {
-                const lastId = lastIds.get(slug);
-                if (lastId && step.id !== lastId) {
-                    continue;
-                }
-            }
 
             found.push(resolved);
         }
@@ -1029,10 +785,20 @@ function collectHoistedActions(
 const SubAgentBlock = ({
     step,
     handlers,
+    jobUuid = null,
+    turnInFlight = false,
 }: {
     step: MessageStep;
     handlers: Pick<MessageProps, 'tools'>;
+    /** The turn's job, for the blocks in the sub-agent's answer. */
+    jobUuid?: string | null;
+    /**
+     * The turn that started the sub-agent is still in flight. It outlives
+     * the sub-agent's own run, and a block in its answer is told so.
+     */
+    turnInFlight?: boolean;
 }) => {
+    const labels = useLabels();
     const [isOpen, setIsOpen] = useState(false);
     const isRunning = step.toolStatus === 'running';
     const failed = step.toolStatus === 'failed';
@@ -1098,19 +864,28 @@ const SubAgentBlock = ({
 
                 {hasDetail && (
                     <span className="cb-sub-agent-count">
-                        {isOpen ? 'Hide' : 'Show'}
+                        {isOpen ? labels.hide : labels.show}
                     </span>
                 )}
             </button>
 
             {isOpen && (subSteps.length > 0 || step.content) && (
                 <div className="cb-sub-agent-body">
-                    <MessageBubble
+                    <MemoMessageBubble
                         id={`${step.id}-inner`}
                         role="assistant"
                         steps={subSteps}
                         shouldAnimate={false}
+                        jobUuid={jobUuid}
                         embedded
+                        // The nested bubble's run is the sub-agent's: while it
+                        // runs, its last text may still be arriving, and a fence
+                        // in it is a skeleton until it closes. Without this the
+                        // bubble took its run for finished and handed the host
+                        // every prefix of a streaming spec, remounting the block
+                        // per token (review of 2026-10-14).
+                        isTurnComplete={!isRunning}
+                        enclosingTurnInFlight={turnInFlight}
                         // Forwarded so a nested step can render its own control
                         // when its placement is `'step'`. Without this a tool a
                         // sub-agent called had no button at all, at any depth.
@@ -1119,7 +894,14 @@ const SubAgentBlock = ({
 
                     {step.content && (
                         <div className="cb-sub-agent-result">
-                            <TypewriterText content={step.content} shouldAnimate={false} />
+                            <TypewriterText
+                                content={step.content}
+                                shouldAnimate={false}
+                                streaming={isRunning}
+                                turnInFlight={isRunning || turnInFlight}
+                                messageId={`${step.id}-result`}
+                                jobUuid={jobUuid}
+                            />
                         </div>
                     )}
                 </div>
@@ -1145,10 +927,11 @@ const ErrorBlock = ({
     onRetry?: () => void;
     onContinue?: () => void;
 }) => {
+    const labels = useLabels();
     const action = step.recovery === 'continue'
-        ? { label: 'Continue', handler: onContinue }
+        ? { label: labels.continue, handler: onContinue }
         : step.recovery === 'retry'
-            ? { label: 'Retry', handler: onRetry }
+            ? { label: labels.retry, handler: onRetry }
             : null;
 
     return (
@@ -1186,13 +969,28 @@ interface ModernToolCallRowProps {
 }
 
 const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defaultExpanded = false }) => {
+    const labels = useLabels();
     const [expanded, setExpanded] = useState(defaultExpanded);
-    const resolved = resolveStepAction(step, props);
+    const resolved = resolveStepAction(step, props, labels);
     const onStep = resolved?.placement === 'step' ? resolved : undefined;
     const isRunning = step.toolStatus === 'running';
     const isFailed = step.toolStatus === 'failed';
     const toolSlug = step.toolSlug || step.toolName || 'command';
     const toolName = resolveToolDisplayName(step.toolName || toolSlug, props.tools);
+    // A meta-tool step reads as what it did ("Loaded skill · …") rather than
+    // "Ran Load skill" — see common/metaTools.ts. Not when the host named the
+    // tool itself, and not when the summary has nothing true to say (a failed
+    // call, a load with nothing loaded): those keep the generic row.
+    const meta = isMetaTool(toolSlug) && !hasHostDisplayName(toolSlug, props.tools)
+        ? describeMetaTool(
+            toolSlug,
+            step.toolStatus ?? 'completed',
+            step.toolArgs,
+            step.toolResult,
+            labels,
+            name => resolveToolDisplayName(name, props.tools)
+        )
+        : null;
 
     const actionValue = React.useMemo(
         () => parseToolOutput(onStep?.payload ?? step.toolArgs ?? step.toolResult),
@@ -1202,7 +1000,7 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
     const isWebSearch = toolSlug === 'web_search' || toolSlug === 'search_web';
 
     return (
-        <div className={`cb-modern-tool-call ${step.toolStatus || 'completed'}`}>
+        <div className={`cb-modern-tool-call ${step.toolStatus || 'completed'}${meta ? ' cb-modern-tool-call--meta' : ''}`}>
             <div className="cb-modern-tool-header-row">
                 <button
                     type="button"
@@ -1224,12 +1022,19 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
                             </svg>
                         )}
                     </span>
-                    <span className="cb-modern-tool-label">
-                        <span className="cb-modern-tool-verb">
-                            {isRunning ? 'Running' : isFailed ? 'Failed' : 'Ran'}
+                    {meta ? (
+                        <span className="cb-modern-tool-label" title={toolSlug}>
+                            <span className="cb-modern-tool-meta-text">{meta.text}</span>
+                            {meta.detail && <span className="cb-modern-tool-meta-detail">{meta.detail}</span>}
                         </span>
-                        <code className="cb-modern-tool-code" title={toolSlug}>{toolName}</code>
-                    </span>
+                    ) : (
+                        <span className="cb-modern-tool-label">
+                            <span className="cb-modern-tool-verb">
+                                {isRunning ? labels.toolRunning : isFailed ? labels.toolFailed : labels.toolRan}
+                            </span>
+                            <code className="cb-modern-tool-code" title={toolSlug}>{toolName}</code>
+                        </span>
+                    )}
                     <svg
                         width="14"
                         height="14"
@@ -1248,6 +1053,7 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
                         <ToolActionControl
                             onAction={onStep.onAction}
                             payload={actionValue}
+                            result={onStep.result}
                             toolName={toolName}
                             label={onStep.label}
                             render={onStep.render}
@@ -1260,7 +1066,7 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
                 <div className="cb-modern-tool-details">
                     {isWebSearch && step.toolResult ? (
                         <div className="cb-web-search-results">
-                            <div className="cb-tool-detail-label">Search Results:</div>
+                            <div className="cb-tool-detail-label">{labels.searchResultsHeading}</div>
                             <div className="cb-markdown-content cb-tool-detail-body">
                                 {typeof step.toolResult === 'string' ? step.toolResult : JSON.stringify(step.toolResult, null, 2)}
                             </div>
@@ -1269,13 +1075,13 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
                         <div className="cb-code-block">
                             {step.toolArgs && (
                                 <>
-                                    <div className="cb-tool-detail-key">Arguments:</div>
+                                    <div className="cb-tool-detail-key">{labels.toolArguments}</div>
                                     {JSON.stringify(step.toolArgs, null, 2)}
                                 </>
                             )}
                             {step.toolResult && (
                                 <>
-                                    <div className="cb-tool-detail-key cb-tool-detail-key-spaced">Result:</div>
+                                    <div className="cb-tool-detail-key cb-tool-detail-key-spaced">{labels.toolResult}</div>
                                     {JSON.stringify(step.toolResult, null, 2)}
                                 </>
                             )}
@@ -1287,51 +1093,49 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
     );
 };
 
-interface ModernToolGroupRowProps {
-    steps: MessageStep[];
-    props: MessageProps;
-}
-
-const ModernToolGroupRow: React.FC<ModernToolGroupRowProps> = ({ steps, props }) => {
-    const [groupExpanded, setGroupExpanded] = useState(false);
-    const anyRunning = steps.some(s => s.toolStatus === 'running');
-    const failedSteps = steps.filter(s => s.toolStatus === 'failed');
-
-    const groupLabel = React.useMemo(() => {
-        if (anyRunning) {
-            return `Running ${steps.length} commands...`;
-        }
-        if (failedSteps.length > 0) {
-            return `Ran ${steps.length} commands (${failedSteps.length} failed)`;
-        }
-        return `Ran ${steps.length} commands`;
-    }, [anyRunning, failedSteps.length, steps.length]);
+/**
+ * A run of thinking, tool calls and sub-agent runs, as one collapsible row.
+ *
+ * Closed by default. While the run is live its header is the newest step in
+ * words, with a spinner; once done, a count of what happened. Opened, every
+ * step renders exactly as it would on its own. See common/activity.ts.
+ */
+const ActivityGroup: React.FC<{ steps: MessageStep[]; props: MessageBubbleViewProps; live: boolean }> = ({ steps, props, live }) => {
+    const labels = useLabels();
+    const [open, setOpen] = useState(false);
+    const toolName = (name: string) => resolveToolDisplayName(name, props.tools);
+    const failed = steps.some(step => step.toolStatus === 'failed');
+    const header: ActivityLine = live
+        ? describeLatestActivity(steps, labels, toolName)
+        : { text: summarizeActivity(steps, labels, toolName) };
 
     return (
-        <div className={`cb-modern-tool-group ${anyRunning ? 'is-running' : ''}`}>
+        <div className={`cb-activity ${live ? 'is-running' : 'is-finished'}${failed && !live ? ' has-failed' : ''}`}>
             <button
                 type="button"
-                className="cb-modern-group-btn"
-                onClick={() => setGroupExpanded(!groupExpanded)}
-                aria-expanded={groupExpanded}
+                className="cb-activity-btn"
+                onClick={() => setOpen(!open)}
+                aria-expanded={open}
             >
-                <span className="cb-modern-group-icon">
-                    {anyRunning ? (
+                <span className="cb-activity-icon">
+                    {live ? (
                         <span className="cb-spinner-xs" />
-                    ) : failedSteps.length > 0 ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
+                    ) : failed ? (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
                             <circle cx="12" cy="12" r="10" />
                             <line x1="12" y1="8" x2="12" y2="12" />
                             <line x1="12" y1="16" x2="12.01" y2="16" />
                         </svg>
                     ) : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polyline points="4 17 10 11 4 5" />
-                            <line x1="12" y1="19" x2="20" y2="19" />
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="cb-modern-tool-check">
+                            <polyline points="20 6 9 17 4 12" />
                         </svg>
                     )}
                 </span>
-                <span className="cb-modern-group-label">{groupLabel}</span>
+                <span className="cb-activity-label" aria-live={live ? 'polite' : undefined}>
+                    <span className="cb-activity-text">{header.text}</span>
+                    {header.detail && <span className="cb-activity-detail">{header.detail}</span>}
+                </span>
                 <svg
                     width="14"
                     height="14"
@@ -1339,22 +1143,29 @@ const ModernToolGroupRow: React.FC<ModernToolGroupRowProps> = ({ steps, props })
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="2"
-                    className={`cb-modern-chevron ${groupExpanded ? 'cb-chevron-open' : ''}`}
+                    className={`cb-modern-chevron ${open ? 'cb-chevron-open' : ''}`}
                 >
                     <polyline points="9 18 15 12 9 6" />
                 </svg>
             </button>
 
-            {groupExpanded && (
-                <div className="cb-modern-group-items">
-                    {steps.map(step => (
-                        <ModernToolCallRow
-                            key={step.id}
-                            step={step}
-                            props={props}
-                            defaultExpanded={false}
-                        />
-                    ))}
+            {open && (
+                <div className="cb-activity-items">
+                    {steps.map(step => {
+                        if (step.type === 'thinking') return <ThinkingBlock key={step.id} step={step} />;
+                        if (step.type === 'sub-agent') {
+                            return (
+                                <SubAgentBlock
+                                    key={step.id}
+                                    step={step}
+                                    handlers={props}
+                                    jobUuid={props.jobUuid ?? null}
+                                    turnInFlight={isTurnInFlight(props)}
+                                />
+                            );
+                        }
+                        return <ModernToolCallRow key={step.id} step={step} props={props} />;
+                    })}
                 </div>
             )}
         </div>
@@ -1362,6 +1173,7 @@ const ModernToolGroupRow: React.FC<ModernToolGroupRowProps> = ({ steps, props })
 };
 
 const ThinkingBlock = ({ step }: { step: MessageStep }) => {
+    const labels = useLabels();
     const [isOpen, setIsOpen] = useState(false);
     const isFinished = step.isFinished;
     const hasContent = step.content && step.content.trim().length > 0;
@@ -1385,7 +1197,7 @@ const ThinkingBlock = ({ step }: { step: MessageStep }) => {
                 </span>
 
                 <span className="cb-modern-thinking-label">
-                    {isFinished ? 'Thought for a few seconds' : 'Thinking...'}
+                    {isFinished ? labels.thoughtBriefly : labels.thinking}
                 </span>
 
                 <svg
@@ -1410,8 +1222,33 @@ const ThinkingBlock = ({ step }: { step: MessageStep }) => {
     );
 };
 
+interface TypewriterTextProps {
+    content: string;
+    shouldAnimate: boolean;
+    onComplete?: () => void;
+    /** This text is still arriving — see `MarkdownContent`'s `streaming`. */
+    streaming?: boolean;
+    /** The turn is still in flight — what a rich block is told as `streaming`. */
+    turnInFlight?: boolean;
+    messageId?: string;
+    jobUuid?: string | null;
+    getMessageSource?: () => string;
+    /** Draw the host's rich blocks — `false` for a user's message. Default `true`. */
+    blocks?: boolean;
+}
+
 // Typewriter with DUAL-TIMER strategy for background resilience
-const TypewriterText = ({ content, shouldAnimate, onComplete }: { content: string, shouldAnimate: boolean, onComplete?: () => void }) => {
+const TypewriterText = ({
+    content,
+    shouldAnimate,
+    onComplete,
+    streaming = false,
+    turnInFlight,
+    messageId,
+    jobUuid = null,
+    getMessageSource,
+    blocks = true,
+}: TypewriterTextProps) => {
     const [displayContent, setDisplayContent] = useState(shouldAnimate ? '' : content);
     const hasFiredCompleteRef = useRef(false);
 
@@ -1478,9 +1315,19 @@ const TypewriterText = ({ content, shouldAnimate, onComplete }: { content: strin
         // path — and a per-thread or per-app setting would get one of the two
         // languages wrong.
         <div className="cb-markdown-content" dir="auto">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {displayContent}
-            </ReactMarkdown>
+            {/* One renderer for every markdown path, so a host's blocks draw
+                wherever an answer appears: here, a sub-agent's result, and the
+                legacy bubble below. */}
+            <MarkdownContent
+                content={displayContent}
+                // A typewriter still revealing its text is still "arriving".
+                streaming={streaming || displayContent.length < content.length}
+                turnInFlight={turnInFlight ?? streaming}
+                messageId={messageId}
+                jobUuid={jobUuid}
+                getMessageSource={getMessageSource}
+                blocks={blocks}
+            />
             {shouldAnimate && content && displayContent.length < content.length && (
                 <span className="cb-cursor">|</span>
             )}
@@ -1491,6 +1338,11 @@ const TypewriterText = ({ content, shouldAnimate, onComplete }: { content: strin
 // Legacy path for simple content without steps
 const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
     const { role, content, attachments, toolInvocation, shouldAnimate = true } = props;
+    const labels = useLabels();
+    const { blockRenderers } = useMarkdownConfig();
+    // As in the steps path: blocks are the assistant's; a user's message is
+    // drawn and copied as they wrote it.
+    const drawsBlocks = role === 'assistant';
 
     const [displayContent, setDisplayContent] = useState('');
     const [isEditing, setIsEditing] = useState(false);
@@ -1641,7 +1493,10 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                 </div>
                 <div className="cb-message-content-wrapper">
                     <ToolInvocation
-                        toolName={resolveToolDisplayName(toolInvocation.toolName, props.tools)}
+                        // The slug, not its display name: ToolInvocation resolves
+                        // the name itself, and needs the slug to recognise a
+                        // meta-tool or a web search.
+                        toolName={toolInvocation.toolName}
                         args={toolInvocation.args}
                         status={toolInvocation.status}
                         result={toolInvocation.result}
@@ -1653,7 +1508,7 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
     }
 
     return (
-        <div ref={legacyBubbleRef} className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`}>
+        <div ref={legacyBubbleRef} className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`} data-message-id={props.id}>
             {role === 'assistant' && (
                 <div className="cb-avatar-container">
                     <div className="cb-avatar-assistant">
@@ -1663,7 +1518,7 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
             )}
 
             <div className="cb-message-content-wrapper" style={{ position: 'relative' }}>
-                {role === 'user' ? null : <div className="cb-sender-name">{props.senderName || 'Assistant'}</div>}
+                {role === 'user' ? null : <div className="cb-sender-name">{props.senderName || labels.assistantName}</div>}
 
                 {props.branchPoint && props.branchCount && props.branchCount > 1 && (
                     <BranchNavigator
@@ -1716,9 +1571,19 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                 ) : (
                     <div className={`cb-message-bubble ${role}`}>
                 <div className="cb-markdown-content" dir="auto">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {displayContent}
-                            </ReactMarkdown>
+                            <MarkdownContent
+                                content={displayContent}
+                                // One text for the whole turn here (a client that
+                                // streams without step sequences), so while the turn
+                                // runs, its text is still arriving.
+                                streaming={Boolean(props.isWaitingForDeltas)
+                                    || props.isTurnComplete === false
+                                    || displayContent.length < (content || '').length}
+                                turnInFlight={Boolean(props.isWaitingForDeltas) || props.isTurnComplete === false}
+                                messageId={props.id}
+                                jobUuid={props.jobUuid ?? null}
+                                blocks={drawsBlocks}
+                            />
                             {/* {role === 'assistant' && shouldAnimate && content && displayContent.length < content.length && (
                                 <span className="cb-cursor">|</span>
                             )} */}
@@ -1731,7 +1596,7 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
 
                 {content && !isEditing && (
                     <MessageActions
-                        content={content}
+                        content={drawsBlocks ? toPlainText(content, blockRenderers) : content}
                         role={role as 'user' | 'assistant'}
                         messageId={props.id}
                         onReply={props.onReply ? () => props.onReply!(props) : undefined}

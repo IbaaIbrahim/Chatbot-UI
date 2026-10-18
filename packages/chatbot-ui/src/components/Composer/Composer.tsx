@@ -1,73 +1,40 @@
 import React from 'react';
-const { useState, useRef, useEffect, useCallback, useImperativeHandle } = React;
 import './Composer.css';
 import { AttachedFile } from '../../api/types';
 import { netFetch } from '../../common/localNetwork';
-import { EnablableTool } from '../../api/GatewayStreamClient';
+import { formatLabel } from '../../common/labels';
 import { ToolToggles, hasRunnableTools } from '../ToolToggles/ToolToggles';
 import { UsageIndicator } from '../UsageIndicator/UsageIndicator';
-import { AgentSwitcher } from '../AgentSwitcher/AgentSwitcher';
-import type { AgentSidebarItem } from '../AgentSidebar/AgentSidebar';
-import type { TurnUsageSummary } from '../../common/usageSummary';
-import {
-    ChatbotUIConfig,
-    ContextSelectorConfig,
-} from '../../common/chatbotConfig';
 import {
     resolveStorageUploadUrl,
     parseUploadedFileResponse,
 } from '../../common/attachmentUtils';
-import { useChatbot } from '../../context/ChatbotContext';
+import { useChatActions, useChatRuntime, useChatState, useIcons, useLabels } from '../../store/hooks';
+
+const { useState, useRef, useEffect, useLayoutEffect, useCallback, useImperativeHandle } = React;
 
 export interface ComposerHandle {
     focus: () => void;
+    /** Replace the text in the input. */
+    setText: (text: string) => void;
     directToolCall?: (toolSlug: string, toolInput: any) => Promise<any>;
     getAttachedFiles: () => AttachedFile[];
     clearAttachedFiles: () => void;
 }
 
+/**
+ * Per-instance overrides only. Everything shared — whether a turn is running,
+ * the tools, which controls exist — comes from the provider, so two composers
+ * on one page agree about all of it.
+ */
 export interface ComposerProps {
-    onSend?: (text: string, attachedFiles?: AttachedFile[], contextIds?: string[]) => void;
+    /** Overrides the chat's own busy state, for a host with work of its own in flight. */
     disabled?: boolean;
+    /** Overrides `labels.composerPlaceholder` for this composer only. */
     placeholder?: string;
-    storageApiUrl?: string;
-    accessToken?: string | null;
-    tools?: EnablableTool[];
-    enabledToolIds?: string[];
-    onToolsChange?: (enabledIds: string[]) => void;
-    handledToolSlugs?: string[];
-    onStop?: () => void;
-    isRunning?: boolean;
-    isStopping?: boolean;
-    usage?: TurnUsageSummary | null;
-    config?: ChatbotUIConfig;
-    contextConfig?: ContextSelectorConfig;
-    selectedContextIds?: string[];
-    onContextChange?: (selectedIds: string[]) => void;
-    onSelectedContextsChange?: (selectedIds: string[]) => void;
-    onVoiceInput?: () => void;
     /** Where the tools menu opens relative to the composer. */
     toolMenuPlacement?: 'above' | 'center';
-    /** Optional agent switcher component to integrate into the bottom row. */
-    agentSwitcher?: React.ReactNode;
-    /** Optional left content for the bottom row. */
-    bottomLeftContent?: React.ReactNode;
-    /** Whether to show the bottom section (containing agent switcher and bottom-left content). Defaults to true. */
-    showBottomSection?: boolean;
-    /** Snake_case alias for showBottomSection. */
-    show_bottom_section?: boolean;
-    /** Whether to show the agent switcher in the bottom row. Defaults to true. */
-    showAgentSwitcher?: boolean;
-    /** Snake_case alias for showAgentSwitcher. */
-    show_agent_switcher?: boolean;
-    /** Current active agent ID */
-    agentId?: string | null;
-    /** List of available agents */
-    agents?: AgentSidebarItem[];
-    /** Callback when agent changes */
-    onAgentChange?: (agentId: string | null) => void;
-    /** Direct tool call execution helper */
-    directToolCall?: (toolSlug: string, toolInput: any) => Promise<any>;
+    className?: string;
 }
 
 const ALLOWED_TYPES = [
@@ -81,6 +48,7 @@ const ALLOWED_TYPES = [
 ];
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
+const MAX_TEXTAREA_HEIGHT_PX = 180;
 
 const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`;
@@ -96,74 +64,52 @@ const getFileIcon = (contentType?: string | null): string => {
     return '\u{1F4CE}';
 };
 
+/**
+ * The usage ring, subscribed on its own: the summary is rebuilt as the turn
+ * streams, and only this needs to redraw when it is.
+ */
+const ComposerUsage: React.FC = () => {
+    const usage = useChatState(s => s.usageSummary);
+    const details = useChatState(s => s.config.composer.usageDetails);
+    return usage ? <UsageIndicator summary={usage} details={details} /> : null;
+};
+
 export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
-    onSend: onSendProp,
-    onStop: onStopProp,
-    isRunning: isRunningProp,
-    isStopping: isStoppingProp,
     disabled: disabledProp,
     placeholder: placeholderProp,
-    storageApiUrl: storageApiUrlProp,
-    accessToken: accessTokenProp,
-    tools: toolsProp,
-    enabledToolIds: enabledToolIdsProp,
-    onToolsChange: onToolsChangeProp,
-    handledToolSlugs: handledToolSlugsProp,
-    usage: usageProp,
-    config: configProp,
-    contextConfig: _contextConfig,
-    selectedContextIds,
-    onContextChange: _onContextChange,
-    onSelectedContextsChange: _onSelectedContextsChange,
-    onVoiceInput,
     toolMenuPlacement = 'above',
-    agentSwitcher: agentSwitcherProp,
-    bottomLeftContent,
-    showBottomSection: showBottomSectionProp,
-    show_bottom_section: show_bottom_sectionProp,
-    showAgentSwitcher: showAgentSwitcherProp,
-    show_agent_switcher: show_agent_switcherProp,
-    agentId: agentIdProp,
-    agents: agentsProp,
-    onAgentChange: onAgentChangeProp,
-    directToolCall: directToolCallProp,
+    className = '',
 }, ref) => {
-    const context = useChatbot();
+    const storageApiUrl = useChatState(s => s.storageApiUrl);
+    const accessToken = useChatState(s => s.accessToken);
+    const tools = useChatState(s => s.enablableTools);
+    const enabledToolIds = useChatState(s => s.enabledToolIds);
+    const handledToolSlugs = useChatState(s => s.handledToolSlugs);
+    const registeredTools = useChatState(s => s.registeredTools);
+    const isBusy = useChatState(s => s.isThinking || s.isResuming);
+    const isStopping = useChatState(s => s.isStopping);
+    const canStop = useChatState(s => s.canStop);
+    const hasPendingQuestions = useChatState(s => s.pendingQuestions !== null);
+    const composerConfig = useChatState(s => s.config.composer);
+    const hasMessages = useChatState(s => s.messages.length > 0);
+    const actions = useChatActions();
+    const { registerComposer } = useChatRuntime();
+    const labels = useLabels();
+    const icons = useIcons();
 
-    // Fall back to context values when not explicitly provided via props
-    const storageApiUrl = storageApiUrlProp !== undefined ? storageApiUrlProp : (context?.storageApiUrl ?? '');
-    const accessToken = accessTokenProp !== undefined ? accessTokenProp : (context?.accessToken ?? null);
-    const tools = toolsProp !== undefined ? toolsProp : (context?.enablableTools ?? []);
-    const enabledToolIds = enabledToolIdsProp !== undefined ? enabledToolIdsProp : (context?.enabledToolIds ?? []);
-    const onToolsChange = onToolsChangeProp !== undefined ? onToolsChangeProp : context?.handleToolSelectionChange;
-    const handledToolSlugs = handledToolSlugsProp !== undefined ? handledToolSlugsProp : (context?.handledToolSlugs ?? []);
-    const isRunning = isRunningProp !== undefined ? isRunningProp : (context ? context.isThinking || context.isResuming : false);
-    const isStopping = isStoppingProp !== undefined ? isStoppingProp : (context?.isStopping ?? false);
-    const onStop = onStopProp !== undefined ? onStopProp : (context?.client && 'cancelTurn' in context.client ? () => { void context?.stopTurn(); } : undefined);
-    const usage = usageProp !== undefined ? usageProp : (context?.usageSummary ?? null);
-    const config = configProp !== undefined ? configProp : context?.config;
-    const disabled = disabledProp !== undefined ? disabledProp : Boolean(context?.isThinking || context?.isResuming || !!context?.pendingQuestionnaire);
-    const placeholder = placeholderProp !== undefined ? placeholderProp : (context?.pendingQuestionnaire ? 'Answer the questions above…' : (config?.contextSelector?.placeholder ?? 'Describe what you want to do…'));
+    const disabled = disabledProp ?? (isBusy || hasPendingQuestions);
+    const placeholder = placeholderProp
+        ?? (hasPendingQuestions ? labels.questionnairePlaceholder : labels.composerPlaceholder);
 
-    const showAgentSwitcher = showAgentSwitcherProp !== undefined
-        ? showAgentSwitcherProp
-        : (show_agent_switcherProp !== undefined
-            ? show_agent_switcherProp
-            : (config?.composer?.showAgentSwitcher ?? context?.showAgentSwitcher ?? context?.show_agent_switcher ?? true));
-
-    const showBottomSection = showBottomSectionProp !== undefined
-        ? showBottomSectionProp
-        : (show_bottom_sectionProp !== undefined
-            ? show_bottom_sectionProp
-            : (config?.composer?.showBottomSection ?? context?.showBottomSection ?? context?.show_bottom_section ?? true));
-
-    const effectiveAgentId = agentIdProp !== undefined ? agentIdProp : (context?.agentId ?? null);
-    const effectiveAgents = agentsProp !== undefined ? agentsProp : (context?.agents ?? []);
-    const effectiveOnAgentChange = onAgentChangeProp !== undefined ? onAgentChangeProp : context?.onAgentChange;
+    const compact = composerConfig.density === 'compact'
+        || (composerConfig.density === 'auto' && hasMessages);
+    const compactRef = useRef(compact);
+    compactRef.current = compact;
+    // Whether a compact composer has given its text the full width. See adjustHeight.
+    const [multiline, setMultiline] = useState(false);
 
     const [toolMenuOpen, setToolMenuOpen] = useState(false);
-    const showToolsButton =
-        Boolean(onToolsChange) && hasRunnableTools(tools, handledToolSlugs);
+    const showToolsButton = composerConfig.tools && hasRunnableTools(tools, handledToolSlugs);
     const activeToolCount = enabledToolIds.length;
     const [input, setInput] = useState('');
     const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
@@ -175,26 +121,30 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     const [isDragging, setIsDragging] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const composerRef = useRef<HTMLDivElement>(null);
     const dragCounterRef = useRef(0);
 
     const directToolCall = useCallback(async (toolSlug: string, toolInput: any): Promise<any> => {
-        if (directToolCallProp) {
-            return directToolCallProp(toolSlug, toolInput);
-        }
-        const registeredTool = context?.registeredTools?.[toolSlug];
+        const registeredTool = registeredTools[toolSlug];
         if (registeredTool && 'run' in registeredTool && registeredTool.run) {
             return registeredTool.run(toolInput, { tool_slug: toolSlug, step_uuid: '' });
         }
         throw new Error(`No direct tool handler available for '${toolSlug}'`);
-    }, [directToolCallProp, context?.registeredTools]);
+    }, [registeredTools]);
 
     useImperativeHandle(ref, () => ({
         focus: () => textareaRef.current?.focus(),
+        setText: setInput,
         directToolCall,
         getAttachedFiles: () => attachedFilesRef.current,
         clearAttachedFiles: () => setAttachedFiles([]),
     }));
+
+    // So `useChatActions().focusComposer()` / `setComposerText()` reach this
+    // composer from anywhere in the host.
+    useEffect(() => registerComposer({
+        focus: () => textareaRef.current?.focus(),
+        setText: setInput,
+    }), [registerComposer]);
 
     // Cleanup object URLs on unmount
     useEffect(() => {
@@ -203,23 +153,64 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                 if (f.localBlobUrl) {
                     try {
                         URL.revokeObjectURL(f.localBlobUrl);
-                    } catch {}
+                    } catch {
+                        // Already revoked.
+                    }
                 }
             });
         };
     }, []);
 
+    /**
+     * Fit the box to its text.
+     *
+     * An empty box keeps its natural one-row height rather than being measured:
+     * the measurement includes the placeholder, and a composer laid out narrow
+     * for a moment — mid-move into a host's fullscreen page — wrapped it into a
+     * box several rows tall that stayed that way until the user typed.
+     *
+     * A compact composer keeps its text beside the buttons until the text needs
+     * a second line, then gives it the full width — and keeps it there until the
+     * box is emptied. Returning to one row as soon as the text fit again would
+     * re-wrap it at the narrower width and flip the layout straight back, so a
+     * line ending near the edge would make the box flicker on every keystroke.
+     */
     const adjustHeight = useCallback(() => {
         const textarea = textareaRef.current;
-        if (textarea) {
-            textarea.style.height = 'auto';
-            textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
+        if (!textarea) return;
+        textarea.style.height = 'auto';
+        if (!textarea.value) {
+            textarea.style.height = '';
+            setMultiline(false);
+            return;
         }
+        if (compactRef.current
+            && (textarea.value.includes('\n') || textarea.scrollHeight > textarea.clientHeight + 1)) {
+            setMultiline(true);
+        }
+        textarea.style.height = `${Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT_PX)}px`;
     }, []);
 
-    useEffect(() => {
+    // Before paint, so a keystroke never shows a box of the previous height, and
+    // again when the layout changes under the text.
+    useLayoutEffect(() => {
         adjustHeight();
-    }, [input, adjustHeight]);
+    }, [input, compact, multiline, adjustHeight]);
+
+    // The same text wraps to a different height at a different width — a mode
+    // switch, a sidebar opening — so the box is re-fitted whenever its width changes.
+    useEffect(() => {
+        const textarea = textareaRef.current;
+        if (!textarea || typeof ResizeObserver === 'undefined') return undefined;
+        let fittedWidth = textarea.clientWidth;
+        const observer = new ResizeObserver(() => {
+            if (textarea.clientWidth === fittedWidth) return;
+            fittedWidth = textarea.clientWidth;
+            adjustHeight();
+        });
+        observer.observe(textarea);
+        return () => observer.disconnect();
+    }, [adjustHeight]);
 
     const isUploading = uploadingCount > 0;
     const hasText = Boolean(input.trim());
@@ -228,21 +219,24 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
 
     const uploadFile = useCallback(async (file: File): Promise<AttachedFile | null> => {
         if (!ALLOWED_TYPES.includes(file.type)) {
-            setUploadError(`Unsupported file type: ${file.type}`);
+            setUploadError(formatLabel(labels.unsupportedFileType, { type: file.type }));
             return null;
         }
 
         if (file.size > MAX_FILE_SIZE) {
-            setUploadError(`File too large (${formatFileSize(file.size)}). Max: ${formatFileSize(MAX_FILE_SIZE)}`);
+            setUploadError(formatLabel(labels.fileTooLarge, {
+                size: formatFileSize(file.size),
+                max: formatFileSize(MAX_FILE_SIZE),
+            }));
             return null;
         }
 
         if (!storageApiUrl) {
-            setUploadError('File upload is unavailable: no storage API URL is configured.');
+            setUploadError(labels.uploadNeedsStorageUrl);
             return null;
         }
         if (!accessToken) {
-            setUploadError('File upload is unavailable: no access token is configured.');
+            setUploadError(labels.uploadNeedsToken);
             return null;
         }
 
@@ -253,8 +247,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
             const formData = new FormData();
             formData.append('file', file);
 
-            const uploadUrl = resolveStorageUploadUrl(storageApiUrl);
-            const response = await netFetch(uploadUrl, {
+            const response = await netFetch(resolveStorageUploadUrl(storageApiUrl), {
                 method: 'POST',
                 headers: {
                     Authorization: `Bearer ${accessToken}`,
@@ -267,14 +260,15 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                 throw new Error(errData.detail || errData.message || `Upload failed (${response.status})`);
             }
 
-            const resJson = await response.json();
-            const parsed = parseUploadedFileResponse(resJson, file);
+            const parsed = parseUploadedFileResponse(await response.json(), file);
 
             // Generate a local blob URL for immediate local preview
             let localBlobUrl: string | undefined;
             try {
                 localBlobUrl = URL.createObjectURL(file);
-            } catch {}
+            } catch {
+                localBlobUrl = undefined;
+            }
 
             return {
                 file_id: parsed.file_id,
@@ -285,16 +279,15 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                 localBlobUrl,
             };
         } catch (err: any) {
-            setUploadError(err.message || 'File upload failed');
+            setUploadError(err.message || labels.uploadFailed);
             return null;
         } finally {
             setUploadingCount(prev => Math.max(0, prev - 1));
         }
-    }, [storageApiUrl, accessToken]);
+    }, [storageApiUrl, accessToken, labels]);
 
     const handleFileSelect = useCallback(async (files: FileList | File[]) => {
-        const fileArray = Array.from(files);
-        for (const file of fileArray) {
+        for (const file of Array.from(files)) {
             const uploaded = await uploadFile(file);
             if (uploaded) {
                 setAttachedFiles(prev => [...prev, uploaded]);
@@ -311,7 +304,9 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
             if (file?.localBlobUrl) {
                 try {
                     URL.revokeObjectURL(file.localBlobUrl);
-                } catch {}
+                } catch {
+                    // Already revoked.
+                }
             }
             return prev.filter(f => f.file_id !== fileId);
         });
@@ -329,11 +324,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
             textareaRef.current.style.height = 'auto';
         }
 
-        if (onSendProp) {
-            onSendProp(textToSend, filesToSend, selectedContextIds);
-        } else if (context?.sendMessage) {
-            void context.sendMessage(textToSend, filesToSend, selectedContextIds);
-        }
+        void actions.sendMessage(textToSend, filesToSend);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -372,53 +363,40 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
         setIsDragging(false);
         dragCounterRef.current = 0;
 
-        if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+        if (composerConfig.attachments && e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
             handleFileSelect(e.dataTransfer.files);
         }
-    }, [handleFileSelect]);
+    }, [composerConfig.attachments, handleFileSelect]);
 
-    // Render automatic AgentSwitcher in bottom row if enabled, agents exist, and no custom switcher provided
-    const resolvedAgentSwitcher = !showAgentSwitcher
-        ? undefined
-        : (agentSwitcherProp !== undefined
-            ? agentSwitcherProp
-            : (effectiveAgents && effectiveAgents.length > 0)
-                ? (
-                    <AgentSwitcher
-                        agents={effectiveAgents}
-                        activeAgentId={effectiveAgentId}
-                        onSelectAuto={() => {
-                            effectiveOnAgentChange?.(null);
-                            context?.setAgentId(null);
-                        }}
-                        onSelectAgent={(id) => {
-                            effectiveOnAgentChange?.(id);
-                            context?.setAgentId(id);
-                        }}
-                        menuPlacement={toolMenuPlacement === 'center' ? 'below' : 'above'}
-                        menuAlign="right"
-                    />
-                )
-                : undefined);
+    const showMic = composerConfig.mic && Boolean(composerConfig.onVoiceInput);
+    const showFooter = composerConfig.disclaimer || composerConfig.usage;
+    const hasNotices = hasFiles || isUploading || Boolean(uploadError);
+
+    const composerClasses = [
+        'cb-composer',
+        compact ? 'cb-composer--compact' : null,
+        compact && multiline ? 'cb-composer--multiline' : null,
+        isDragging ? 'cb-dragging' : null,
+        className || null,
+    ].filter(Boolean).join(' ');
 
     return (
         <div
-            ref={composerRef}
-            className={`cb-composer ${isDragging ? 'cb-dragging' : ''}`}
+            className={composerClasses}
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
         >
-            {isDragging && (
+            {isDragging && composerConfig.attachments && (
                 <div className="cb-drag-overlay">
                     <div className="cb-drag-message">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                             <polyline points="17 8 12 3 7 8" />
                             <line x1="12" y1="3" x2="12" y2="15" />
                         </svg>
-                        <span>Drop files to attach</span>
+                        <span>{labels.dropFiles}</span>
                     </div>
                 </div>
             )}
@@ -428,7 +406,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                     onClose={() => setToolMenuOpen(false)}
                     tools={tools}
                     enabledIds={enabledToolIds}
-                    onChange={onToolsChange!}
+                    onChange={actions.setEnabledToolIds}
                     handledSlugs={handledToolSlugs}
                     placement={toolMenuPlacement}
                 />
@@ -436,47 +414,57 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
 
             <div className="cb-composer-input-wrapper">
                 <div className="cb-composer-upper">
-                    {attachedFiles.length > 0 && (
-                        <div className="cb-attached-files-list">
-                            {attachedFiles.map(f => (
-                                <div key={f.file_id} className="cb-attached-file-chip">
-                                    <span className="cb-chip-icon">{getFileIcon(f.content_type)}</span>
-                                    <span className="cb-chip-name">{f.filename}</span>
-                                    <span className="cb-chip-size">{formatFileSize(f.size_bytes)}</span>
+                    {hasNotices && (
+                        <div className="cb-composer-notices">
+                            {hasFiles && (
+                                <div className="cb-attached-files-list">
+                                    {attachedFiles.map(f => (
+                                        <div key={f.file_id} className="cb-attached-file-chip">
+                                            <span className="cb-chip-icon">{getFileIcon(f.content_type)}</span>
+                                            <span className="cb-chip-name">{f.filename}</span>
+                                            <span className="cb-chip-size">{formatFileSize(f.size_bytes)}</span>
+                                            <button
+                                                type="button"
+                                                className="cb-chip-remove"
+                                                onClick={() => removeFile(f.file_id)}
+                                                title={labels.removeAttachment}
+                                                aria-label={labels.removeAttachment}
+                                            >
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+                                                    <line x1="18" y1="6" x2="6" y2="18" />
+                                                    <line x1="6" y1="6" x2="18" y2="18" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {isUploading && (
+                                <div className="cb-upload-progress-bar">
+                                    <div className="cb-upload-progress-text">
+                                        <span className="cb-upload-spinner-inline" />
+                                        {formatLabel(labels.uploadingFiles, { count: uploadingCount })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {uploadError && (
+                                <div className="cb-upload-error">
+                                    <span>{uploadError}</span>
                                     <button
                                         type="button"
-                                        className="cb-chip-remove"
-                                        onClick={() => removeFile(f.file_id)}
-                                        title="Remove"
+                                        className="cb-error-dismiss"
+                                        onClick={() => setUploadError(null)}
+                                        aria-label={labels.close}
                                     >
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
                                             <line x1="18" y1="6" x2="6" y2="18" />
                                             <line x1="6" y1="6" x2="18" y2="18" />
                                         </svg>
                                     </button>
                                 </div>
-                            ))}
-                        </div>
-                    )}
-
-                    {isUploading && (
-                        <div className="cb-upload-progress-bar">
-                            <div className="cb-upload-progress-text">
-                                <span className="cb-upload-spinner-inline" />
-                                Uploading {uploadingCount} file{uploadingCount > 1 ? 's' : ''}...
-                            </div>
-                        </div>
-                    )}
-
-                    {uploadError && (
-                        <div className="cb-upload-error">
-                            <span>{uploadError}</span>
-                            <button type="button" className="cb-error-dismiss" onClick={() => setUploadError(null)}>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                    <line x1="18" y1="6" x2="6" y2="18" />
-                                    <line x1="6" y1="6" x2="18" y2="18" />
-                                </svg>
-                            </button>
+                            )}
                         </div>
                     )}
 
@@ -487,63 +475,53 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleKeyDown}
                         placeholder={placeholder}
+                        aria-label={placeholder}
                         disabled={disabled}
                         rows={1}
                     />
 
                     <div className="cb-composer-actions">
                         <div className="cb-actions-left">
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                multiple
-                                onChange={(e) => e.target.files && handleFileSelect(e.target.files)}
-                                accept={ALLOWED_TYPES.join(',')}
-                                style={{ display: 'none' }}
-                                disabled={disabled || isUploading}
-                            />
-
-                            {/* Plus button for file upload */}
-                            <button
-                                type="button"
-                                className="cb-action-btn cb-plus-btn"
-                                onClick={() => fileInputRef.current?.click()}
-                                disabled={disabled || isUploading || !storageApiUrl}
-                                title={!storageApiUrl ? 'Storage URL not configured' : 'Add attachment'}
-                                aria-label="Add attachment"
-                            >
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <line x1="12" y1="5" x2="12" y2="19" />
-                                    <line x1="5" y1="12" x2="19" y2="12" />
-                                </svg>
-                            </button>
+                            {composerConfig.attachments && (
+                                <>
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        multiple
+                                        onChange={(e) => e.target.files && handleFileSelect(e.target.files)}
+                                        accept={ALLOWED_TYPES.join(',')}
+                                        style={{ display: 'none' }}
+                                        disabled={disabled || isUploading}
+                                    />
+                                    <button
+                                        type="button"
+                                        className="cb-action-btn cb-plus-btn"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        disabled={disabled || isUploading || !storageApiUrl}
+                                        title={storageApiUrl ? labels.addAttachment : labels.attachmentsUnavailable}
+                                        aria-label={labels.addAttachment}
+                                    >
+                                        {icons.attach}
+                                    </button>
+                                </>
+                            )}
 
                             {showToolsButton && (
                                 <button
                                     type="button"
                                     className={
-                                        'cb-action-btn'
+                                        'cb-action-btn cb-tools-btn'
                                         + (toolMenuOpen ? ' active-state' : '')
                                         + (activeToolCount > 0 ? ' active-icon' : '')
                                     }
                                     onClick={() => setToolMenuOpen(open => !open)}
                                     disabled={disabled}
-                                    title="Tools"
+                                    title={labels.tools}
+                                    aria-label={labels.tools}
                                     aria-haspopup="true"
                                     aria-expanded={toolMenuOpen}
-                                    style={{ position: 'relative' }}
                                 >
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <line x1="4" y1="21" x2="4" y2="14" />
-                                        <line x1="4" y1="10" x2="4" y2="3" />
-                                        <line x1="12" y1="21" x2="12" y2="12" />
-                                        <line x1="12" y1="8" x2="12" y2="3" />
-                                        <line x1="20" y1="21" x2="20" y2="16" />
-                                        <line x1="20" y1="12" x2="20" y2="3" />
-                                        <line x1="1" y1="14" x2="7" y2="14" />
-                                        <line x1="9" y1="8" x2="15" y2="8" />
-                                        <line x1="17" y1="16" x2="23" y2="16" />
-                                    </svg>
+                                    {icons.tools}
                                     {activeToolCount > 0 && (
                                         <span className="cb-action-btn-badge">{activeToolCount}</span>
                                     )}
@@ -552,34 +530,28 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                         </div>
 
                         <div className="cb-actions-right">
-                            {/* Voice input button */}
-                            <button
-                                type="button"
-                                className="cb-action-btn cb-mic-btn"
-                                title="Voice input"
-                                aria-label="Voice input"
-                                onClick={onVoiceInput}
-                            >
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                                    <line x1="12" y1="19" x2="12" y2="23" />
-                                    <line x1="8" y1="23" x2="16" y2="23" />
-                                </svg>
-                            </button>
+                            {showMic && (
+                                <button
+                                    type="button"
+                                    className="cb-action-btn cb-mic-btn"
+                                    title={labels.voiceInput}
+                                    aria-label={labels.voiceInput}
+                                    onClick={composerConfig.onVoiceInput}
+                                >
+                                    {icons.mic}
+                                </button>
+                            )}
 
-                            {onStop && isRunning ? (
+                            {canStop && isBusy ? (
                                 <button
                                     type="button"
                                     className="cb-send-btn cb-stop-btn active"
-                                    onClick={onStop}
+                                    onClick={() => void actions.stopTurn()}
                                     disabled={isStopping}
-                                    title={isStopping ? 'Stopping…' : 'Stop generating'}
-                                    aria-label={isStopping ? 'Stopping' : 'Stop generating'}
+                                    title={isStopping ? labels.stopping : labels.stop}
+                                    aria-label={isStopping ? labels.stopping : labels.stop}
                                 >
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                                        <rect x="6" y="6" width="12" height="12" rx="2" />
-                                    </svg>
+                                    {icons.stop}
                                 </button>
                             ) : (
                                 <button
@@ -587,35 +559,23 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                                     className={`cb-send-btn ${canSend ? 'active' : ''}`}
                                     onClick={handleSend}
                                     disabled={!canSend}
-                                    title={isUploading ? 'Waiting for uploads…' : 'Send message'}
-                                    aria-label="Send message"
+                                    title={isUploading ? labels.waitingForUploads : labels.send}
+                                    aria-label={labels.send}
                                 >
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <line x1="22" y1="2" x2="11" y2="13" />
-                                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                                    </svg>
+                                    {icons.send}
                                 </button>
                             )}
                         </div>
                     </div>
                 </div>
-
-                {showBottomSection && (resolvedAgentSwitcher || bottomLeftContent) && (
-                    <div className="cb-composer-bottom-row">
-                        <div className="cb-composer-bottom-left">
-                            {bottomLeftContent}
-                        </div>
-                        <div className="cb-composer-bottom-right">
-                            {resolvedAgentSwitcher}
-                        </div>
-                    </div>
-                )}
             </div>
 
-            <div className="cb-composer-footer">
-                <span className="cb-composer-footer-note">Uses AI. Verify results.</span>
-                {usage && <UsageIndicator summary={usage} />}
-            </div>
+            {showFooter && (
+                <div className="cb-composer-footer">
+                    {composerConfig.disclaimer && <span className="cb-composer-footer-note">{labels.disclaimer}</span>}
+                    {composerConfig.usage && <ComposerUsage />}
+                </div>
+            )}
         </div>
     );
 });

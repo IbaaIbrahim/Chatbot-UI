@@ -34,6 +34,11 @@
     border-bottom: 1px solid var(--cb-border-subtle) !important;
 }
 
+/* The Artifacts view in the transcript's place is as see-through as it. */
+.cb-chat-container.cb-no-background .cb-artifacts-view {
+    background-color: transparent;
+}
+
 /* Floating Mode */
 .cb-mode-floating {
     position: fixed;
@@ -131,8 +136,9 @@
 }
 
 .cb-chat-header {
-    height: 60px;
-    padding: 0 var(--cb-space-4);
+    /* Shared with `.cb-drawer-header`, so the two bars line up. */
+    height: var(--cb-header-height);
+    padding: 0 var(--cb-space-3);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -328,6 +334,60 @@
     color: var(--cb-text-primary);
 }
 
+/* "Switch view": one entry whose views open beneath it, inside the menu. */
+.cb-header-menu-chevron {
+    display: inline-flex;
+    margin-inline-start: auto;
+    transition: transform var(--cb-transition-fast);
+}
+
+.cb-header-switch-view.is-open .cb-header-menu-chevron {
+    transform: rotate(180deg);
+}
+
+.cb-header-switch-view.is-open {
+    background-color: var(--cb-surface-hover);
+}
+
+.cb-header-view-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 2px 0 2px 14px;
+    padding-inline-start: 8px;
+    border-inline-start: 1px solid var(--cb-border-subtle);
+    animation: cb-fade-in 0.12s ease-out;
+}
+
+.cb-header-view-item {
+    padding-block: 6px;
+    font-weight: 400;
+    color: var(--cb-text-secondary);
+}
+
+.cb-header-view-item.is-active {
+    color: var(--cb-text-primary);
+    font-weight: 500;
+    cursor: default;
+}
+
+.cb-header-view-item.is-active svg,
+.cb-header-view-check svg {
+    color: var(--cb-accent-primary);
+}
+
+.cb-header-view-check {
+    display: inline-flex;
+    margin-inline-start: auto;
+}
+
+/* Between "Switch view" and the rest of the menu. */
+.cb-header-menu-separator {
+    height: 1px;
+    margin: 4px 6px;
+    background-color: var(--cb-border-subtle);
+}
+
 /* Delete thread danger row in context menu */
 .cb-header-menu-item.cb-header-menu-item-danger {
     color: #ef4444;
@@ -486,6 +546,45 @@
     overflow: hidden;
     position: relative;
     /* For scroll button positioning */
+}
+
+/* Below the header: the transcript and the composer (`.cb-chat-view`), and
+ * the Artifacts view in their place while it shows (2026-10-14). One grid
+ * cell holds both, so the view gets exactly the room the chat had, in every
+ * mode. The chat is hidden rather than unmounted: `visibility` keeps its
+ * layout, scroll position and state, takes it out of the Tab order and the
+ * accessibility tree, and — `!important`, over every descendant — wins over
+ * a host block that sets `visibility: visible` on something of its own. */
+.cb-chat-stage {
+    position: relative;
+    display: grid;
+    flex: 1 1 0%;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+}
+
+.cb-chat-stage > * {
+    grid-area: 1 / 1;
+    min-width: 0;
+    min-height: 0;
+}
+
+.cb-chat-view {
+    display: flex;
+    flex-direction: column;
+}
+
+.cb-chat-stage.is-showing-artifacts > .cb-chat-view,
+.cb-chat-stage.is-showing-artifacts > .cb-chat-view * {
+    visibility: hidden !important;
+}
+
+/* Above the footer, which is positioned (z-index 10) for its own menus. */
+.cb-chat-stage > .cb-artifacts-view {
+    position: relative;
+    z-index: 11;
 }
 
 .cb-messages-area {
@@ -761,7 +860,7 @@
 }
 
 .cb-launcher-btn:focus-visible {
-    outline: 2px solid var(--cb-border-focus) !important;
+    outline: 2px solid var(--cb-focus-ring) !important;
     outline-offset: 2px !important;
 }
 
@@ -771,6 +870,26 @@
     width: 24px !important;
     height: 24px !important;
     flex-shrink: 0 !important;
+}
+
+/* The icon's box, whatever the host put in it (`launcherIcon` or
+   `config.icons.launcher`): centred, and sized for the kinds that do not size
+   themselves — an `<img>` would otherwise render at its file's own size, and a
+   font icon at the button's inherited font size. Restyle through this class. */
+.cb-launcher-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    font-size: 24px;
+    color: inherit;
+    pointer-events: none;
+}
+
+.cb-launcher-icon img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
 }
 
 @media (max-width: 640px) {

@@ -1,9 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GatewayStreamClient } from '../api/GatewayStreamClient';
-import { ConversationDetail, ConversationJob, ConversationStep, ConversationSummary, PendingApproval, UsageFigures, ContextFigures, RunUsage, TreeFigures } from '../api/types';
+import {
+    ConversationDetail,
+    ConversationJob,
+    ConversationListFilters,
+    ConversationListResponse,
+    ConversationStep,
+    ConversationSummary,
+    PendingApproval,
+    UsageFigures,
+    ContextFigures,
+    RunUsage,
+    TreeFigures,
+} from '../api/types';
 import { MessageProps, MessageStep } from '../components/MessageBubble/MessageBubble';
 import { describeApprovalRequest } from './useStreamChat';
 import { resolveToolDisplayName } from '../common/toolConfig';
+import { isHostRequestSlug } from '../common/hostCatalogue';
+import { settledToolStatus } from '../api/toolOutput';
+import type { ConversationSearch } from '../store/types';
 
 function extractTextFromContentBlocks(responsePayload: any): string {
     if (!responsePayload || typeof responsePayload !== 'object') return '';
@@ -80,6 +95,12 @@ function mapSteps(steps: ConversationStep[], subAgentJobs: ConversationJob[] = [
                             : 'failed',
             });
         } else if (step.step_type === 'tool_call') {
+            // A host request is the platform asking this browser about its
+            // tools, not a tool call: live it draws no row (its meta-tool's
+            // ``tool_request`` does), so a reload must not draw one either.
+            // The platform records none as its own step today; this keeps a
+            // transcript honest if one ever is.
+            if (isHostRequestSlug(step.tool_slug)) continue;
             messageSteps.push({
                 id: step.uuid,
                 type: 'tool-call',
@@ -91,13 +112,10 @@ function mapSteps(steps: ConversationStep[], subAgentJobs: ConversationJob[] = [
                 // completed/failed split was survivable only while the history
                 // read hid unfinished jobs: now that a live turn is returned,
                 // collapsing 'running' into 'failed' would draw every tool call
-                // in flight as a red error on reload.
-                toolStatus:
-                    step.status === 'completed'
-                        ? 'completed'
-                        : step.status === 'running'
-                            ? 'running'
-                            : 'failed',
+                // in flight as a red error on reload. A completed call whose
+                // body is an error is a failure too (settledToolStatus), as the
+                // live stream shows it.
+                toolStatus: settledToolStatus(step.status, step.tool_output),
             });
         } else if (step.step_type === 'llm_call' || step.step_type === 'final_synthesis') {
             // Thinking first, in the order it streamed: the model deliberates,
@@ -281,11 +299,50 @@ export function collectPendingApprovals(
     return byApproval;
 }
 
+/**
+ * Each job's turn: the top of the chain of jobs that started it
+ * (`triggered_by_job_uuid`), over the conversation's jobs and their nested
+ * sub-agents — the platform's `root_job_uuid`, which every job of a turn
+ * shares, a handoff child's included.
+ *
+ * A handoff child is listed at the top level of the history, beside the job
+ * that handed over; live, the stream keeps the turn the parent's (a handoff
+ * child is a sub-agent there). Until 2026-10-14 its reloaded answer was keyed
+ * by its own job, so its blocks were one row from the transcript and another
+ * from the platform's index (`turn_job_uuid`) in the files panel, and a host
+ * offered to save again a block already saved against the turn. A parent the
+ * history does not list is still the closest known turn.
+ */
+export function turnJobsOf(jobs: ConversationJob[]): Map<string, string> {
+    const parentOf = new Map<string, string | null>();
+    const walk = (list: ConversationJob[]) => {
+        for (const job of list) {
+            parentOf.set(job.uuid, job.triggered_by_job_uuid ?? null);
+            walk(job.sub_agent_jobs ?? []);
+        }
+    };
+    walk(jobs);
+    const turns = new Map<string, string>();
+    parentOf.forEach((_parent, uuid) => {
+        let turn = uuid;
+        const seen = new Set<string>([uuid]);
+        let parent = parentOf.get(turn) ?? null;
+        while (parent && !seen.has(parent)) {
+            seen.add(parent);
+            turn = parent;
+            parent = parentOf.get(turn) ?? null;
+        }
+        turns.set(uuid, turn);
+    });
+    return turns;
+}
+
 export function jobsToMessageProps(
     jobs: ConversationJob[],
     storageApiUrl?: string
 ): MessageProps[] {
     const messages: MessageProps[] = [];
+    const turnOf = turnJobsOf(jobs);
 
     for (const job of jobs) {
         // An agent-started job has no user message: the *user* did not write its
@@ -319,6 +376,7 @@ export function jobsToMessageProps(
                 role: 'user',
                 content: job.user_prompt,
                 attachments,
+                jobUuid: job.uuid,
             });
         }
 
@@ -335,11 +393,22 @@ export function jobsToMessageProps(
         if (!finalText && steps.length === 0) continue;
 
         const { usage, context, subAgentRuns, tree } = usageFromJob(job);
+        const startedAt = job.created_at ? new Date(job.created_at) : undefined;
         messages.push({
             id: `${job.uuid}-assistant`,
             role: 'assistant',
             content: finalText,
+            // What the live turn learnt from its first frame: the turn a block
+            // in this answer is saved against — a handoff child's is the job
+            // that handed over (`turnJobsOf`).
+            jobUuid: turnOf.get(job.uuid) ?? job.uuid,
+            // When the turn started: what the files panel orders the blocks it
+            // finds in this answer by, beside the conversation's files.
+            timestamp: startedAt && !Number.isNaN(startedAt.getTime()) ? startedAt : undefined,
             steps,
+            // The agent that ran this job, when the history names one. No
+            // stream event names the agent, so a live turn has no sender and
+            // shows `labels.assistantName` until the thread is reloaded.
             senderName: job.agent?.name,
             usage,
             context,
@@ -403,10 +472,16 @@ export function findPendingClientToolCalls(
     const found: PendingClientToolCall[] = [];
     for (const job of jobs) {
         for (const step of job.steps) {
+            // ``client`` only: a meta-tool waiting on a host request is a
+            // ``harness`` step, and a run's start-up fetch has no step at all —
+            // neither is a call the transcript could answer, and the platform
+            // times both out by itself. The slug check guards the same rule
+            // should a host request ever be recorded under the client mode.
             if (
                 step.step_type === 'tool_call'
                 && step.dispatch_mode === 'client'
                 && step.status === 'running'
+                && !isHostRequestSlug(step.tool_slug)
             ) {
                 found.push({
                     jobUuid: job.uuid,
@@ -422,13 +497,71 @@ export function findPendingClientToolCalls(
 }
 
 const PAGE_SIZE = 20;
+const STARRED_PAGE_SIZE = 50;
+const SEARCH_PAGE_SIZE = 50;
+
+const NO_SEARCH: ConversationSearch = { query: '', results: [], isSearching: false };
+
+/** The slice of a client this hook needs; a plain `StreamClient` has none of it. */
+interface ConversationListClient {
+    getConversations: (
+        offset?: number,
+        limit?: number,
+        filters?: ConversationListFilters
+    ) => Promise<ConversationListResponse>;
+    getConversationDetail: (id: string) => Promise<ConversationDetail>;
+    setConversationId: (id: string | null) => void;
+    setConversationStarred?: (id: string, starred: boolean) => Promise<ConversationSummary>;
+    renameConversation?: (id: string, title: string) => Promise<ConversationSummary>;
+    deleteConversation?: (id: string) => Promise<void>;
+}
+
+function canListConversations(client: unknown): client is ConversationListClient {
+    return Boolean(client) && typeof (client as ConversationListClient).getConversations === 'function';
+}
+
+const isStarred = (summary: ConversationSummary): boolean => Boolean(summary.starred_at);
+
+/** Newest activity first — the order the Gateway lists them in. */
+const byRecency = (left: ConversationSummary, right: ConversationSummary): number =>
+    new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
+
+/**
+ * Whether this Gateway knows about starring. One that predates it ignores the
+ * `starred` filter and omits `starred_at`, so its "starred" page would hold
+ * every thread. `null` while there is nothing to tell from.
+ */
+function detectStarring(...pages: ConversationSummary[][]): boolean | null {
+    const sample = pages.flat()[0];
+    return sample ? Object.prototype.hasOwnProperty.call(sample, 'starred_at') : null;
+}
+
+/**
+ * Narrow a search page to the titles that match, but only when the Gateway
+ * ignored `q`. A Gateway that searches matches what the user wrote anywhere in
+ * the conversation, not just the title, so filtering its results by title would
+ * throw real matches away. One that predates search returns every thread
+ * unfiltered — it also predates `starred_at`, which shipped with search, and
+ * that absence is how it is recognised.
+ */
+function keepMatches(items: ConversationSummary[], query: string): ConversationSummary[] {
+    if (detectStarring(items) !== false) return items;
+    const needle = query.toLowerCase();
+    return items.filter(summary => (summary.title || '').toLowerCase().includes(needle));
+}
 
 export interface UseConversationsResult {
+    /** Recent conversations: the unstarred ones when starring is supported, otherwise all. */
     conversations: ConversationSummary[];
+    starredConversations: ConversationSummary[];
+    starringSupported: boolean;
+    /** The client can rename, so a title the user types will persist. */
+    renamingSupported: boolean;
     isLoading: boolean;
     isLoadingMore: boolean;
     hasMore: boolean;
     activeConversationId: string | null;
+    search: ConversationSearch;
     fetchConversations: () => Promise<void>;
     loadMore: () => Promise<void>;
     /**
@@ -444,7 +577,18 @@ export interface UseConversationsResult {
         id: string
     ) => Promise<{ messages: MessageProps[]; detail: ConversationDetail } | null>;
     newChat: () => void;
+    /** Rejects when the server refuses, and then removes nothing. */
     deleteConversation: (id: string) => Promise<void>;
+    /** Moves the thread between Starred and Recents at once, and back if the server refuses. */
+    setStarred: (id: string, starred: boolean) => Promise<void>;
+    /**
+     * Shows the new title at once, then the one the server stored, and the old
+     * one again if it refuses. A blank title, or the one it already has,
+     * changes nothing.
+     */
+    renameConversation: (id: string, title: string) => Promise<void>;
+    /** Searches titles on the server; an empty query ends the search. */
+    searchConversations: (query: string) => void;
 }
 
 export function useConversations(
@@ -452,38 +596,52 @@ export function useConversations(
     storageApiUrl?: string
 ): UseConversationsResult {
     const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+    const [starredConversations, setStarredConversations] = useState<ConversationSummary[]>([]);
+    const [starringDetected, setStarringDetected] = useState<boolean | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [offset, setOffset] = useState(0);
     const [total, setTotal] = useState(0);
     const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+    const [search, setSearch] = useState<ConversationSearch>(NO_SEARCH);
     // Which load is the current one. See selectConversation.
     const requestSeq = useRef(0);
+    const searchSeq = useRef(0);
 
+    const listClient = canListConversations(client) ? client : null;
+    const clientCanStar = typeof listClient?.setConversationStarred === 'function';
+    const starringSupported = clientCanStar && starringDetected !== false;
+    const renamingSupported = typeof listClient?.renameConversation === 'function';
     const hasMore = conversations.length < total;
 
     const fetchConversations = useCallback(async () => {
-        if (!client) return;
+        if (!listClient) return;
         setIsLoading(true);
         setOffset(0);
         try {
-            const resp = await client.getConversations(0, PAGE_SIZE);
-            setConversations(resp.items);
-            setTotal(resp.pagination.total);
+            const [recentPage, starredPage] = await Promise.all([
+                listClient.getConversations(0, PAGE_SIZE, { starred: false }),
+                listClient.getConversations(0, STARRED_PAGE_SIZE, { starred: true }),
+            ]);
+            const detected = detectStarring(recentPage.items, starredPage.items);
+            if (detected !== null) setStarringDetected(detected);
+            setConversations(recentPage.items.filter(summary => !isStarred(summary)));
+            setStarredConversations(detected ? starredPage.items.filter(isStarred) : []);
+            setTotal(recentPage.pagination.total);
         } catch (e) {
             console.error('[useConversations] failed to fetch conversations:', e);
         } finally {
             setIsLoading(false);
         }
-    }, [client]);
+    }, [listClient]);
 
     const loadMore = useCallback(async () => {
-        if (!client || isLoadingMore || !hasMore) return;
+        if (!listClient || isLoadingMore || !hasMore) return;
         setIsLoadingMore(true);
         const nextOffset = offset + PAGE_SIZE;
         try {
-            const resp = await client.getConversations(nextOffset, PAGE_SIZE);
-            setConversations(prev => [...prev, ...resp.items]);
+            const resp = await listClient.getConversations(nextOffset, PAGE_SIZE, { starred: false });
+            setConversations(prev => [...prev, ...resp.items.filter(summary => !isStarred(summary))]);
             setOffset(nextOffset);
             setTotal(resp.pagination.total);
         } catch (e) {
@@ -491,12 +649,12 @@ export function useConversations(
         } finally {
             setIsLoadingMore(false);
         }
-    }, [client, isLoadingMore, hasMore, offset]);
+    }, [listClient, isLoadingMore, hasMore, offset]);
 
     const selectConversation = useCallback(async (
         id: string
     ): Promise<{ messages: MessageProps[]; detail: ConversationDetail } | null> => {
-        if (!client) return null;
+        if (!listClient) return null;
         // Two quick clicks in the drawer are two concurrent loads, and without a
         // guard the slower one wins whatever it finishes last — leaving the
         // client pointed at one thread while the screen shows another, so the
@@ -504,10 +662,10 @@ export function useConversations(
         const seq = ++requestSeq.current;
         setIsLoading(true);
         try {
-            const detail: ConversationDetail = await client.getConversationDetail(id);
+            const detail: ConversationDetail = await listClient.getConversationDetail(id);
             if (seq !== requestSeq.current) return null;
             setActiveConversationId(id);
-            client.setConversationId(id);
+            listClient.setConversationId(id);
             return {
                 messages: jobsToMessageProps(detail.jobs, storageApiUrl),
                 detail,
@@ -518,26 +676,122 @@ export function useConversations(
         } finally {
             if (seq === requestSeq.current) setIsLoading(false);
         }
-    }, [client, storageApiUrl]);
+    }, [listClient, storageApiUrl]);
 
     const newChat = useCallback(() => {
         setActiveConversationId(null);
-        client?.setConversationId(null);
-    }, [client]);
+        listClient?.setConversationId(null);
+    }, [listClient]);
+
+    /**
+     * Put a summary where its starred state says it belongs, everywhere it is
+     * shown. The Recents total moves with it because the server counts the
+     * unstarred set, whether or not that thread had been paged in yet.
+     */
+    const placeConversation = useCallback((summary: ConversationSummary, wasStarred: boolean) => {
+        const starredNow = isStarred(summary);
+        setStarredConversations(prev => {
+            const others = prev.filter(c => c.uuid !== summary.uuid);
+            return starredNow ? [summary, ...others].sort(byRecency) : others;
+        });
+        setConversations(prev => {
+            const others = prev.filter(c => c.uuid !== summary.uuid);
+            return starredNow ? others : [summary, ...others].sort(byRecency);
+        });
+        if (starredNow !== wasStarred) {
+            setTotal(prev => Math.max(0, prev + (starredNow ? -1 : 1)));
+        }
+        setSearch(prev => ({
+            ...prev,
+            results: prev.results.map(c => (c.uuid === summary.uuid ? summary : c)),
+        }));
+    }, []);
+
+    const findSummary = useCallback(
+        (id: string): ConversationSummary | undefined =>
+            [...starredConversations, ...conversations, ...search.results].find(c => c.uuid === id),
+        [starredConversations, conversations, search.results]
+    );
+
+    const setStarred = useCallback(async (id: string, starred: boolean) => {
+        if (!listClient?.setConversationStarred) return;
+        const current = findSummary(id);
+        if (!current || isStarred(current) === starred) return;
+
+        const previous = current;
+        placeConversation({ ...current, starred_at: starred ? new Date().toISOString() : null }, isStarred(previous));
+        try {
+            const updated = await listClient.setConversationStarred(id, starred);
+            placeConversation({ ...previous, ...updated }, starred);
+        } catch (e) {
+            placeConversation(previous, starred);
+            throw e;
+        }
+    }, [listClient, findSummary, placeConversation]);
+
+    /** Give a thread a new title everywhere it is shown, leaving it where it is. */
+    const retitle = useCallback((id: string, title: string) => {
+        const apply = (list: ConversationSummary[]) =>
+            list.map(c => (c.uuid === id ? { ...c, title } : c));
+        setConversations(apply);
+        setStarredConversations(apply);
+        setSearch(prev => ({ ...prev, results: apply(prev.results) }));
+    }, []);
+
+    const renameConversation = useCallback(async (id: string, title: string) => {
+        if (!listClient?.renameConversation) {
+            throw new Error('This client cannot rename conversations.');
+        }
+        const next = title.trim();
+        const current = findSummary(id);
+        if (!next || current?.title === next) return;
+        retitle(id, next);
+        try {
+            const updated = await listClient.renameConversation(id, next);
+            retitle(id, updated.title);
+        } catch (e) {
+            if (current) retitle(id, current.title);
+            throw e;
+        }
+    }, [listClient, findSummary, retitle]);
 
     const deleteConversation = useCallback(async (id: string) => {
-        try {
-            if (client && 'deleteConversation' in client && typeof (client as any).deleteConversation === 'function') {
-                await (client as any).deleteConversation(id);
-            }
-        } catch (e) {
-            console.error('[useConversations] deleteConversation failed:', e);
+        if (!listClient?.deleteConversation) {
+            throw new Error('This client cannot delete conversations.');
         }
+        await listClient.deleteConversation(id);
+        const removed = findSummary(id);
         setConversations(prev => prev.filter(c => c.uuid !== id));
+        setStarredConversations(prev => prev.filter(c => c.uuid !== id));
+        setSearch(prev => ({ ...prev, results: prev.results.filter(c => c.uuid !== id) }));
+        if (removed && !isStarred(removed)) {
+            setTotal(prev => Math.max(0, prev - 1));
+        }
         if (activeConversationId === id) {
             newChat();
         }
-    }, [client, activeConversationId, newChat]);
+    }, [listClient, findSummary, activeConversationId, newChat]);
+
+    const searchConversations = useCallback((query: string) => {
+        const trimmed = query.trim();
+        const seq = ++searchSeq.current;
+        if (!trimmed || !listClient) {
+            setSearch(NO_SEARCH);
+            return;
+        }
+        setSearch(prev => ({ query: trimmed, results: prev.query ? prev.results : [], isSearching: true }));
+        listClient
+            .getConversations(0, SEARCH_PAGE_SIZE, { query: trimmed })
+            .then(page => {
+                if (seq !== searchSeq.current) return;
+                setSearch({ query: trimmed, results: keepMatches(page.items, trimmed), isSearching: false });
+            })
+            .catch(e => {
+                if (seq !== searchSeq.current) return;
+                console.error('[useConversations] conversation search failed:', e);
+                setSearch({ query: trimmed, results: [], isSearching: false });
+            });
+    }, [listClient]);
 
     useEffect(() => {
         fetchConversations();
@@ -545,14 +799,21 @@ export function useConversations(
 
     return {
         conversations,
+        starredConversations,
+        starringSupported,
+        renamingSupported,
         isLoading,
         isLoadingMore,
         hasMore,
         activeConversationId,
+        search,
         fetchConversations,
         loadMore,
         selectConversation,
         newChat,
         deleteConversation,
+        setStarred,
+        renameConversation,
+        searchConversations,
     };
 }

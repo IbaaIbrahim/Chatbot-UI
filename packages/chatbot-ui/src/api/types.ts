@@ -21,6 +21,280 @@ export interface ConversationSummary {
     title: string;
     created_at: string;
     updated_at: string;
+    /**
+     * When the user starred it, or `null` when not starred. Absent altogether
+     * from a Gateway that predates starring — which is how the sidebar knows
+     * not to offer it.
+     */
+    starred_at?: string | null;
+}
+
+/** Narrows `GET /v1/user/conversations`. Both are optional and combine. */
+export interface ConversationListFilters {
+    /**
+     * Case-insensitive match on the title or on anything the user wrote in the
+     * conversation (never on a prompt one agent wrote for another).
+     */
+    query?: string;
+    /** `true` for starred only, `false` for unstarred only. */
+    starred?: boolean;
+}
+
+/** One live allowance grant: from the user's plan, or from a top-up. */
+export interface CreditGrant {
+    source: 'plan' | 'topup';
+    credit_cap: number;
+    consumed: number;
+    /** Clamped at zero; an overdraft shows as `consumed > credit_cap`. */
+    remaining: number;
+    /** ISO 8601; `null` = never lapses. */
+    valid_until: string | null;
+}
+
+/** Whose limit stops the user from starting a job — a party, never its figures. */
+export type CreditBlock = 'no_plan' | 'provider_account' | 'organization_allowance' | 'user_allowance';
+
+/**
+ * The signed-in user's own credits, from `GET /v1/user/credits`.
+ *
+ * A user holds no credits of their own: the platform bills the partner, and
+ * what a user holds is allowance — grants capping how much their work may
+ * spend. The organisation's and the partner's figures are never included.
+ */
+export interface UserCredits {
+    allowance: {
+        /** `false`: no personal limit, and the totals are zero. */
+        limited: boolean;
+        credit_cap: number;
+        consumed: number;
+        remaining: number;
+        grants: CreditGrant[];
+    };
+    /** Credits charged for the user's work since `month_started_at`, with or without a limit. */
+    used_this_month: number;
+    month_started_at: string;
+    /** Whether a job submitted now would be admitted. */
+    can_run: boolean;
+    blocked_by: CreditBlock | null;
+}
+
+/**
+ * What a saved artifact is. The platform stores it as `artifact_kind`; the
+ * library knows only these five, for the filter and the icon, and shows any
+ * other value as a `file`.
+ */
+export type ArtifactKind = 'chart' | 'table' | 'kpi' | 'report' | 'file';
+
+/**
+ * Where a conversation's file came from: `upload` — the user attached it to a
+ * message; `generated` — the application produced it (an export); `artifact`
+ * — the user saved a visual from an answer.
+ */
+export type ConversationFileSource = 'upload' | 'generated' | 'artifact';
+
+/**
+ * One file stored against a conversation's turn, from the storage API
+ * (`job_attachments`). The same shape for the conversation's files and for the
+ * user's artifacts across conversations; the field names are the platform's.
+ */
+export interface ConversationFile {
+    attachment_uuid: string;
+    /** The turn it belongs to; with `attachment_uuid`, what downloads it. */
+    job_uuid: string;
+    conversation_uuid: string | null;
+    /** Only in the artifacts listing, which spans conversations. */
+    conversation_title: string | null;
+    filename: string;
+    content_type: string | null;
+    size_bytes: number;
+    is_artifact: boolean;
+    artifact_kind: ArtifactKind | null;
+    /** What the user or the application named it; `filename` is the fallback. */
+    title: string | null;
+    /** A saved artifact kept the source it was drawn from (`StorageClient.getArtifact` returns it). */
+    has_spec: boolean;
+    source: ConversationFileSource;
+    created_at: string;
+    /**
+     * The storage API's download route for it. Authenticated — fetch it with
+     * the user's token (`StorageClient.fetchFile` / `downloadFile`), never as a
+     * plain link.
+     */
+    download_url: string;
+    /**
+     * Kept as an artifact (2026-10-14): `true` for an artifact, and for a
+     * generated file the user saved (a copy of it is an artifact — see
+     * `saved_from_uuid`); always `false` for an upload.
+     */
+    saved: boolean;
+    /**
+     * For an artifact saved from a drawn block: that block's `blockKey`
+     * (`SaveFileOptions.blockKey`), which ties the two together — the block is
+     * then "Saved". `null` otherwise.
+     */
+    block_key: string | null;
+    /** For an artifact saved from a generated file (`saveGeneratedFile`): that file's uuid. */
+    saved_from_uuid: string | null;
+}
+
+/**
+ * Whether an artifact is kept: `saved` — the user pressed Save, and a stored,
+ * downloadable artifact exists; `unsaved` — drawn or generated, never saved;
+ * `all` — both.
+ */
+export type ArtifactStatus = 'all' | 'saved' | 'unsaved';
+
+/**
+ * A rich block the agent drew in an answer, as the platform indexed it when
+ * the turn ended (`jobs.job_blocks`, 2026-10-14): a fence of a language the
+ * client draws (`block_languages`). Only the text exists — a block is drawn
+ * again from its `source` by the host's renderer — until the user saves it.
+ */
+export interface BlockRecord {
+    uuid: string;
+    /** The job that drew it: a sub-agent's own job for a sub-agent's block. */
+    job_uuid: string;
+    /**
+     * The turn's job — the top of the sub-agent tree, `job_uuid` for a
+     * top-level job. What a block is saved against, and with `block_key` what
+     * tells two blocks apart (the same block drawn twice in a turn is one).
+     */
+    turn_job_uuid: string;
+    conversation_uuid: string | null;
+    conversation_title: string | null;
+    /** The fence's language (`chart`). */
+    language: string;
+    /** The language when it is one of the artifact kinds (`chart`, `table`, `kpi`, `report`); `null` otherwise. */
+    kind: ArtifactKind | null;
+    /** `blockKeyOf(language, source)` — the drawn block's `blockKey`. */
+    block_key: string;
+    /** Its `"title"`, when the body declares one. */
+    title: string | null;
+    /** Its order among the job's blocks. */
+    position: number;
+    created_at: string;
+    /** An artifact with its key hangs off a job of its turn. */
+    saved: boolean;
+    /** Those artifacts, oldest first. */
+    artifact_uuids: string[];
+}
+
+/** A block with its body, to draw it again (`StorageClient.getBlock`). */
+export interface BlockWithSource extends BlockRecord {
+    /** The fence's body exactly as the renderer draws it. */
+    source: string;
+}
+
+/**
+ * Everything a conversation holds (`StorageClient.listConversationFiles`):
+ * its files — uploads, generated files, artifacts — newest first, and the
+ * blocks its answers drew, oldest turn first and in order within a turn.
+ * Blocks are indexed when a turn ends; the current turn's are only in the
+ * transcript until then.
+ */
+export interface ConversationContents {
+    conversation_uuid: string;
+    files: ConversationFile[];
+    blocks: BlockRecord[];
+}
+
+/**
+ * One of the user's artifacts across conversations, saved or not
+ * (`StorageClient.listArtifactEntries`): a stored file — an artifact, or a
+ * generated file nobody saved — or an indexed block nobody saved. A saved
+ * block is listed as its artifact file.
+ */
+export interface ArtifactEntry {
+    /** `file:<uuid>` or `block:<uuid>`. */
+    id: string;
+    type: 'file' | 'block';
+    saved: boolean;
+    /** A block of a language that is no artifact kind has none. */
+    kind: ArtifactKind | null;
+    title: string | null;
+    created_at: string;
+    job_uuid: string;
+    /** `null` for a saved artifact whose conversation was deleted. */
+    conversation_uuid: string | null;
+    conversation_title: string | null;
+    /** Set when `type` is `file`. */
+    file: ConversationFile | null;
+    /** Set when `type` is `block`. */
+    block: BlockRecord | null;
+}
+
+/** `listArtifactEntries`' query. */
+export interface ArtifactEntryQuery {
+    /** Default `all`. */
+    status?: ArtifactStatus;
+    kind?: ArtifactKind;
+    /** Matches the title, or a file's filename. Cut at 200 characters. */
+    q?: string;
+    /** Default 20; at most 100. */
+    limit?: number;
+    offset?: number;
+}
+
+/** One page of the user's artifacts, saved and not, newest first. */
+export interface ArtifactEntryPage {
+    items: ArtifactEntry[];
+    /** `null` when the server does not say. */
+    total: number | null;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+}
+
+/** `saveFile`'s options. */
+export interface SaveFileOptions {
+    /** Shown in the files panel and the artifacts list; the filename otherwise. */
+    title?: string;
+    kind?: ArtifactKind;
+    /**
+     * What the file was made from, so it can be drawn again — a block's fence
+     * body, say. The storage API keeps one JSON object of at most 256 KiB and
+     * refuses the whole save otherwise, so `saveFile` sends an object (or a
+     * string holding one) as that object, keeps anything else as its text
+     * under `source` (`{"source": "…"}`), and leaves out — with a console
+     * warning, saving the file without it — a spec still outside the limits.
+     * `prepareSpec(spec)` says beforehand what will be sent.
+     */
+    spec?: unknown;
+    /**
+     * `true` saves it as an artifact (the user chose to keep it: it appears
+     * under "Artifacts"); `false`, the default, as a generated file of the
+     * conversation (an export).
+     */
+    isArtifact?: boolean;
+    /** The name for a `Blob` that has none; a `File` keeps its own unless this is set. */
+    filename?: string;
+    /**
+     * For an artifact saved from a drawn block: the block's `blockKey` (its
+     * prop). It ties the artifact to the block, so the block is listed as
+     * "Saved" in the conversation's files and no longer as "Not saved" under
+     * Artifacts. Sent only with `isArtifact: true`.
+     */
+    blockKey?: string;
+}
+
+/** `listArtifacts`' query. */
+export interface ArtifactListQuery {
+    /** Default 20; at most 100, what the storage API serves per page. */
+    limit?: number;
+    offset?: number;
+    /** Matches the title or the filename. Cut at 200 characters, the storage API's limit. */
+    q?: string;
+    kind?: ArtifactKind;
+}
+
+/** One page of the user's artifacts, newest first. */
+export interface ArtifactPage {
+    items: ConversationFile[];
+    /** `null` when the server does not say. */
+    total: number | null;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
 }
 
 export interface ConversationAttachment {
@@ -42,12 +316,16 @@ export interface ConversationStep {
     tool_output: any;
     /**
      * How this tool call is executed: ``kafka``/``inline`` run in a worker,
-     * ``client`` runs in this browser, ``sub_agent`` starts another agent.
+     * ``client`` runs in this browser, ``sub_agent`` starts another agent,
+     * ``harness`` is a central-mode meta-tool (``search_tools`` and the rest).
      *
      * Worth reading only in combination with ``status``: a ``client`` step still
      * ``running`` is a call *this page* has not answered, which is a different
      * situation from a worker call in flight even though both look identical
-     * without this field. ``null`` on every non-tool step.
+     * without this field. A ``harness`` step still ``running`` may be waiting
+     * on this browser too — for the answer to a host request — but that is not
+     * a call the transcript can answer: the platform times it out by itself and
+     * carries on with its own half. ``null`` on every non-tool step.
      */
     dispatch_mode?: string | null;
     input_tokens: number;

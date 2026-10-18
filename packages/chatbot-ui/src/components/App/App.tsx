@@ -1,126 +1,111 @@
 import * as React from 'react';
-import { ChatContainer, ChatMode, ChatTheme } from '../ChatContainer/ChatContainer';
+import { ChatContainer } from '../ChatContainer/ChatContainer';
+import type { ChatMode, ChatTheme } from '../ChatContainer/presentation';
 import { Composer } from '../Composer/Composer';
 import { MainChat } from '../MainChat/MainChat';
-import { ChatbotProvider, useChatbot } from '../../context/ChatbotContext';
-import type { AgentSidebarItem } from '../AgentSidebar/AgentSidebar';
-import type { ChatbotUIConfig } from '../../common/chatbotConfig';
-import type { StreamChatClient } from '../../api/StreamClient';
-import type { GatewayStreamClient } from '../../api/GatewayStreamClient';
-import type { UseStreamChatOptions } from '../../hooks/useStreamChat';
-import type { ToolConfig } from '../../common/toolConfig';
+import { ChatbotProvider } from '../../context/ChatbotContext';
+import type { ChatbotProviderProps } from '../../context/ChatbotContext';
+import { useChatState, useOptionalChatRuntime } from '../../store/hooks';
 
-export interface AppProps {
-    client?: StreamChatClient | GatewayStreamClient | null;
-    streamUrl?: string;
-    streamHeaders?: Record<string, string>;
+/** Where and how the chat is drawn — read by this instance only. */
+export interface ChatAppPresentationProps {
     mode?: ChatMode;
-    isOpen?: boolean;
-    onClose?: () => void;
-    onOpen?: () => void;
-    embedded?: boolean;
-    userName?: string;
-    onEvent?: UseStreamChatOptions['onEvent'];
-    storageApiUrl?: string;
-    accessToken?: string | null;
-    allowLocalNetworkAccess?: boolean;
-    agents?: AgentSidebarItem[];
-    tools?: Record<string, ToolConfig>;
-    agentId?: string | null;
-    agentsLoading?: boolean;
-    onAgentChange?: (agentId: string | null) => void;
-    theme?: ChatTheme;
-    show_tool_toggles?: boolean;
-    showAgentSwitcher?: boolean;
-    show_agent_switcher?: boolean;
-    showBottomSection?: boolean;
-    show_bottom_section?: boolean;
-    headerActions?: React.ReactNode;
-    brand?: React.ReactNode;
     allowedModes?: ChatMode[];
+    theme?: ChatTheme;
+    embedded?: boolean;
     noBackground?: boolean;
-    config?: ChatbotUIConfig;
-    onContextChange?: (contexts: string[]) => void;
-    onSwitchMode?: (mode: ChatMode) => void;
-    onShare?: () => void;
+    /**
+     * The floating button's icon — any React node (an SVG, an icon component, a
+     * font icon, an `<img>`). Defaults to `config.icons.launcher`. See
+     * `ChatContainerProps.launcherIcon`.
+     */
+    launcherIcon?: React.ReactNode;
 }
 
-const ChatAppInner: React.FC<AppProps> = ({
-    mode = 'fullscreen',
-    theme = 'system',
-    isOpen = true,
-    onClose,
-    onOpen,
-    embedded = false,
-    userName = 'User',
-    headerActions,
-    brand,
+/**
+ * The ready-made chat: header, sidebar, transcript and composer.
+ *
+ * With no `ChatbotProvider` above it, it creates one from its own props. Under
+ * a provider it uses that one, and the provider props here are ignored — which
+ * is what a host that mounts the provider once at its root wants, and is
+ * reported if any are passed anyway.
+ */
+export type AppProps = ChatAppPresentationProps & Omit<ChatbotProviderProps, 'children'>;
+
+// Every placement prop decided by `App`'s defaults; the icon stays optional, so an
+// omitted one falls through to `config.icons.launcher`.
+type ChatAppLayoutProps = Required<Omit<ChatAppPresentationProps, 'launcherIcon'>>
+    & Pick<ChatAppPresentationProps, 'launcherIcon'>;
+
+const ChatAppLayout: React.FC<ChatAppLayoutProps> = ({
+    mode,
     allowedModes,
-    noBackground = false,
-    config,
-    onContextChange,
-    onSwitchMode,
-    onShare,
-    showAgentSwitcher,
-    show_agent_switcher,
-    showBottomSection,
-    show_bottom_section,
+    theme,
+    embedded,
+    noBackground,
+    launcherIcon,
 }) => {
-    const context = useChatbot();
+    const isEmpty = useChatState(s => s.messages.length === 0);
+    const isEmptyFullscreen = mode === 'fullscreen' && isEmpty;
 
-    const messages = context?.messages ?? [];
-    const isEmptyFullscreen = mode === 'fullscreen' && messages.length === 0;
-
-    const composerElement = (
+    const composer = (
         <div className="cb-composer-stack">
-            <Composer
-                ref={context?.composerRef}
-                onSelectedContextsChange={onContextChange}
-                toolMenuPlacement={isEmptyFullscreen ? 'center' : 'above'}
-                showAgentSwitcher={showAgentSwitcher}
-                show_agent_switcher={show_agent_switcher}
-                showBottomSection={showBottomSection}
-                show_bottom_section={show_bottom_section}
-            />
+            <Composer toolMenuPlacement={isEmptyFullscreen ? 'center' : 'above'} />
         </div>
     );
 
     return (
         <ChatContainer
             mode={mode}
-            theme={theme}
-            isOpen={isOpen}
-            onClose={onClose}
-            onOpen={onOpen}
-            embedded={embedded}
             allowedModes={allowedModes}
+            theme={theme}
+            embedded={embedded}
             noBackground={noBackground}
-            onSwitchMode={onSwitchMode}
-            headerActions={headerActions}
-            brand={brand}
-            onShare={onShare}
-            footer={isEmptyFullscreen ? null : composerElement}
+            launcherIcon={launcherIcon}
+            footer={isEmptyFullscreen ? null : composer}
         >
-            <MainChat
-                emptyComposer={isEmptyFullscreen ? composerElement : undefined}
-                userName={userName}
-                config={config}
-                mode={mode}
-            />
+            <MainChat emptyComposer={isEmptyFullscreen ? composer : undefined} />
         </ChatContainer>
     );
 };
 
-export const App: React.FC<AppProps> = (props) => {
-    const existingContext = useChatbot();
-    if (existingContext) {
-        return <ChatAppInner {...props} />;
-    }
-    return (
-        <ChatbotProvider {...props}>
-            <ChatAppInner {...props} />
-        </ChatbotProvider>
+const NO_MODES: ChatMode[] = [];
+
+export const App: React.FC<AppProps> = ({
+    mode = 'fullscreen',
+    allowedModes = NO_MODES,
+    theme = 'system',
+    embedded = false,
+    noBackground = false,
+    launcherIcon,
+    ...providerProps
+}) => {
+    const runtime = useOptionalChatRuntime();
+    const ignoredProps = runtime
+        ? Object.entries(providerProps).filter(([, value]) => value !== undefined).map(([name]) => name)
+        : [];
+    const ignoredKey = ignoredProps.join(', ');
+
+    React.useEffect(() => {
+        if (!ignoredKey) return;
+        console.warn(
+            `[chatbot-ui] <ChatApp> is inside a <ChatbotProvider>, so these props were ignored: ${ignoredKey}. `
+            + 'Pass them to the provider instead.'
+        );
+    }, [ignoredKey]);
+
+    const layout = (
+        <ChatAppLayout
+            mode={mode}
+            allowedModes={allowedModes}
+            theme={theme}
+            embedded={embedded}
+            noBackground={noBackground}
+            launcherIcon={launcherIcon}
+        />
     );
+
+    return runtime ? layout : <ChatbotProvider {...providerProps}>{layout}</ChatbotProvider>;
 };
 
 export const ChatApp = App;

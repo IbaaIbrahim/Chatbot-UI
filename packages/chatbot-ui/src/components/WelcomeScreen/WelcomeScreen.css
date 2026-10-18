@@ -201,7 +201,11 @@
     background: transparent;
 }
 
-.cb-welcome-composer-slot .cb-composer-input-wrapper {
+/* The comfortable box only: a host that forces `density: 'compact'` gets the
+   one-row pill here too, which a fixed height would stretch. `:where` keeps the
+   selector's weight what it was, so how it ranks against the composer's own
+   focus ring is unchanged. */
+.cb-welcome-composer-slot :where(.cb-composer:not(.cb-composer--compact)) .cb-composer-input-wrapper {
     min-height: 84px;
     border-radius: 10px;
     background: var(--cb-bg-elevated);
@@ -209,7 +213,7 @@
     box-shadow: 0 18px 46px rgba(15, 23, 42, 0.08), 0 1px 0 rgba(255, 255, 255, 0.65) inset;
 }
 
-.cb-welcome-composer-slot .cb-composer-textarea {
+.cb-welcome-composer-slot :where(.cb-composer:not(.cb-composer--compact)) .cb-composer-textarea {
     min-height: 40px;
 }
 
@@ -249,8 +253,77 @@
 }
 
 .cb-welcome-quick-action-pill:focus-visible {
-    outline: 2px solid var(--cb-border-focus);
+    outline: 2px solid var(--cb-focus-ring);
     outline-offset: 2px;
+}
+
+/* A category pill whose prompt list is open. */
+:root .cb-welcome-quick-action-pill.is-open {
+    background-color: rgba(99, 102, 241, 0.12);
+    border-color: rgba(99, 102, 241, 0.45);
+}
+
+/* --- A quick-action category's prompts ----------------------------------- */
+
+.cb-welcome-prompt-list {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 720px;
+    padding: var(--cb-space-1) 0;
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: 12px;
+    background-color: var(--cb-bg-elevated);
+    box-shadow: var(--cb-shadow-sm);
+    animation: cb-prompt-list-open 160ms ease-out;
+}
+
+@keyframes cb-prompt-list-open {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+:root .cb-welcome-prompt-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cb-space-3);
+    width: 100%;
+    padding: 13px 20px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: var(--cb-text-primary);
+    font-size: 14px;
+    font-weight: 500;
+    text-align: start;
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+:root .cb-welcome-prompt-row:hover {
+    background-color: var(--cb-surface-hover);
+}
+
+:root .cb-welcome-prompt-row:focus-visible {
+    outline: 2px solid var(--cb-focus-ring);
+    outline-offset: -2px;
+}
+
+.cb-welcome-prompt-text {
+    min-width: 0;
+}
+
+.cb-welcome-prompt-chevron {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--cb-text-tertiary);
 }
 
 .cb-welcome-feature-cards-grid {
@@ -345,7 +418,7 @@
 }
 
 .cb-welcome-feature-card:focus-visible {
-    outline: 2px solid var(--cb-border-focus);
+    outline: 2px solid var(--cb-focus-ring);
     outline-offset: 2px;
 }
 
@@ -626,6 +699,7 @@
     text-align: start;
 }
 
+/* Hover, not focus: the soft accent edge (`--cb-border-focus`) stays. */
 .cb-quick-action-card:hover {
     background-color: var(--cb-bg-tertiary);
     border-color: var(--cb-border-focus);

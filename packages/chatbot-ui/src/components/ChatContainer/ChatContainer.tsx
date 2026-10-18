@@ -1,203 +1,108 @@
 import React from 'react';
-const { useState, useEffect, useRef, useLayoutEffect, useMemo } = React;
 import './ChatContainer.css';
 import { ChatHeader } from '../ChatHeader/ChatHeader';
 import { ConversationSidebar } from '../ConversationSidebar/ConversationSidebar';
+import { CreditUsageDialog } from '../CreditUsage/CreditUsageDialog';
+import { ArtifactsPanel } from '../Files/ArtifactsPanel';
+import { ConversationFilesPanel } from '../Files/ConversationFilesPanel';
 import { MainChat } from '../MainChat/MainChat';
-import { useChatbot } from '../../context/ChatbotContext';
+import { useChatActions, useChatState, useIcons, useLabels } from '../../store/hooks';
+import {
+    ALL_MODES,
+    ChatMode,
+    ChatPresentation,
+    ChatPresentationContext,
+    ChatTheme,
+    themeAttribute,
+    useWideViewport,
+} from './presentation';
 
-export type ChatMode = 'floating' | 'sidebar' | 'fullscreen';
-export type ChatTheme = 'light' | 'dark' | 'system';
+export type { ChatMode, ChatTheme } from './presentation';
+
+const { useEffect, useMemo, useState } = React;
 
 export interface ChatContainerProps {
     mode?: ChatMode;
+    /** The modes "Switch view" may move between; the first is used if `mode` is not among them. */
     allowedModes?: ChatMode[];
-    onSwitchMode?: (newMode: ChatMode) => void;
-    isOpen?: boolean;
+    theme?: ChatTheme;
+    /** A flex child of the host's layout rather than a fixed overlay. */
     embedded?: boolean;
     noBackground?: boolean;
-    onClose?: () => void;
-    onOpen?: () => void;
-    children?: React.ReactNode;
+    /**
+     * The floating button's icon, shown while a floating chat is closed. Any React
+     * node: an SVG, an icon component, a font icon or an `<img>`. Defaults to
+     * `config.icons.launcher` (the sparkle), so a host that sets the icon there
+     * for every instance needs nothing here.
+     */
+    launcherIcon?: React.ReactNode;
+    /** Replaces the header; `null` removes it. Defaults to `<ChatHeader />`. */
     header?: React.ReactNode;
-    drawerContent?: React.ReactNode;
+    /** Replaces the conversation sidebar; `null` removes it. Defaults to `<ConversationSidebar />`. */
+    sidebar?: React.ReactNode;
+    /** Under the transcript — usually the composer. */
     footer?: React.ReactNode;
-    isDrawerOpen?: boolean;
-    onDrawerOpenChange?: (isOpen: boolean) => void;
-    headerActions?: React.ReactNode;
-    brand?: React.ReactNode;
-    theme?: ChatTheme;
-    onManageMemory?: () => void;
-    onViewUsage?: () => void;
-    hasMessages?: boolean;
-    onNewChat?: () => void;
-    onCopyConversationId?: () => void;
-    onDeleteThread?: () => void;
-    onShare?: () => void;
-    activeConversationId?: string | null;
+    /** The transcript. Defaults to `<MainChat />`; anything else must scroll itself. */
+    children?: React.ReactNode;
+    className?: string;
 }
 
-const ALL_MODES: ChatMode[] = ['floating', 'sidebar', 'fullscreen'];
-
+/**
+ * The chat's frame: placement (floating, docked or fullscreen), theme, the
+ * sidebar, the header, the transcript and the footer.
+ *
+ * Reads the open and sidebar state from the provider, so it can be rendered —
+ * and moved — anywhere under `ChatbotProvider`; closing it from the host is
+ * `useChatActions().close()`, not a prop on this component.
+ */
 export const ChatContainer: React.FC<ChatContainerProps> = ({
-    mode: modeProp,
+    mode = 'floating',
     allowedModes,
-    onSwitchMode: onSwitchModeProp,
-    theme: themeProp,
-    isOpen: isOpenProp,
+    theme = 'system',
     embedded = false,
     noBackground = false,
-    onClose: onCloseProp,
-    onOpen: onOpenProp,
-    children,
+    launcherIcon,
     header,
-    drawerContent,
+    sidebar,
     footer,
-    isDrawerOpen: controlledIsDrawerOpen,
-    hasMessages: hasMessagesProp,
-    onDrawerOpenChange,
-    headerActions,
-    brand,
-    onManageMemory,
-    onViewUsage,
-    onNewChat: onNewChatProp,
-    onCopyConversationId: onCopyConversationIdProp,
-    onDeleteThread: onDeleteThreadProp,
-    onShare: onShareProp,
-    activeConversationId: activeConversationIdProp,
+    children,
+    className = '',
 }) => {
-    const context = useChatbot();
-
-    const mode = modeProp !== undefined ? modeProp : (context?.mode ?? 'floating');
-    const theme = themeProp !== undefined ? themeProp : (context?.theme ?? 'system');
-    const isOpen = isOpenProp !== undefined ? isOpenProp : (context?.isOpen ?? true);
-    const onClose = onCloseProp !== undefined ? onCloseProp : context?.onClose;
-    const onOpen = onOpenProp !== undefined ? onOpenProp : context?.onOpen;
-    const onSwitchMode = onSwitchModeProp !== undefined ? onSwitchModeProp : context?.onSwitchMode;
-    const onShare = onShareProp !== undefined ? onShareProp : context?.onShare;
-    const onNewChat = onNewChatProp !== undefined ? onNewChatProp : context?.newChat;
-    const activeConversationId = activeConversationIdProp !== undefined ? activeConversationIdProp : context?.activeConversationId;
-    const onCopyConversationId = onCopyConversationIdProp !== undefined ? onCopyConversationIdProp : context?.copyConversationId;
-    const onDeleteThread = onDeleteThreadProp !== undefined ? onDeleteThreadProp : (context && activeConversationId ? () => context.deleteConversation(activeConversationId) : undefined);
-    const hasMessages = hasMessagesProp !== undefined ? hasMessagesProp : Boolean(context?.messages && context.messages.length > 0);
-
+    const isOpen = useChatState(s => s.isOpen);
+    const isSidebarOpen = useChatState(s => s.isSidebarOpen);
+    const isArtifactsOpen = useChatState(s => s.isArtifactsPanelOpen);
+    const sidebarEnabled = useChatState(s => s.config.sidebar.enabled);
+    const actions = useChatActions();
+    const labels = useLabels();
+    const icons = useIcons();
+    const isWideViewport = useWideViewport();
     const [mounted, setMounted] = useState(false);
-    const [internalIsDrawerOpen, setInternalIsDrawerOpen] = useState(false);
 
     const effectiveAllowedModes = allowedModes && allowedModes.length > 0 ? allowedModes : ALL_MODES;
     const effectiveMode = effectiveAllowedModes.includes(mode) ? mode : effectiveAllowedModes[0];
+    const sidebarInline = effectiveMode === 'fullscreen' && isWideViewport;
 
-    const isDrawerOpen = controlledIsDrawerOpen !== undefined
-        ? controlledIsDrawerOpen
-        : (context ? context.isDrawerOpen : internalIsDrawerOpen);
-
-    const setIsDrawerOpen = (open: boolean) => {
-        setInternalIsDrawerOpen(open);
-        if (context) {
-            context.setIsDrawerOpen(open);
-        }
-        onDrawerOpenChange?.(open);
-    };
-
-    // Scroll engine for legacy children (when children is not MainChat)
-    const [showScrollBtn, setShowScrollBtn] = useState(false);
-    const scrollRef = useRef<HTMLDivElement>(null);
-    const [scrollProgress, setScrollProgress] = useState(0);
-    const [isAtBottom, setIsAtBottom] = useState(true);
-    const isProgrammaticScroll = useRef(false);
-    const contentRef = useRef<HTMLDivElement>(null);
-    const scrollEndRef = useRef<HTMLDivElement>(null);
+    const presentation = useMemo<ChatPresentation>(() => ({
+        mode: effectiveMode,
+        allowedModes: effectiveAllowedModes,
+        theme,
+        embedded,
+        sidebarInline,
+    }), [effectiveMode, effectiveAllowedModes, theme, embedded, sidebarInline]);
 
     useEffect(() => {
         setMounted(true);
     }, []);
 
-    const scrollToBottomInstant = () => {
-        if (scrollRef.current) {
-            isProgrammaticScroll.current = true;
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-            requestAnimationFrame(() => {
-                isProgrammaticScroll.current = false;
-            });
-        }
-    };
-
-    const scrollToBottomSmooth = () => {
-        setIsAtBottom(true);
-        scrollEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
-
-    const handleScroll = () => {
-        if (!scrollRef.current) return;
-        const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
-        const distFromBottom = scrollHeight - scrollTop - clientHeight;
-
-        const totalScrollable = scrollHeight - clientHeight;
-        const progress = totalScrollable > 0 ? (scrollTop / totalScrollable) * 100 : 0;
-        setScrollProgress(progress);
-
-        setShowScrollBtn(hasMessages && distFromBottom > 100);
-
-        if (!isProgrammaticScroll.current) {
-            setIsAtBottom(distFromBottom < 50);
-        }
-    };
-
-    useLayoutEffect(() => {
-        if (isAtBottom) {
-            scrollToBottomInstant();
-        }
-    }, [children, isAtBottom]);
-
-    useLayoutEffect(() => {
-        if (!contentRef.current) return;
-        let rafId: number | null = null;
-        const observer = new ResizeObserver(() => {
-            if (isAtBottom) {
-                if (rafId !== null) {
-                    cancelAnimationFrame(rafId);
-                }
-                rafId = requestAnimationFrame(() => {
-                    scrollToBottomInstant();
-                    rafId = null;
-                });
-            }
-        });
-        observer.observe(contentRef.current);
-        return () => {
-            observer.disconnect();
-            if (rafId !== null) {
-                cancelAnimationFrame(rafId);
-            }
-        };
-    }, [isAtBottom]);
-
+    // An overlay sidebar closes on Escape; an inline column is part of the page.
     useEffect(() => {
-        if (!isDrawerOpen) return;
+        if (!isSidebarOpen || sidebarInline) return undefined;
         const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                setIsDrawerOpen(false);
-            }
+            if (event.key === 'Escape') actions.closeSidebar();
         };
         document.addEventListener('keydown', onKeyDown);
         return () => document.removeEventListener('keydown', onKeyDown);
-    }, [isDrawerOpen]);
-
-    const isMainChatChild = useMemo(() => {
-        let found = false;
-        React.Children.forEach(children, (child) => {
-            if (React.isValidElement(child)) {
-                if (
-                    child.type === MainChat ||
-                    (child.type as any)?.displayName === 'MainChat' ||
-                    (child.props as any)?.className?.includes('cb-main-chat')
-                ) {
-                    found = true;
-                }
-            }
-        });
-        return found;
-    }, [children]);
+    }, [isSidebarOpen, sidebarInline, actions]);
 
     if (!mounted) return null;
 
@@ -206,17 +111,12 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             <button
                 type="button"
                 className="cb-chat-launcher cb-launcher-btn"
-                data-theme={theme === 'system' ? undefined : theme}
-                onClick={() => onOpen?.()}
-                aria-label="Open chat"
+                data-theme={themeAttribute(theme)}
+                onClick={actions.open}
+                aria-label={labels.openChat}
             >
-                <div className="cb-launcher-sparkle-icon">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                        <path
-                            d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"
-                            fill="currentColor"
-                        />
-                    </svg>
+                <div className="cb-launcher-icon cb-launcher-sparkle-icon" aria-hidden="true">
+                    {launcherIcon ?? icons.launcher}
                 </div>
             </button>
         );
@@ -228,90 +128,47 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         isOpen ? 'cb-open' : 'cb-closed',
         embedded ? 'cb-embedded' : null,
         noBackground ? 'cb-no-background' : null,
+        className || null,
     ].filter(Boolean).join(' ');
 
-    const renderedHeader = header !== undefined ? header : (
-        <ChatHeader
-            brand={brand}
-            headerActions={headerActions}
-            showShare={Boolean(onShare)}
-            onShare={onShare}
-            showNewChat={hasMessages && Boolean(onNewChat)}
-            onNewChat={onNewChat}
-            showMoreMenu={true}
-            onManageMemory={onManageMemory}
-            onViewUsage={onViewUsage}
-            onSwitchMode={onSwitchMode}
-            allowedModes={effectiveAllowedModes}
-            currentMode={effectiveMode}
-            onCopyConversationId={onCopyConversationId}
-            activeConversationId={activeConversationId}
-            onDeleteThread={onDeleteThread}
-            showClose={Boolean(onClose)}
-            onClose={onClose}
-            isDrawerOpen={isDrawerOpen}
-            onToggleDrawer={() => setIsDrawerOpen(!isDrawerOpen)}
-        />
-    );
+    const sidebarNode = sidebar === undefined ? <ConversationSidebar /> : sidebar;
+    const showSidebar = sidebarEnabled && sidebarNode !== null;
 
     return (
-        <div className={containerClasses} data-theme={theme === 'system' ? undefined : theme}>
-            <div className="cb-chat-body-wrapper">
-                <div className={`cb-drawer-wrapper ${isDrawerOpen ? 'open' : ''}`}>
-                    <div className="cb-drawer-content">
-                        {drawerContent ?? <ConversationSidebar onClose={() => setIsDrawerOpen(false)} />}
+        <ChatPresentationContext.Provider value={presentation}>
+            <div className={containerClasses} data-theme={themeAttribute(theme)}>
+                <div className="cb-chat-body-wrapper">
+                    {showSidebar && (
+                        <div className={`cb-drawer-wrapper ${isSidebarOpen ? 'open' : ''}`}>
+                            <div className="cb-drawer-content">{sidebarNode}</div>
+                            <div className="cb-drawer-backdrop" onClick={actions.closeSidebar} />
+                        </div>
+                    )}
+
+                    <div className="cb-chat-content">
+                        {header === undefined ? <ChatHeader /> : header}
+                        {/* The transcript and the composer — or, while
+                            "Artifacts" is chosen, the Artifacts view in their
+                            place, under the header and beside the sidebar.
+                            Both sit in one cell of the stage, so the view takes
+                            exactly their room; the chat stays mounted but
+                            hidden, from the eye and from assistive technology,
+                            so a draft, an upload under way and the scroll
+                            position are there when the user comes back. */}
+                        <div className={`cb-chat-stage${isArtifactsOpen ? ' is-showing-artifacts' : ''}`}>
+                            <div className="cb-chat-view" aria-hidden={isArtifactsOpen || undefined}>
+                                {children ?? <MainChat />}
+                                {footer && <div className="cb-chat-footer">{footer}</div>}
+                            </div>
+                            <ArtifactsPanel />
+                        </div>
+                        {/* Over the chat column only, so fullscreen's inline
+                            sidebar stays beside it. */}
+                        <ConversationFilesPanel />
                     </div>
-                    <div className="cb-drawer-backdrop" onClick={() => setIsDrawerOpen(false)}></div>
                 </div>
-
-                <div className="cb-chat-content">
-                    {renderedHeader}
-                    {isMainChatChild ? (
-                        children
-                    ) : (
-                        <div className="cb-messages-area">
-                            {/* <div className="cb-scroll-progress-container">
-                                <div
-                                    className="cb-scroll-progress-bar"
-                                    style={{ width: `${scrollProgress}%` }}
-                                />
-                            </div>
-                            <div className={`cb-scroll-shadow-top ${scrollProgress > 5 ? 'visible' : ''}`} /> */}
-
-                            <div
-                                className="cb-scroll-view"
-                                ref={scrollRef}
-                                onScroll={handleScroll}
-                            >
-                                <div ref={contentRef}>
-                                    {children}
-                                    <div ref={scrollEndRef} />
-                                </div>
-                            </div>
-                            <div className={`cb-scroll-shadow-bottom ${!isAtBottom ? 'visible' : ''}`} />
-
-                            {hasMessages && (
-                                <button
-                                    type="button"
-                                    className={`cb-scroll-bottom-btn ${showScrollBtn ? 'visible' : ''}`}
-                                    onClick={scrollToBottomSmooth}
-                                    aria-label="Scroll to latest message"
-                                >
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <path d="M12 5v14M19 12l-7 7-7-7" />
-                                    </svg>
-                                </button>
-                            )}
-                        </div>
-                    )}
-
-                    {footer && (
-                        <div className="cb-chat-footer">
-                            {footer}
-                        </div>
-                    )}
-                </div>
+                <CreditUsageDialog />
             </div>
-        </div>
+        </ChatPresentationContext.Provider>
     );
 };

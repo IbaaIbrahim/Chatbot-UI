@@ -3,7 +3,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
+    /* Loaded after ChatContainer.css, so this is the padding in force: it has
+       to agree with the fixed `--cb-header-height` there rather than pad a
+       taller bar around the controls. */
+    height: var(--cb-header-height);
+    padding: 0 var(--cb-space-3);
     border-bottom: 1px solid var(--cb-border-subtle);
     background: var(--cb-bg-primary);
     color: var(--cb-text-primary);

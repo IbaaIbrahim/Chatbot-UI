@@ -1,5 +1,6 @@
 import React from 'react';
 import './BranchNavigator.css';
+import { useLabels } from '../../store/hooks';
 
 export interface BranchNavigatorProps {
     branchCount: number;
@@ -14,6 +15,7 @@ export const BranchNavigator: React.FC<BranchNavigatorProps> = ({
     onPrevBranch,
     onNextBranch,
 }) => {
+    const labels = useLabels();
     if (branchCount <= 1) return null;
 
     return (
@@ -21,9 +23,9 @@ export const BranchNavigator: React.FC<BranchNavigatorProps> = ({
             <button
                 className="cb-branch-nav-btn"
                 onClick={onPrevBranch}
-                aria-label="Previous version"
+                aria-label={labels.previousVersion}
                 disabled={activeBranchIndex <= 0}
-                title="Previous version"
+                title={labels.previousVersion}
             >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <polyline points="15 18 9 12 15 6" />
@@ -36,8 +38,8 @@ export const BranchNavigator: React.FC<BranchNavigatorProps> = ({
                 className="cb-branch-nav-btn"
                 onClick={onNextBranch}
                 disabled={activeBranchIndex >= branchCount - 1}
-                title="Next version"
-                aria-label="Next version"
+                title={labels.nextVersion}
+                aria-label={labels.nextVersion}
             >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <polyline points="9 18 15 12 9 6" />

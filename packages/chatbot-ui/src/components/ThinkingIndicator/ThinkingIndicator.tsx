@@ -1,5 +1,6 @@
 import React from 'react';
 import './ThinkingIndicator.css';
+import { useLabels } from '../../store/hooks';
 
 export interface ThinkingIndicatorProps {
     className?: string;
@@ -12,8 +13,9 @@ export const ThinkingIndicator: React.FC<ThinkingIndicatorProps> = ({
     size = 20,
     color,
 }) => {
+    const labels = useLabels();
     return (
-        <div className={`cb-thinking-container ${className}`} role="status" aria-label="Thinking">
+        <div className={`cb-thinking-container ${className}`} role="status" aria-label={labels.thinking}>
             <div
                 className="cb-claude-indicator"
                 style={{

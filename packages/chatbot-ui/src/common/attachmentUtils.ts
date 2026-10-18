@@ -21,6 +21,19 @@ export function resolveStorageUploadUrl(storageApiUrl?: string): string {
 }
 
 /**
+ * The storage API's attachments root (`…/api/v1/attachments`), from whichever
+ * form the host configured: the service's base URL, the attachments root
+ * itself, or the upload URL. Empty without a URL.
+ */
+export function resolveStorageAttachmentsBase(storageApiUrl?: string): string {
+    if (!storageApiUrl) return '';
+    let clean = storageApiUrl.trim().replace(/\/+$/, '');
+    if (clean.endsWith('/api/v1/attachments/upload')) clean = clean.slice(0, -'/upload'.length);
+    if (clean.endsWith('/api/v1/attachments')) return clean;
+    return `${clean}/api/v1/attachments`;
+}
+
+/**
  * Resolves the server file download URL for a completed attachment.
  */
 export function resolveStorageAttachmentFileUrl(

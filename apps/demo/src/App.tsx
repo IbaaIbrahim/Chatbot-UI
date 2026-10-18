@@ -5,9 +5,8 @@ import {
     GatewayStreamClient,
     ChatMode,
     ChatTheme,
-    AgentSidebarItem,
     ToolConfig,
-    type ChatbotUIConfig,
+    type ChatbotConfig,
 } from '@chatbot-ui/core'
 import data from './data.json'
 
@@ -15,6 +14,10 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001
 const STORAGE_API_BASE_URL = import.meta.env.VITE_STORAGE_API_BASE_URL || 'http://localhost:8003';
 const STATIC_TOKEN = import.meta.env.VITE_ACCESS_TOKEN || '';
 const MODEL_ID = import.meta.env.VITE_MODEL_ID || 'gpt-5-mini';
+// Optional: pin every job to one agent, as a screen built around one
+// specialist would. Unset, jobs go without one and the platform runs its
+// central mode (it loads the tools and skills each turn needs).
+const AGENT_ID = import.meta.env.VITE_AGENT_ID || null;
 // Opt in to reaching a loopback / private-network API (the localhost defaults
 // above). Chromium 142+ gates that behind the Local Network Access permission —
 // on Android, "Access other apps and services on this device". Read here in the
@@ -22,9 +25,21 @@ const MODEL_ID = import.meta.env.VITE_MODEL_ID || 'gpt-5-mini';
 // VITE_ variable there would freeze at library-publish time.
 const ALLOW_LOCAL_NETWORK_ACCESS = import.meta.env.VITE_ALLOW_LOCAL_NETWORK_ACCESS === 'true';
 
-// Welcome content belongs to the host application. The library only supplies
-// these values as a backwards-compatible fallback when `config` is omitted.
-const welcomeConfig: ChatbotUIConfig = {
+// Welcome content belongs to the host application: since 3.0 the library ships
+// neutral defaults (no prompts, no cards, no badges), so a host that wants any
+// supplies them here.
+const welcomeConfig: ChatbotConfig = {
+    greeting: {
+        privacyBadges: [
+            { text: 'Only you can access this chat', icon: 'lock' },
+            { text: 'Your organization data is private', icon: 'shield' },
+        ],
+    },
+    suggestions: [
+        { id: 'attention', text: 'What needs my attention?', icon: 'pin' },
+        { id: 'last-inspection', text: 'Summarize my last inspection', icon: 'clipboard' },
+        { id: 'incident', text: 'How do I report an incident?', icon: 'message' },
+    ],
     quickActions: [
         {
             id: 'catch-up',
@@ -39,10 +54,15 @@ const welcomeConfig: ChatbotUIConfig = {
             icon: 'pencil',
         },
         {
+            // A category: the pill opens these prompts instead of sending one.
             id: 'analyze',
             label: 'Analyze',
-            prompt: 'Analyze recent inspection trends',
             icon: 'bolt',
+            prompts: [
+                { id: 'gaps', label: 'Show me compliance gaps across my sites' },
+                { id: 'trends', label: 'Show trends across my inspections' },
+                { id: 'template', label: 'Show me how a template is performing', behavior: 'insert' },
+            ],
         },
         {
             id: 'ask',
@@ -106,17 +126,6 @@ function App() {
     const [allowedModes, setAllowedModes] = useState<ChatMode[]>(['floating', 'sidebar', 'fullscreen']);
     const [client, setClient] = useState<GatewayStreamClient | null>(null);
     const clientRef = useRef<GatewayStreamClient | null>(null);
-
-    // Agent list fetched from gateway
-    const [agentItems, setAgentItems] = useState<AgentSidebarItem[]>([]);
-    const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
-    // Whether the agent list has come back at least once. Sending before it
-    // does produces a job with no agent_id — no system prompt, no tool
-    // restrictions, and no error to say so — so the chat composer waits on this.
-    // A latch rather than a per-request flag: fetchAgents re-runs when the
-    // active agent changes, and flipping this back to false would blink the
-    // composer shut every time the user switches agent.
-    const [agentsResolved, setAgentsResolved] = useState(false);
 
     // The app's own "current screen", read by read_page_context and changed by
     // navigate_app_route.
@@ -390,7 +399,12 @@ function App() {
     ]);
 
     const buildClient = useCallback((token: string) => {
-        const c = new GatewayStreamClient({ gatewayUrl: API_BASE_URL, token: token || undefined, modelId: MODEL_ID });
+        const c = new GatewayStreamClient({
+            gatewayUrl: API_BASE_URL,
+            token: token || undefined,
+            modelId: MODEL_ID,
+            agentId: AGENT_ID,
+        });
         clientRef.current = c;
         setClient(c);
         return c;
@@ -400,64 +414,6 @@ function App() {
     useEffect(() => {
         buildClient(STATIC_TOKEN);
     }, [buildClient]);
-
-    // --- Fetch agents from gateway --------------------------------------------
-    // --- Agent switching ------------------------------------------------------
-    const switchAgent = useCallback((agentId: string | null) => {
-        setActiveAgentId(prev => {
-            if (prev === agentId) return prev;
-            clientRef.current?.setAgentId(agentId);
-            setAgentItems(items =>
-                items.map(a => ({ ...a, active: a.id === agentId, onClick: () => switchAgent(a.id) }))
-            );
-            clientRef.current?.reset?.();
-            return agentId;
-        });
-    }, []);
-
-    // --- Fetch agents from gateway --------------------------------------------
-    const fetchAgents = useCallback(async (token: string) => {
-        try {
-            const res = await fetch(`${API_BASE_URL}/v1/user/agents`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (!res.ok) return;
-            const json = await res.json();
-            const raw: { uuid: string; name: string; description?: string }[] =
-                json?.data?.agents ?? [];
-
-            setAgentItems(prev => {
-                const currentActiveId = prev.find(a => a.active)?.id ?? null;
-                return raw.map(a => ({
-                    id: a.uuid,
-                    label: a.name,
-                    active: a.uuid === currentActiveId,
-                    onClick: () => switchAgent(a.uuid),
-                }));
-            });
-
-            // Adopt whatever the client already has — a binding restored from
-            // this tab's previous page load. If nothing is bound, it stays on
-            // Auto (null agent UUID passed).
-            const restoredAgentId = clientRef.current?.getAgentId?.() ?? null;
-            if (restoredAgentId) {
-                setActiveAgentId(restoredAgentId);
-                setAgentItems(prev =>
-                    prev.map(a => ({ ...a, active: a.id === restoredAgentId }))
-                );
-            }
-        } catch (err) {
-            console.error('Failed to fetch agents:', err);
-        } finally {
-            // Resolved either way: a failed fetch is still an answer, and
-            // leaving the composer disabled on it would strand the user.
-            setAgentsResolved(true);
-        }
-    }, [switchAgent]);
-
-    useEffect(() => {
-        if (client && STATIC_TOKEN) fetchAgents(STATIC_TOKEN);
-    }, [client, fetchAgents]);
 
     // --- Demo controls --------------------------------------------------------
     const demoControls = (
@@ -651,21 +607,16 @@ function App() {
                     <ChatApp
                         client={client}
                         mode={mode}
-                        isOpen={isOpen}
+                        open={isOpen}
+                        onOpenChange={setIsOpen}
                         embedded={true}
                         allowedModes={allowedModes}
                         noBackground={noBg}
                         onSwitchMode={setMode}
-                        onClose={() => setIsOpen(false)}
-                        onOpen={() => setIsOpen(true)}
                         userName="Ibaa"
                         storageApiUrl={STORAGE_API_BASE_URL}
                         allowLocalNetworkAccess={ALLOW_LOCAL_NETWORK_ACCESS}
                         accessToken={STATIC_TOKEN || null}
-                        agents={agentItems}
-                        agentId={activeAgentId}
-                        agentsLoading={Boolean(STATIC_TOKEN) && !agentsResolved}
-                        onAgentChange={switchAgent}
                         theme={theme}
                         tools={tools}
                         config={welcomeConfig}
@@ -679,23 +630,25 @@ function App() {
                     <ChatApp
                         client={client}
                         mode={mode}
-                        isOpen={isOpen}
+                        open={isOpen}
+                        onOpenChange={setIsOpen}
                         allowedModes={allowedModes}
                         noBackground={noBg}
                         onSwitchMode={setMode}
-                        onClose={() => setIsOpen(false)}
-                        onOpen={() => setIsOpen(true)}
                         userName="Ibaa"
                         storageApiUrl={STORAGE_API_BASE_URL}
                         allowLocalNetworkAccess={ALLOW_LOCAL_NETWORK_ACCESS}
                         accessToken={STATIC_TOKEN || null}
-                        agents={agentItems}
-                        agentId={activeAgentId}
-                        agentsLoading={Boolean(STATIC_TOKEN) && !agentsResolved}
-                        onAgentChange={switchAgent}
                         theme={theme}
                         tools={tools}
                         config={welcomeConfig}
+                        // The floating button's icon: any React node. Omit it for
+                        // the library's sparkle (`config.icons.launcher`).
+                        launcherIcon={
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                            </svg>
+                        }
                     />
                 </div>
             )}

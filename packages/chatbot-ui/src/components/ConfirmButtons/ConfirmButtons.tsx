@@ -1,5 +1,7 @@
 import React from 'react';
 import './ConfirmButtons.css';
+import { formatLabel } from '../../common/labels';
+import { useLabels } from '../../store/hooks';
 
 export type ConfirmStatus = 'pending' | 'confirmed' | 'rejected' | 'executing';
 
@@ -21,6 +23,7 @@ export const ConfirmButtons: React.FC<ConfirmButtonsProps> = ({
     onConfirm,
     onReject,
 }) => {
+    const labels = useLabels();
     if (status !== 'pending') {
         return (
             <div className="cb-confirm-status">
@@ -29,13 +32,13 @@ export const ConfirmButtons: React.FC<ConfirmButtonsProps> = ({
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <polyline points="20 6 9 17 4 12"></polyline>
                         </svg>
-                        <span>Confirmed - executing...</span>
+                        <span>{labels.confirmedExecuting}</span>
                     </div>
                 )}
                 {status === 'executing' && (
                     <div className="cb-confirm-status-executing">
                         <div className="cb-confirm-spinner"></div>
-                        <span>Executing {label}...</span>
+                        <span>{formatLabel(labels.executingTool, { name: label })}</span>
                     </div>
                 )}
                 {status === 'rejected' && (
@@ -44,7 +47,7 @@ export const ConfirmButtons: React.FC<ConfirmButtonsProps> = ({
                             <line x1="18" y1="6" x2="6" y2="18"></line>
                             <line x1="6" y1="6" x2="18" y2="18"></line>
                         </svg>
-                        <span>Cancelled</span>
+                        <span>{labels.cancelled}</span>
                     </div>
                 )}
             </div>
@@ -68,7 +71,7 @@ export const ConfirmButtons: React.FC<ConfirmButtonsProps> = ({
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
-                    Confirm
+                    {labels.confirm}
                 </button>
                 <button
                     className="cb-btn-reject"
@@ -78,7 +81,7 @@ export const ConfirmButtons: React.FC<ConfirmButtonsProps> = ({
                         <line x1="18" y1="6" x2="6" y2="18"></line>
                         <line x1="6" y1="6" x2="18" y2="18"></line>
                     </svg>
-                    Cancel
+                    {labels.cancel}
                 </button>
             </div>
         </div>

@@ -28,11 +28,27 @@
 }
 
 .cb-usage-trigger:focus-visible {
-    outline: 2px solid var(--cb-border-focus);
+    outline: 2px solid var(--cb-focus-ring);
     outline-offset: 1px;
 }
 
 .cb-usage-trigger--warn {
+    color: var(--cb-status-failed);
+}
+
+/* `usageDetails: false`: the same figure with nothing to open, so nothing that
+   says it can be pressed. Two classes deep to outrank the hover rule above. */
+.cb-usage-trigger.cb-usage-trigger--static {
+    cursor: default;
+}
+
+.cb-usage-trigger.cb-usage-trigger--static:hover {
+    background: transparent;
+    color: var(--cb-text-tertiary);
+}
+
+.cb-usage-trigger.cb-usage-trigger--static.cb-usage-trigger--warn,
+.cb-usage-trigger.cb-usage-trigger--static.cb-usage-trigger--warn:hover {
     color: var(--cb-status-failed);
 }
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { EnablableTool } from '../../api/GatewayStreamClient';
 import './ToolToggles.css';
+import { useLabels } from '../../store/hooks';
 
 export interface ToolTogglesProps {
     /** Tools the caller may switch on, from `listEnablableTools`. */
@@ -119,6 +120,7 @@ export const ToolToggles: React.FC<ToolTogglesProps> = ({
     onClose,
     placement = 'above',
 }) => {
+    const labels = useLabels();
     const handled = React.useMemo(() => new Set(handledSlugs), [handledSlugs]);
 
     const runnable = React.useMemo(
@@ -204,10 +206,10 @@ export const ToolToggles: React.FC<ToolTogglesProps> = ({
                 ref={menuRef}
                 className="cb-menu-content cb-tools-menu"
                 role="group"
-                aria-label="Tools"
+                aria-label={labels.tools}
             >
                 <div className="cb-menu-header">
-                    <span>Tools</span>
+                    <span>{labels.tools}</span>
                 </div>
                 <div className="cb-menu-section">
                     {runnable.map(tool => {
@@ -242,7 +244,7 @@ export const ToolToggles: React.FC<ToolTogglesProps> = ({
                                 <div className="cb-menu-info">
                                     <span className="cb-menu-title">{tool.name}</span>
                                     {tool.description && (
-                                        <span className="cb-menu-desc">{tool.description}</span>
+                                        <span className="cb-menu-desc" title={tool.description}>{tool.description}</span>
                                     )}
                                 </div>
                                 <div className={`cb-toggle ${on ? 'on' : 'off'}`} />

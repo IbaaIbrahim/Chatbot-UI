@@ -1,0 +1,1439 @@
+/* The conversation files panel and the Artifacts view (4.1).
+ *
+ * The files panel is a dialog over a scrim on the chat column it is rendered
+ * in (2026-10-14): centred and sized to its content up to a cap, or a sheet
+ * at the bottom with small margins in a narrow chat — see "The conversation
+ * files dialog" below. The Artifacts view (2026-10-14) is no overlay: it
+ * stands in the column in place of the transcript and the composer, and an
+ * artifact opens in full in that same place.
+ * Tokens only. Rows follow the page's direction — so a header's close button,
+ * last, is at the left in a right-to-left page — and titles and details their
+ * own text (`dir="auto"`). */
+
+/* The scrim over the chat column, and the container the dialog sizes itself
+ * by: a narrow one (the floating card, a docked panel) gets the sheet. */
+.cb-files-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    background-color: var(--cb-scrim);
+    container: cb-files / inline-size;
+}
+
+/* Sized to its content: as tall as the header, the toolbar and the list,
+ * up to a cap (the list scrolls inside), never a full-height empty sheet.
+ * Until 2026-10-14 it ran the full height of the chat with square edges. */
+.cb-files-panel {
+    --cb-files-margin: var(--cb-space-6);
+    --cb-files-gutter: calc(var(--cb-space-4) + var(--cb-space-1));
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    width: min(640px, calc(100% - 2 * var(--cb-files-margin)));
+    max-height: min(680px, 80vh, calc(100% - 2 * var(--cb-files-margin)));
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-lg);
+    background-color: var(--cb-bg-elevated);
+    box-shadow: var(--cb-shadow-lg);
+    color: var(--cb-text-primary);
+    font-family: var(--cb-font-family);
+}
+
+/* Focused only by a click on its empty space (it is not a Tab stop): no ring. */
+.cb-files-panel:focus {
+    outline: none;
+}
+
+/* A subtle rise as it opens — only for those who have not asked for less
+ * motion (the widget's reduced-motion rule cuts any other to nothing too).
+ * The scrim only fades: the shared `cb-fade-in` also slides, which moved the
+ * scrim itself and left a strip of the chat bare for a moment, and added its
+ * travel to the dialog's (review of 2026-10-14). The dialog's 8px is the
+ * only movement. */
+@media (prefers-reduced-motion: no-preference) {
+    .cb-files-overlay {
+        animation: cb-files-scrim-in 0.15s ease-out;
+    }
+
+    .cb-files-panel {
+        animation: cb-files-rise 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+}
+
+@keyframes cb-files-scrim-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes cb-files-rise {
+    from { opacity: 0; transform: translateY(8px) scale(0.985); }
+    to { opacity: 1; transform: none; }
+}
+
+/* --- The Artifacts view, in place of the chat (2026-10-14) ----------------- */
+
+/* Fills whatever it is rendered in: `ChatContainer`'s stage under the header,
+ * or the element a host's own layout gives it. */
+.cb-artifacts-view {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    background-color: var(--cb-bg-primary);
+    color: var(--cb-text-primary);
+    font-family: var(--cb-font-family);
+}
+
+.cb-artifacts-list-pane,
+.cb-artifact-detail {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* The list, while an artifact is open: kept, with its search and pages. */
+.cb-artifacts-list-pane[hidden] {
+    display: none;
+}
+
+/* A wide column (fullscreen) keeps the list to a readable measure, as the
+ * transcript does; an opened artifact takes the column's whole width. */
+.cb-artifacts-view .cb-files-toolbar,
+.cb-artifacts-view .cb-files-list,
+.cb-artifacts-view .cb-files-skeleton,
+.cb-artifacts-view .cb-files-state {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 960px;
+    margin-inline: auto;
+}
+
+/* "Back to artifacts" points to the start of the row: mirrored right-to-left.
+ * Two rules, as a browser without `:dir()` drops a whole list it cannot read. */
+[dir='rtl'] .cb-artifact-back svg {
+    transform: scaleX(-1);
+}
+
+.cb-artifact-back:dir(rtl) svg {
+    transform: scaleX(-1);
+}
+
+/* `:root` against a host's paragraph margin, as for the title; its text cut
+ * short as the title's is (below) — in its own direction, kept at the page's
+ * start edge by `match-parent`, with the `-webkit-` spelling first: Chromium
+ * reads only that one, and dropped the declaration until 2026-10-14. The
+ * secondary text, as a row's details are (see `.cb-file-meta`). */
+:root .cb-artifact-detail-meta {
+    flex-shrink: 0;
+    margin: 0;
+    padding: var(--cb-space-2) var(--cb-space-4) 0;
+    color: var(--cb-text-secondary);
+    font-size: 11.5px;
+    text-align: start;
+}
+
+.cb-artifact-detail-meta-text {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    text-align: -webkit-match-parent;
+    text-align: match-parent;
+}
+
+:root .cb-artifact-detail .cb-artifact-detail-error {
+    flex-shrink: 0;
+    margin: 0;
+    padding: var(--cb-space-2) var(--cb-space-4) 0;
+}
+
+/* The file itself: the rest of the column, scrolling inside it. */
+.cb-artifact-detail-body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* --- The header ------------------------------------------------------------- */
+
+.cb-files-header {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--cb-space-2);
+    height: var(--cb-header-height);
+    padding-inline: var(--cb-space-4) var(--cb-space-3);
+    border-bottom: 1px solid var(--cb-border-subtle);
+}
+
+/* An opened artifact's header starts with "Back", an icon button: closer to
+ * the edge, as the chat header's first button is. Two classes, so it wins
+ * over the `padding-inline` above whatever the order (until 2026-10-14 it
+ * came first, and lost). */
+.cb-files-header.cb-artifact-detail-header {
+    padding-inline-start: var(--cb-space-2);
+}
+
+.cb-files-header-icon {
+    display: inline-flex;
+    color: var(--cb-accent-primary);
+}
+
+/* `:root` for the margin and colour: a host's heading rules (`[dir] h2`,
+ * a theme's heading colour) are more specific than one class, and gave the
+ * title a margin and a colour of the host's — unreadable on the dark theme. */
+:root .cb-files-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    color: var(--cb-text-primary);
+    font-size: var(--cb-text-sm);
+    font-weight: 600;
+    line-height: 1.3;
+    text-align: start;
+}
+
+/* The title's text cuts itself short, in its own direction (`dir="auto"`):
+ * an English title in a right-to-left page loses its end, not its start, as
+ * a row's title does. Until 2026-10-14 the heading cut it in the page's
+ * direction, so only its end showed, and two titles that differ early read
+ * the same. `match-parent` keeps it at the page's start edge, beside the
+ * icon — `-webkit-match-parent` first, the only spelling Chromium reads
+ * (it dropped the declaration until 2026-10-14). */
+.cb-files-title-text {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    text-align: -webkit-match-parent;
+    text-align: match-parent;
+}
+
+/* An opened artifact's title takes focus (not a Tab stop) so a screen reader
+ * names it; a ring only when the keyboard brought it there. */
+.cb-files-title:focus {
+    outline: none;
+}
+
+.cb-files-title:focus-visible {
+    border-radius: var(--cb-radius-sm);
+    outline: 2px solid var(--cb-focus-ring, var(--cb-accent-strong));
+    outline-offset: 2px;
+}
+
+/* A header's actions, between the title and the close button. */
+.cb-files-header-actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 2px;
+}
+
+:root .cb-files-icon-btn,
+:root .cb-file-action {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: var(--cb-control-sm);
+    height: var(--cb-control-sm);
+    padding: 0;
+    border: none;
+    border-radius: var(--cb-radius-sm);
+    background: transparent;
+    color: var(--cb-text-secondary);
+    font-family: inherit;
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+:root .cb-files-icon-btn:hover,
+:root .cb-file-action:hover:not(:disabled) {
+    background-color: var(--cb-surface-hover);
+    color: var(--cb-text-primary);
+}
+
+/* Focus rings in both lists are the chat's focus ring (`--cb-focus-ring`,
+ * the strong accent, solid): the half-transparent `--cb-border-focus` was
+ * about 1.9:1 on the dark dialog and 2.0:1 on white, and an icon-only action
+ * has nothing else to say it is the focused one. The ring is 5.6:1 on the
+ * dark dialog, 5.1:1 on white, and at least 3.4:1 on a hovered row, the
+ * filter's track or its chosen option (review of 2026-10-14). */
+:root .cb-files-icon-btn:focus-visible,
+:root .cb-file-action:focus-visible,
+:root .cb-file-main:focus-visible,
+:root .cb-files-chip:focus-visible,
+:root .cb-files-text-btn:focus-visible,
+:root .cb-files-load-more:focus-visible {
+    outline: 2px solid var(--cb-focus-ring, var(--cb-accent-strong));
+    outline-offset: 1px;
+}
+
+:root .cb-file-action:disabled {
+    cursor: progress;
+    opacity: var(--cb-dim);
+}
+
+:root .cb-file-action-danger:hover:not(:disabled) {
+    color: var(--cb-status-failed);
+}
+
+/* The second click's question, in place of the icon. */
+:root .cb-file-action.is-confirming {
+    width: auto;
+    padding: 0 var(--cb-space-2);
+    color: var(--cb-status-failed);
+    font-size: var(--cb-text-xs);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* --- Search and filters ------------------------------------------------- */
+
+.cb-files-toolbar {
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: column;
+    gap: var(--cb-space-2);
+    padding: var(--cb-space-3) var(--cb-space-4) var(--cb-space-2);
+}
+
+.cb-files-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.cb-files-search-icon {
+    position: absolute;
+    inset-inline-start: 10px;
+    display: flex;
+    color: var(--cb-text-tertiary);
+    pointer-events: none;
+}
+
+.cb-files-search-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+:root .cb-files-search-input {
+    box-sizing: border-box;
+    width: 100%;
+    height: 34px;
+    padding-inline: 32px 10px;
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-md);
+    background-color: var(--cb-bg-secondary);
+    color: var(--cb-text-primary);
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+}
+
+/* The field's edge is its focus indicator: the focus ring's colour, 3:1 or
+ * more on the field (2026-10-14; the plain accent was 2.96:1 on its light
+ * grey). */
+:root .cb-files-search-input:focus {
+    border-color: var(--cb-focus-ring, var(--cb-accent-strong));
+}
+
+.cb-files-chips {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.cb-files-chips::-webkit-scrollbar {
+    display: none;
+}
+
+:root .cb-files-chip {
+    flex-shrink: 0;
+    height: 28px;
+    padding: 0 12px;
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-full);
+    background: transparent;
+    color: var(--cb-text-secondary);
+    font-family: inherit;
+    font-size: var(--cb-text-xs);
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+:root .cb-files-chip:hover {
+    background-color: var(--cb-surface-hover);
+    color: var(--cb-text-primary);
+}
+
+:root .cb-files-chip.is-active {
+    border-color: var(--cb-border-strong);
+    background-color: var(--cb-surface-hover);
+    color: var(--cb-text-primary);
+}
+
+/* --- The list ---------------------------------------------------------- */
+
+.cb-files-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: var(--cb-space-2) var(--cb-space-3) var(--cb-space-4);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.cb-files-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.cb-file-row {
+    display: flex;
+    align-items: center;
+    gap: var(--cb-space-1);
+    padding: 4px;
+    border-radius: var(--cb-radius-md);
+    transition: var(--cb-transition-state);
+}
+
+.cb-file-row:hover {
+    background-color: var(--cb-surface-raised);
+}
+
+:root .cb-file-main {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: var(--cb-space-3);
+    min-width: 0;
+    padding: 4px;
+    border: none;
+    border-radius: var(--cb-radius-sm);
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+
+/* A row's tile: its kind's icon, in its kind's hue on a tint of it
+ * (2026-10-14; `data-kind`, the `--cb-kind-*` tokens) — or the image itself.
+ * A browser without `color-mix` keeps the neutral tile. */
+.cb-file-thumb {
+    --cb-file-kind: var(--cb-kind-file, var(--cb-text-secondary));
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 40px;
+    height: 40px;
+    overflow: hidden;
+    border: 1px solid transparent;
+    border-radius: var(--cb-radius-md);
+    background-color: var(--cb-surface-sunken);
+    background-color: color-mix(in srgb, var(--cb-file-kind) 14%, transparent);
+    color: var(--cb-file-kind);
+}
+
+.cb-file-thumb[data-kind='chart'] { --cb-file-kind: var(--cb-kind-chart, var(--cb-accent-primary)); }
+.cb-file-thumb[data-kind='table'] { --cb-file-kind: var(--cb-kind-table, var(--cb-text-secondary)); }
+.cb-file-thumb[data-kind='kpi'] { --cb-file-kind: var(--cb-kind-kpi, var(--cb-text-secondary)); }
+.cb-file-thumb[data-kind='report'] { --cb-file-kind: var(--cb-kind-report, var(--cb-text-secondary)); }
+.cb-file-thumb[data-kind='image'] { --cb-file-kind: var(--cb-kind-image, var(--cb-text-secondary)); }
+.cb-file-thumb[data-kind='pdf'] { --cb-file-kind: var(--cb-kind-pdf, var(--cb-text-secondary)); }
+.cb-file-thumb[data-kind='spreadsheet'] { --cb-file-kind: var(--cb-kind-spreadsheet, var(--cb-text-secondary)); }
+
+/* An image drawn as itself: a hairline, so a white picture keeps its edge. */
+.cb-file-thumb.has-image {
+    border-color: var(--cb-border-subtle);
+}
+
+.cb-file-thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* The thumbnail's holder: the kind's icon, centred, until the image arrives. */
+.cb-file-thumb-image {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.cb-file-text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+/* `match-parent`: a title in another direction than the page's (an English
+ * name in a right-to-left page) stays at the page's start edge, beside its
+ * tile and over its details, and is still cut short at its own end — as the
+ * header's title is (2026-10-14). Chromium reads only the prefixed spelling. */
+.cb-file-title {
+    overflow: hidden;
+    color: var(--cb-text-primary);
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    text-align: -webkit-match-parent;
+    text-align: match-parent;
+}
+
+/* A row's details, at 11.5px: the secondary text, 4.5:1 or more wherever a
+ * row is drawn — the Artifacts view's page and its hovered rows, the files
+ * dialog and its — in both themes. The tertiary it was until 2026-10-14 is
+ * 3.3:1 on the dark page. */
+.cb-file-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    color: var(--cb-text-secondary);
+    font-size: 11.5px;
+    white-space: nowrap;
+}
+
+.cb-file-meta-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* One detail and the dot after it: never broken inside (see the narrow
+ * files dialog, where the line may wrap). */
+.cb-file-meta-part {
+    white-space: nowrap;
+}
+
+.cb-file-badge {
+    flex-shrink: 0;
+    padding: 0 6px;
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-full);
+    background-color: var(--cb-surface-sunken);
+    color: var(--cb-text-secondary);
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 16px;
+}
+
+.cb-file-badge.is-artifact {
+    border-color: var(--cb-accent-primary);
+    color: var(--cb-accent-primary);
+}
+
+.cb-file-actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 2px;
+}
+
+.cb-file-error {
+    margin: 0;
+    padding-block: 0 var(--cb-space-1);
+    padding-inline: 56px var(--cb-space-2);
+    color: var(--cb-status-failed);
+    font-size: var(--cb-text-xs);
+}
+
+/* --- States -------------------------------------------------------------- */
+
+.cb-files-state {
+    margin: 0;
+    padding: var(--cb-space-6) var(--cb-space-4);
+    color: var(--cb-text-secondary);
+    font-size: var(--cb-text-sm);
+    text-align: center;
+}
+
+.cb-files-state p {
+    margin: 0 0 var(--cb-space-3);
+}
+
+:root .cb-files-text-btn,
+:root .cb-files-load-more {
+    height: 30px;
+    padding: 0 var(--cb-space-3);
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-md);
+    background: transparent;
+    color: var(--cb-text-primary);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+:root .cb-files-text-btn:hover,
+:root .cb-files-load-more:hover:not(:disabled) {
+    background-color: var(--cb-surface-hover);
+}
+
+:root .cb-files-load-more {
+    display: block;
+    margin: var(--cb-space-3) auto 0;
+}
+
+:root .cb-files-load-more:disabled {
+    cursor: progress;
+    opacity: var(--cb-dim);
+}
+
+.cb-files-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cb-space-2);
+    padding: var(--cb-space-1);
+}
+
+.cb-files-skeleton-row {
+    display: block;
+    height: 44px;
+    border-radius: var(--cb-radius-md);
+    background: linear-gradient(
+        90deg,
+        var(--cb-surface-raised) 0%,
+        var(--cb-surface-hover) 50%,
+        var(--cb-surface-raised) 100%
+    );
+    background-size: 200% 100%;
+    animation: cb-files-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes cb-files-shimmer {
+    from { background-position: 100% 0; }
+    to { background-position: -100% 0; }
+}
+
+.cb-files-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--cb-border-strong);
+    border-top-color: var(--cb-accent-primary);
+    border-radius: var(--cb-radius-full);
+    animation: cb-files-spin 0.8s linear infinite;
+}
+
+@keyframes cb-files-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* --- Saved and not saved (2026-10-14) ------------------------------------- */
+
+/* The mark on an artifact-like row and in an opened entry's header: an icon
+ * and the word, so it reads without its colour. A small pill, clear but
+ * quiet (2026-10-14): Saved is the accent — a filled bookmark on a tint, its
+ * word mixed toward the text colour so it keeps its contrast in both themes;
+ * Not saved is an outline in the muted text colour. Until then Saved was a
+ * green outline and Not saved a dashed grey box. */
+.cb-file-status {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 4px;
+    box-sizing: border-box;
+    height: 18px;
+    padding-block: 0;
+    padding-inline: 6px 7px;
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-full);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.cb-file-status-icon {
+    display: inline-flex;
+}
+
+.cb-file-status-icon svg {
+    width: 10px;
+    height: 10px;
+}
+
+.cb-file-status.is-saved {
+    border-color: var(--cb-accent-primary);
+    border-color: color-mix(in srgb, var(--cb-accent-primary) 24%, transparent);
+    background-color: var(--cb-surface-sunken);
+    background-color: color-mix(in srgb, var(--cb-accent-primary) 12%, transparent);
+    color: var(--cb-accent-primary);
+    color: color-mix(in srgb, var(--cb-accent-primary) 62%, var(--cb-text-primary));
+}
+
+/* The strong accent: in a narrow files dialog the icon is the mark alone,
+ * and the plain accent on its tint was under 3:1 in the light theme. */
+.cb-file-status.is-saved .cb-file-status-icon {
+    color: var(--cb-accent-strong, var(--cb-accent-primary));
+}
+
+/* Its icon in the word's colour: where the word is hidden (a narrow header
+ * or files dialog) the dashed bookmark is the mark alone, and the tertiary
+ * text it had was 2.5:1 on a hovered row of the dark dialog (review of
+ * 2026-10-14). The secondary is 5.5:1 there, 6.7:1 in the light theme. */
+.cb-file-status.is-unsaved {
+    border-color: var(--cb-border-medium);
+    background-color: transparent;
+    color: var(--cb-text-secondary);
+}
+
+/* In an opened entry's header, before its actions. */
+.cb-artifact-detail-status {
+    margin-inline-end: var(--cb-space-1);
+}
+
+/* A row with nothing to open (a block this page cannot draw): not a button. */
+:root .cb-file-main.is-static {
+    cursor: default;
+}
+
+/* A row fetching what it opens (a block's body). */
+.cb-file-main-spinner {
+    flex-shrink: 0;
+}
+
+/* Save: an icon and its word — the one action a row asks the user to take. */
+:root .cb-file-action.cb-file-action-save {
+    gap: 4px;
+    width: auto;
+    padding: 0 var(--cb-space-2);
+    border: 1px solid var(--cb-border-subtle);
+    color: var(--cb-text-primary);
+    font-size: var(--cb-text-xs);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* "Show in chat" for a block whose answer is not on screen: there, with its
+ * reason as its tooltip and in its name, but going nowhere. */
+:root .cb-file-action[aria-disabled='true'] {
+    cursor: not-allowed;
+    opacity: var(--cb-dim);
+}
+
+:root .cb-file-action[aria-disabled='true']:hover {
+    background: transparent;
+    color: var(--cb-text-secondary);
+}
+
+/* A segmented control: the Artifacts view's saved filter (All · Saved · Not
+ * saved, above the kind chips) and the files dialog's filter, whose shape
+ * and counts are its own (below). Their colours are these rules, shared
+ * (2026-10-14): the track a lift (`--cb-surface-hover`), the chosen option a
+ * further one (`--cb-surface-selected`; white in the light theme) edged by
+ * `--cb-border-selected` — 3.7:1 against the track on the dark page, 3.3:1
+ * on the light one — so the choice does not rest on its weight and a 1.4:1
+ * fill alone. Until then the Artifacts view's chosen option was the page's
+ * own colour (`--cb-bg-primary`) on a `--cb-bg-secondary` track: darker
+ * than its track in the dark theme, 1.1:1 against it, with no edge. Labels
+ * are 6.0:1 or more on the track; a count's pill is drawn as the dialog's. */
+.cb-files-segmented {
+    display: flex;
+    flex-shrink: 0;
+    align-self: flex-start;
+    max-width: 100%;
+    padding: 2px;
+    border: 1px solid transparent;
+    border-radius: var(--cb-radius-full);
+    background-color: var(--cb-surface-hover);
+}
+
+:root .cb-files-segment {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 26px;
+    padding: 0 12px;
+    overflow: hidden;
+    border: none;
+    border-radius: var(--cb-radius-full);
+    background: transparent;
+    color: var(--cb-text-secondary);
+    font-family: inherit;
+    font-size: var(--cb-text-xs);
+    font-weight: 500;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+:root .cb-files-segment:hover {
+    color: var(--cb-text-primary);
+}
+
+:root .cb-files-segment.is-active {
+    background-color: var(--cb-surface-selected, var(--cb-bg-elevated));
+    box-shadow: var(--cb-shadow-sm), 0 0 0 1px var(--cb-border-selected, var(--cb-border-strong));
+    color: var(--cb-text-primary);
+    font-weight: 600;
+}
+
+:root .cb-files-segment:focus-visible {
+    outline: 2px solid var(--cb-focus-ring, var(--cb-accent-strong));
+    outline-offset: 1px;
+}
+
+/* A block drawn live in an opened entry: the expanded frame fills the body,
+ * scrolling inside its own. */
+.cb-artifact-detail-live .cb-artifact-detail-body > .cb-md-block,
+.cb-artifact-detail-live .cb-artifact-detail-body > .cb-md-block-bare {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.cb-artifact-detail-live .cb-artifact-detail-body > .cb-md-block-bare {
+    padding: var(--cb-space-4);
+    overflow: auto;
+}
+
+.cb-artifact-detail-unrenderable {
+    padding: 0 var(--cb-space-4) var(--cb-space-4);
+    overflow: auto;
+}
+
+/* Where "Show in chat" went, and focus with it: marked for a moment, in the
+ * focus ring's colour. */
+.cb-md-block.is-located,
+.cb-md-block-bare.is-located,
+.cb-message-row.is-located {
+    outline: 2px solid var(--cb-focus-ring, var(--cb-accent-strong));
+    outline-offset: 2px;
+    transition: outline-color 0.3s ease-out;
+}
+
+.cb-md-block:focus:not(.is-located),
+.cb-md-block-bare:focus:not(.is-located),
+.cb-message-row:focus:not(.is-located) {
+    outline: none;
+}
+
+/* An opened entry's header in a narrow column (the floating card, a docked
+ * panel): Back, the title, the mark, Save, download, open, delete and close
+ * do not fit with their words. The mark and Save keep their icons, and their
+ * words for assistive technology (Save's name is its `aria-label`; the
+ * mark's word stays in the accessibility tree), so the title keeps room. */
+.cb-artifact-detail {
+    container-type: inline-size;
+}
+
+@container (max-width: 460px) {
+    .cb-artifact-detail-header .cb-file-status-text,
+    .cb-artifact-detail-header .cb-file-action-text {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .cb-artifact-detail-header .cb-file-status {
+        padding-inline: 4px;
+    }
+
+    :root .cb-artifact-detail-header .cb-file-action.cb-file-action-save {
+        width: var(--cb-control-sm);
+        padding: 0;
+        border: none;
+    }
+
+    /* Delete, armed: its question was the widest thing in the header and
+     * pushed the close button out of the column (review of 2026-10-14). Here
+     * it is the icon in a red ring; the question stays its name and tooltip. */
+    :root .cb-artifact-detail-header .cb-file-action.is-confirming {
+        width: var(--cb-control-sm);
+        padding: 0;
+        box-shadow: inset 0 0 0 1.5px var(--cb-status-failed);
+    }
+
+    .cb-artifact-detail-header .cb-file-action.is-confirming .cb-file-action-confirm-icon {
+        display: inline-flex;
+    }
+}
+
+/* The armed Delete's icon: shown only in a narrow header (above). */
+.cb-file-action-confirm-icon {
+    display: none;
+}
+
+/* An opened entry's title keeps a little room, and the close button its
+ * place at the end, however many actions the header holds. */
+:root .cb-artifact-detail-header .cb-files-title {
+    min-width: 32px;
+}
+
+/* What a list says when a Save from a row lands (`LiveAnnouncement`):
+ * heard, not seen. */
+.cb-files-announce {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* --- The conversation files dialog (2026-10-14) ----------------------------
+ *
+ * The user's request: "fix the design of the artifacts modal in the
+ * conversation, it should be better". Everything below is scoped to the
+ * dialog (`.cb-files-panel`); the rows' tile and mark above are shared with
+ * the Artifacts view, so the two lists stay one design. */
+
+/* The header: the folder on a tinted tile, the title over a muted line (the
+ * conversation, cut short, and "6 items · 2 saved"), the close button last. */
+.cb-files-panel .cb-files-header {
+    align-items: center;
+    gap: var(--cb-space-3);
+    height: auto;
+    padding-block: var(--cb-space-4) var(--cb-space-3);
+    padding-inline: var(--cb-files-gutter) var(--cb-space-3);
+    border-bottom: none;
+}
+
+.cb-files-panel .cb-files-header-icon {
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--cb-radius-md);
+    background-color: var(--cb-surface-hover);
+    background-color: color-mix(in srgb, var(--cb-accent-strong, var(--cb-accent-primary)) 14%, transparent);
+    color: var(--cb-accent-strong, var(--cb-accent-primary));
+}
+
+.cb-files-panel .cb-files-header-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* The title and the line under it, as one block beside the icon. */
+.cb-files-heading {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+:root .cb-files-heading .cb-files-title {
+    flex: none;
+}
+
+:root .cb-files-panel .cb-files-title {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+/* `:root` against a host's paragraph margin and colour. The conversation's
+ * title gives way first; the counts stay whole. */
+:root .cb-files-subtitle {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+    margin: 0;
+    color: var(--cb-text-secondary);
+    font-size: 12.5px;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.cb-files-subtitle-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cb-files-subtitle-sep {
+    flex-shrink: 0;
+    color: var(--cb-text-tertiary);
+}
+
+.cb-files-subtitle-counts {
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+:root .cb-files-panel .cb-files-close {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--cb-radius-md);
+}
+
+/* The toolbar: the filter, a compact segmented control with counts.
+ *
+ * Its colours are the segmented control's, shared with the Artifacts view
+ * (above): the track 1.2:1 on the dark dialog, the chosen option's edge
+ * 3.6:1 on it (3.3:1 light). Until the review of 2026-10-14 the track was
+ * `--cb-surface-sunken` (1.05:1 on the dark dialog: invisible) and the chosen
+ * option `--cb-bg-elevated`, the dark dialog's own colour, with a 10%
+ * hairline. Its shape is its own: rounded corners, taller options with a
+ * count. */
+.cb-files-panel .cb-files-toolbar {
+    flex-direction: row;
+    align-items: center;
+    padding-block: 0 var(--cb-space-3);
+    padding-inline: var(--cb-files-gutter);
+}
+
+.cb-files-panel .cb-files-segmented {
+    max-width: 100%;
+    border-radius: var(--cb-radius-md);
+}
+
+/* Logical padding: the label's side is the start in either direction. No
+ * colour or weight here: those are the shared rules', and a weight at this
+ * specificity, later, would undo the chosen option's. */
+:root .cb-files-panel .cb-files-segment {
+    display: inline-flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding-block: 0;
+    padding-inline: 12px 10px;
+    border-radius: calc(var(--cb-radius-md) - 2px);
+}
+
+.cb-files-segment-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* A count's pill sinks into the track: the secondary text on it is 6.1:1 in
+ * the dark theme and 6.0:1 in the light one. A further lift
+ * (`--cb-surface-hover`, until the review of 2026-10-14) put that 11px text
+ * at 4.4:1 in the dark theme, under the 4.5:1 it needs. */
+.cb-files-segment-count {
+    flex-shrink: 0;
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: var(--cb-radius-full);
+    background-color: var(--cb-surface-sunken);
+    color: var(--cb-text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 17px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.cb-files-segment.is-active .cb-files-segment-count {
+    background-color: var(--cb-surface-hover);
+    background-color: color-mix(in srgb, var(--cb-accent-primary) 14%, transparent);
+    color: var(--cb-text-primary);
+}
+
+/* An option with nothing in it: its count without the pill, lighter in
+ * weight — still the secondary text, as `--cb-text-tertiary` is under 4.5:1
+ * on the dark dialog at this size (review of 2026-10-14). */
+.cb-files-segment.is-empty:not(.is-active) .cb-files-segment-count {
+    background-color: transparent;
+    color: var(--cb-text-secondary);
+    font-weight: 500;
+}
+
+/* The list: under a hairline, as tall as it is up to the dialog's cap, then
+ * scrolling on its own; the header and the toolbar stay. */
+.cb-files-panel .cb-files-body {
+    flex: 0 1 auto;
+    padding: var(--cb-space-2) var(--cb-space-2) var(--cb-space-3);
+    overflow-x: hidden;
+    border-top: 1px solid var(--cb-border-subtle);
+}
+
+/* "All": Visuals, then Files, each under a small heading with its count.
+ * `:root` against a host's heading rules (margin, colour, font). */
+.cb-files-section + .cb-files-section {
+    margin-top: var(--cb-space-2);
+}
+
+:root .cb-files-section-title {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin: 0;
+    padding-block: var(--cb-space-2) var(--cb-space-1);
+    padding-inline: var(--cb-space-3);
+    color: var(--cb-text-secondary);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.4;
+    text-align: start;
+}
+
+/* The count as the filter's are drawn: a small pill, in the secondary text
+ * (the tertiary was 3:1 on the dark dialog, review of 2026-10-14). */
+.cb-files-section-count {
+    align-self: center;
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: var(--cb-radius-full);
+    background-color: var(--cb-surface-hover);
+    color: var(--cb-text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 17px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Rows: a generous target, a quiet hover, the actions at the end. */
+.cb-files-panel .cb-files-list {
+    gap: 1px;
+}
+
+.cb-files-panel .cb-file-row {
+    gap: var(--cb-space-1);
+    padding-block: 2px;
+    padding-inline: 2px var(--cb-space-2);
+}
+
+.cb-files-panel .cb-file-row:hover {
+    background-color: var(--cb-surface-hover);
+}
+
+:root .cb-files-panel .cb-file-main {
+    gap: var(--cb-space-3);
+    min-height: 56px;
+    padding: var(--cb-space-2);
+    border-radius: var(--cb-radius-md);
+}
+
+.cb-files-panel .cb-file-thumb svg {
+    width: 18px;
+    height: 18px;
+}
+
+.cb-files-panel .cb-file-text {
+    gap: 3px;
+}
+
+.cb-files-panel .cb-file-title {
+    font-size: 13.5px;
+    line-height: 1.35;
+}
+
+.cb-files-panel .cb-file-meta {
+    gap: var(--cb-space-2);
+    font-size: 12px;
+    line-height: 18px;
+}
+
+/* The details start with the kind: a renderer's word ("chart") reads as the
+ * file kinds' do ("Spreadsheet"). */
+.cb-files-panel .cb-file-meta-text::first-letter {
+    text-transform: uppercase;
+}
+
+.cb-files-panel .cb-file-actions {
+    gap: 2px;
+}
+
+:root .cb-files-panel .cb-file-action {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--cb-radius-md);
+}
+
+/* Save is an icon here like the rest: its word stays its name (`aria-label`)
+ * and its tooltip. */
+:root .cb-files-panel .cb-file-action.cb-file-action-save {
+    width: 32px;
+    padding: 0;
+    border: none;
+    color: var(--cb-text-secondary);
+}
+
+:root .cb-files-panel .cb-file-action.cb-file-action-save:hover:not(:disabled) {
+    color: var(--cb-accent-primary);
+}
+
+.cb-files-panel .cb-file-action-save .cb-file-action-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* With a mouse, a row's actions show on hover and on focus — always in the
+ * tab order, never `display: none` — and stay while one is busy. On a touch
+ * screen, and in a narrow chat (below), they always show.
+ * "Busy" is a rule of its own: a browser without `:has()` (Firefox before
+ * 121, ESR 115 among them) drops a whole selector list it cannot read, and
+ * with it the hover and focus that show the actions — which stayed hidden,
+ * yet clickable, under `opacity: 0` (review of 2026-10-14). */
+@media (hover: hover) and (pointer: fine) {
+    .cb-files-panel .cb-file-actions {
+        opacity: 0;
+        transition: opacity var(--cb-transition-fast);
+    }
+
+    .cb-files-panel .cb-file-row:hover .cb-file-actions,
+    .cb-files-panel .cb-file-row:focus-within .cb-file-actions {
+        opacity: 1;
+    }
+
+    .cb-files-panel .cb-file-row:has(.cb-files-spinner) .cb-file-actions {
+        opacity: 1;
+    }
+}
+
+.cb-files-panel .cb-file-row:has(:focus-visible) {
+    background-color: var(--cb-surface-hover);
+}
+
+.cb-files-panel .cb-file-error {
+    padding-inline: calc(40px + var(--cb-space-2) + var(--cb-space-3) + 2px) var(--cb-space-3);
+}
+
+/* An empty conversation: the folder in a soft circle, a heading, and what
+ * will appear here — centred, the dialog as small as that. The circle is a
+ * lift in both themes (`--cb-surface-hover`: 1.2:1 on the dark dialog, where
+ * `--cb-surface-sunken` was 1.05:1 and vanished) and the folder the secondary
+ * text on it (5.5:1 dark, 6.7:1 light; the tertiary was 2.5:1 on the lifted
+ * circle) — review of 2026-10-14. */
+.cb-files-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--cb-space-8) var(--cb-space-6) calc(var(--cb-space-8) + var(--cb-space-2));
+    text-align: center;
+}
+
+.cb-files-empty-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    margin-bottom: var(--cb-space-4);
+    border-radius: var(--cb-radius-full);
+    background-color: var(--cb-surface-hover);
+    color: var(--cb-text-secondary);
+}
+
+.cb-files-empty-icon svg {
+    width: 26px;
+    height: 26px;
+}
+
+:root .cb-files-empty-title {
+    margin: 0 0 var(--cb-space-1);
+    color: var(--cb-text-primary);
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+:root .cb-files-empty-hint {
+    max-width: 46ch;
+    margin: 0;
+    color: var(--cb-text-secondary);
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+/* A filter with nothing in it: its own short line. */
+:root .cb-files-panel .cb-files-filter-empty {
+    padding: var(--cb-space-6) var(--cb-space-4);
+    color: var(--cb-text-secondary);
+    font-size: 13px;
+}
+
+/* A failed read: an inline message with Retry beside it. Logical padding:
+ * the message's side, the start, gets the wider one in either direction. */
+.cb-files-panel .cb-files-error {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cb-space-2) var(--cb-space-3);
+    margin: var(--cb-space-2);
+    padding-block: var(--cb-space-3);
+    padding-inline: var(--cb-space-4) var(--cb-space-3);
+    border: 1px solid var(--cb-status-failed);
+    border: 1px solid color-mix(in srgb, var(--cb-status-failed) 30%, transparent);
+    border-radius: var(--cb-radius-md);
+    background-color: var(--cb-surface-sunken);
+    background-color: color-mix(in srgb, var(--cb-status-failed) 8%, transparent);
+    color: var(--cb-text-primary);
+    font-size: 13px;
+    text-align: start;
+}
+
+:root .cb-files-panel .cb-files-error p {
+    margin: 0;
+}
+
+/* Loading: rows' skeletons — a tile and two lines. */
+.cb-files-skeleton.is-rows {
+    gap: 0;
+    padding: 0;
+}
+
+.cb-files-skeleton-item {
+    display: flex;
+    align-items: center;
+    gap: var(--cb-space-3);
+    min-height: 56px;
+    padding: var(--cb-space-2) calc(var(--cb-space-2) + 2px);
+}
+
+.cb-files-skeleton-tile,
+.cb-files-skeleton-line {
+    display: block;
+    background: linear-gradient(
+        90deg,
+        var(--cb-surface-raised) 0%,
+        var(--cb-surface-hover) 50%,
+        var(--cb-surface-raised) 100%
+    );
+    background-size: 200% 100%;
+    animation: cb-files-shimmer 1.4s ease-in-out infinite;
+}
+
+.cb-files-skeleton-tile {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--cb-radius-md);
+}
+
+.cb-files-skeleton-lines {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--cb-space-2);
+    min-width: 0;
+}
+
+.cb-files-skeleton-line {
+    width: 58%;
+    height: 10px;
+    border-radius: var(--cb-radius-full);
+}
+
+.cb-files-skeleton-line.is-short {
+    width: 34%;
+    height: 8px;
+}
+
+.cb-files-skeleton-item:nth-child(2) .cb-files-skeleton-line:not(.is-short) { width: 44%; }
+.cb-files-skeleton-item:nth-child(3) .cb-files-skeleton-line:not(.is-short) { width: 66%; }
+.cb-files-skeleton-item:nth-child(4) .cb-files-skeleton-line:not(.is-short) { width: 38%; }
+
+/* A narrow chat — the floating card, a docked panel: a sheet at the bottom
+ * of the chat with small margins, the actions always shown, nothing wider
+ * than the chat. */
+@container cb-files (max-width: 520px) {
+    .cb-files-panel {
+        --cb-files-margin: var(--cb-space-2);
+        --cb-files-gutter: var(--cb-space-4);
+        align-self: flex-end;
+        width: calc(100% - 2 * var(--cb-files-margin));
+        max-height: calc(100% - 2 * var(--cb-files-margin));
+        margin-bottom: var(--cb-files-margin);
+    }
+
+    .cb-files-panel .cb-files-header {
+        padding-block: var(--cb-space-3);
+    }
+
+    .cb-files-panel .cb-files-header-icon {
+        width: 32px;
+        height: 32px;
+    }
+
+    .cb-files-panel .cb-files-segmented {
+        width: 100%;
+    }
+
+    :root .cb-files-panel .cb-files-segment {
+        flex: 1 1 0;
+        justify-content: center;
+        padding: 0 8px;
+    }
+
+    .cb-files-panel .cb-file-actions {
+        opacity: 1;
+    }
+
+    /* The details keep the date and the size: in a 360-400px card the pill's
+     * word and two actions left the line about 115px, and "Spreadsheet ·
+     * Generated · 20 minutes ago · 47.1 KB" read "Spreadsheet · Gener…"
+     * (review of 2026-10-14). The pill is its icon — the filled or dashed
+     * bookmark, at 3:1 or more in both themes — and its word stays in the
+     * row's name for assistive technology, as an opened artifact's narrow
+     * header has it; the line wraps between details, to a second line. */
+    .cb-files-panel .cb-file-status-text {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .cb-files-panel .cb-file-status {
+        padding-inline: 4px;
+    }
+
+    .cb-files-panel .cb-file-meta {
+        align-items: flex-start;
+    }
+
+    .cb-files-panel .cb-file-meta-text {
+        white-space: normal;
+    }
+
+    .cb-files-panel .cb-files-body {
+        padding-inline: var(--cb-space-1);
+    }
+
+    .cb-files-empty {
+        padding: var(--cb-space-6) var(--cb-space-4) var(--cb-space-8);
+    }
+}

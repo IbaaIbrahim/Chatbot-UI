@@ -1,318 +1,347 @@
 import React from 'react';
-const { useState, useRef, useEffect } = React;
 import './ChatHeader.css';
-import type { ChatMode } from '../ChatContainer/ChatContainer';
-import { useChatbot } from '../../context/ChatbotContext';
+import { useChatActions, useChatState, useIcons, useLabels } from '../../store/hooks';
+import type { ChatViewOption } from '../../common/chatbotConfig';
+import { ChatMode, useChatPresentation } from '../ChatContainer/presentation';
+
+const { useState, useRef, useEffect } = React;
+
+const COPIED_FEEDBACK_MS = 2000;
+
+/** Each mode's name and icon share one key: `labels.viewFloating`, `icons.viewFloating`. */
+const MODE_VIEW = {
+    floating: 'viewFloating',
+    sidebar: 'viewSidebar',
+    fullscreen: 'viewFullscreen',
+} as const satisfies Record<ChatMode, string>;
 
 export interface ChatHeaderProps {
-    brand?: React.ReactNode;
-    title?: string;
-    showDrawerToggle?: boolean;
-    onToggleDrawer?: () => void;
-    isDrawerOpen?: boolean;
-    headerActions?: React.ReactNode;
-    showShare?: boolean;
-    onShare?: () => void;
-    showNewChat?: boolean;
-    onNewChat?: () => void;
-    showMoreMenu?: boolean;
-    onManageMemory?: () => void;
-    onViewUsage?: () => void;
-    onSwitchMode?: (newMode: ChatMode) => void;
-    allowedModes?: ChatMode[];
-    currentMode?: ChatMode;
-    onCopyConversationId?: () => void;
-    activeConversationId?: string | null;
-    onDeleteThread?: () => void;
-    showClose?: boolean;
-    onClose?: () => void;
-    extraMenuItems?: React.ReactNode;
     className?: string;
     style?: React.CSSProperties;
 }
 
-const ALL_MODES: ChatMode[] = ['floating', 'sidebar', 'fullscreen'];
-
-export const ChatHeader: React.FC<ChatHeaderProps> = ({
-    brand: brandProp,
-    title,
-    showDrawerToggle = true,
-    onToggleDrawer: onToggleDrawerProp,
-    isDrawerOpen: isDrawerOpenProp,
-    headerActions,
-    showShare = true,
-    onShare: onShareProp,
-    showNewChat = true,
-    onNewChat: onNewChatProp,
-    showMoreMenu = true,
-    onManageMemory,
-    onViewUsage,
-    onSwitchMode: onSwitchModeProp,
-    allowedModes: allowedModesProp,
-    currentMode: currentModeProp,
-    onCopyConversationId: onCopyConversationIdProp,
-    activeConversationId: activeConversationIdProp,
-    onDeleteThread: onDeleteThreadProp,
-    showClose = true,
-    onClose: onCloseProp,
-    extraMenuItems,
-    className = '',
-    style,
-}) => {
-    const context = useChatbot();
-
-    const isDrawerOpen = isDrawerOpenProp !== undefined ? isDrawerOpenProp : (context?.isDrawerOpen ?? false);
-    const onToggleDrawer = onToggleDrawerProp !== undefined
-        ? onToggleDrawerProp
-        : (context ? () => context.setIsDrawerOpen(!context.isDrawerOpen) : undefined);
-
-    const onShare = onShareProp !== undefined ? onShareProp : context?.onShare;
-    const onNewChat = onNewChatProp !== undefined ? onNewChatProp : context?.newChat;
-    const onClose = onCloseProp !== undefined ? onCloseProp : context?.onClose;
-    const onSwitchMode = onSwitchModeProp !== undefined ? onSwitchModeProp : context?.onSwitchMode;
-    const currentMode = currentModeProp !== undefined ? currentModeProp : (context?.mode ?? 'floating');
-    const allowedModes = allowedModesProp && allowedModesProp.length > 0 ? allowedModesProp : ALL_MODES;
-    const activeConversationId = activeConversationIdProp !== undefined ? activeConversationIdProp : context?.activeConversationId;
-    const onCopyConversationId = onCopyConversationIdProp !== undefined ? onCopyConversationIdProp : context?.copyConversationId;
-    const onDeleteThread = onDeleteThreadProp !== undefined ? onDeleteThreadProp : (context && activeConversationId ? () => context.deleteConversation(activeConversationId) : undefined);
-
-    const hasMessages = (context?.messages && context.messages.length > 0) || false;
+/**
+ * The bar above the transcript.
+ *
+ * Every control is decided by two things: `config.header` says whether the host
+ * wants it, and the chat's state says whether it can do anything — the share
+ * button needs an `onShare`, "Switch view" a view other than the one in effect
+ * (`config.header.views`, or the provider's `onSwitchMode` and a second mode),
+ * "Credit usage" a client that can read the allowance. Both must hold, so no flag
+ * can produce a button that does nothing.
+ *
+ * "Switch view" is one entry that opens the page's views in place, the one in
+ * effect ticked: a narrow floating panel has no room for a submenu beside the
+ * menu, and a flat entry per view made the menu as long as the list of views.
+ */
+export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style }) => {
+    const header = useChatState(s => s.config.header);
+    const sidebarEnabled = useChatState(s => s.config.sidebar.enabled);
+    const isSidebarOpen = useChatState(s => s.isSidebarOpen);
+    const hasMessages = useChatState(s => s.messages.length > 0);
+    const activeConversationId = useChatState(s => s.activeConversationId);
+    const canShare = useChatState(s => s.canShare);
+    const canCopyLink = useChatState(s => s.canCopyConversationLink);
+    const canSwitchMode = useChatState(s => s.canSwitchMode);
+    const canShowCredits = useChatState(s => s.canShowCredits);
+    const canUseFiles = useChatState(s => s.storageClient !== null);
+    const isArtifactsOpen = useChatState(s => s.isArtifactsPanelOpen);
+    const hostHandlesOpenChange = useChatState(s => s.hostHandlesOpenChange);
+    const actions = useChatActions();
+    const labels = useLabels();
+    const icons = useIcons();
+    const { mode, allowedModes, embedded, sidebarInline } = useChatPresentation();
 
     const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const [copiedId, setCopiedId] = useState(false);
+    const [isViewListOpen, setIsViewListOpen] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const moreRef = useRef<HTMLButtonElement>(null);
 
-    // Close menu when clicking outside
     useEffect(() => {
-        if (!isMenuOpen) return;
+        if (!isMenuOpen) return undefined;
         const handleClickOutside = (e: MouseEvent) => {
             if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
                 setIsMenuOpen(false);
             }
         };
+        // Escape closes the menu, and only the menu: pressed in it, or with
+        // nothing focused (a click on "More options" does not focus it in
+        // every browser). Taken in the capture phase and stopped there, before
+        // the chat's other Escapes — an overlay sidebar's, the Artifacts
+        // view's, which stands below the header (2026-10-14) — see it.
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key !== 'Escape' || !menuRef.current) return;
+            const target = e.target;
+            const nothingFocused = !target || target === document.body || target === document.documentElement;
+            if (!nothingFocused && !(target instanceof Node && menuRef.current.contains(target))) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setIsMenuOpen(false);
+            if (!nothingFocused) moreRef.current?.focus();
+        };
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleEscape, true);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleEscape, true);
+        };
     }, [isMenuOpen]);
 
-    const handleCycleMode = () => {
+    // The list of views starts folded, and a delete unconfirmed, every time the
+    // menu opens.
+    useEffect(() => {
+        if (!isMenuOpen) {
+            setIsViewListOpen(false);
+            setIsConfirmingDelete(false);
+        }
+    }, [isMenuOpen]);
+
+    useEffect(() => {
+        if (!copied) return undefined;
+        const timer = window.setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
+        return () => window.clearTimeout(timer);
+    }, [copied]);
+
+    if (!header.visible) return null;
+
+    // An open inline sidebar carries its own collapse button; a second toggle
+    // beside it would be two controls for one thing.
+    const showSidebarToggle = header.sidebarToggle && sidebarEnabled && !(sidebarInline && isSidebarOpen);
+    // The host's own views when it defines them, otherwise the library's modes.
+    const builtInViews: ChatViewOption[] = canSwitchMode
+        ? allowedModes.map(viewMode => ({
+            id: viewMode,
+            label: labels[MODE_VIEW[viewMode]],
+            icon: icons[MODE_VIEW[viewMode]],
+            active: viewMode === mode,
+            onSelect: () => actions.switchMode(viewMode),
+        }))
+        : [];
+    const allowedViews = header.allowedViews;
+    const views = header.switchView
+        ? (header.views ?? builtInViews).filter(view => !allowedViews || allowedViews.includes(view.id))
+        : [];
+    const showSwitchView = views.some(view => !view.active);
+    const showCreditUsage = header.creditUsage && canShowCredits;
+    // A conversation's files exist only once it does, and the storage API
+    // needs the user's token to list them. Not while the Artifacts view
+    // stands in the conversation's place: the conversation the panel would
+    // describe is not on screen, and opening it would close the view, with
+    // its search and the artifact open in it (2026-10-14).
+    const showFiles = header.files && canUseFiles && Boolean(activeConversationId) && !isArtifactsOpen;
+    const showCopyId = header.copyConversationId && Boolean(activeConversationId);
+    const showDeleteThread = header.deleteConversation && Boolean(activeConversationId);
+    const hasOtherMenuItems = showCreditUsage || showCopyId || showDeleteThread || header.menuItems.length > 0;
+    const hasMenuItems = showSwitchView || hasOtherMenuItems;
+    const canClose = hostHandlesOpenChange || (mode === 'floating' && !embedded);
+
+    const runMenuItem = (action: () => void) => () => {
         setIsMenuOpen(false);
-        if (allowedModes.length <= 1) return;
-        const currentIndex = allowedModes.indexOf(currentMode);
-        const nextIndex = (currentIndex + 1) % allowedModes.length;
-        const nextMode = allowedModes[nextIndex];
-        onSwitchMode?.(nextMode);
+        action();
     };
 
-    const brand = brandProp !== undefined ? brandProp : (
+    const deleteThread = () => {
+        if (!activeConversationId) return;
+        actions.deleteConversation(activeConversationId).catch(error => {
+            console.error('[ChatHeader] deleting the conversation failed', error);
+        });
+    };
+
+    const brand = header.brand === false ? null : header.brand ?? (
         <div className="cb-brand-wrapper">
-            <div className="cb-header-sparkle">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                    <path
-                        d="M12 2L14.2 9.8L22 12L14.2 14.2L12 22L9.8 14.2L2 12L9.8 9.8L12 2Z"
-                        fill="url(#cb-sparkle-gradient-hdr)"
-                    />
-                    <defs>
-                        <linearGradient id="cb-sparkle-gradient-hdr" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
-                            <stop stopColor="#6366F1" />
-                            <stop offset="0.5" stopColor="#38BDF8" />
-                            <stop offset="1" stopColor="#F59E0B" />
-                        </linearGradient>
-                    </defs>
-                </svg>
-            </div>
-            <span className="cb-brand">{title || 'AI Assistant'}</span>
+            <div className="cb-header-sparkle">{icons.brand}</div>
+            <span className="cb-brand">{labels.brandTitle}</span>
         </div>
     );
 
     return (
         <div className={`cb-chat-header ${className}`} style={style}>
             <div className="cb-header-left">
-                {showDrawerToggle && onToggleDrawer && (
+                {showSidebarToggle && (
                     <button
                         type="button"
                         className="cb-header-btn cb-drawer-toggle-btn"
-                        onClick={onToggleDrawer}
-                        aria-label={isDrawerOpen ? 'Close menu' : 'Open menu'}
-                        aria-expanded={isDrawerOpen}
+                        onClick={actions.toggleSidebar}
+                        aria-label={isSidebarOpen ? labels.closeSidebar : labels.openSidebar}
+                        title={isSidebarOpen ? labels.closeSidebar : labels.openSidebar}
+                        aria-expanded={isSidebarOpen}
                     >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="3" y1="12" x2="21" y2="12"></line>
-                            <line x1="3" y1="6" x2="21" y2="6"></line>
-                            <line x1="3" y1="18" x2="21" y2="18"></line>
-                        </svg>
+                        {isSidebarOpen ? icons.sidebarCollapse : icons.sidebarToggle}
                     </button>
                 )}
                 {brand}
             </div>
 
             <div className="cb-actions">
-                {headerActions}
+                {header.actions}
 
-                {showShare && onShare && (
+                {showFiles && (
+                    <button
+                        type="button"
+                        className="cb-header-btn cb-files-btn"
+                        onClick={actions.openFiles}
+                        title={labels.conversationFiles}
+                        aria-label={labels.conversationFiles}
+                        aria-haspopup="dialog"
+                    >
+                        {icons.files}
+                    </button>
+                )}
+
+                {header.share && canShare && (
                     <button
                         type="button"
                         className="cb-header-btn cb-share-btn"
-                        onClick={onShare}
-                        title="Share conversation"
-                        aria-label="Share conversation"
+                        onClick={actions.share}
+                        title={labels.share}
+                        aria-label={labels.share}
                     >
-                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
-                            <polyline points="16 6 12 2 8 6" />
-                            <line x1="12" y1="2" x2="12" y2="15" />
-                        </svg>
+                        {icons.share}
                     </button>
                 )}
 
-                {showNewChat && hasMessages && onNewChat && (
+                {header.newChat && hasMessages && (
                     <button
                         type="button"
                         className="cb-header-new-chat-btn"
-                        onClick={onNewChat}
-                        title="Start a new chat"
-                        aria-label="New chat"
+                        onClick={actions.newChat}
+                        title={labels.newChatTitle}
+                        aria-label={labels.newChat}
                     >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 20h9" />
-                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                        </svg>
-                        <span>New chat</span>
+                        {icons.newChat}
+                        <span>{labels.newChat}</span>
                     </button>
                 )}
 
-                {showMoreMenu && (
+                {header.menu && hasMenuItems && (
                     <div className="cb-header-menu-container" ref={menuRef}>
                         <button
+                            ref={moreRef}
                             type="button"
                             className="cb-header-btn cb-more-btn"
-                            onClick={() => setIsMenuOpen(!isMenuOpen)}
-                            aria-label="More options"
+                            onClick={() => setIsMenuOpen(open => !open)}
+                            aria-label={labels.moreOptions}
+                            title={labels.moreOptions}
                             aria-expanded={isMenuOpen}
                         >
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                                <circle cx="12" cy="12" r="2" />
-                                <circle cx="19" cy="12" r="2" />
-                                <circle cx="5" cy="12" r="2" />
-                            </svg>
+                            {icons.more}
                         </button>
 
                         {isMenuOpen && (
                             <div className="cb-header-dropdown-menu" role="menu">
-                                {onManageMemory && (
+                                {showSwitchView && (
+                                    <button
+                                        type="button"
+                                        className={`cb-header-menu-item cb-header-switch-view${isViewListOpen ? ' is-open' : ''}`}
+                                        onClick={() => setIsViewListOpen(open => !open)}
+                                        role="menuitem"
+                                        aria-haspopup="true"
+                                        aria-expanded={isViewListOpen}
+                                    >
+                                        {icons.switchView}
+                                        <span>{labels.switchView}</span>
+                                        <span className="cb-header-menu-chevron" aria-hidden>{icons.sectionExpanded}</span>
+                                    </button>
+                                )}
+                                {showSwitchView && isViewListOpen && (
+                                    <div className="cb-header-view-list" role="group" aria-label={labels.switchView}>
+                                        {views.map(view => (
+                                            <button
+                                                key={view.id}
+                                                type="button"
+                                                className={`cb-header-menu-item cb-header-view-item${view.active ? ' is-active' : ''}`}
+                                                onClick={view.active ? () => setIsMenuOpen(false) : runMenuItem(view.onSelect)}
+                                                role="menuitemradio"
+                                                aria-checked={Boolean(view.active)}
+                                            >
+                                                {view.icon}
+                                                <span>{view.label}</span>
+                                                {view.active && <span className="cb-header-view-check" aria-hidden>{icons.check}</span>}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                {showSwitchView && hasOtherMenuItems && (
+                                    <div className="cb-header-menu-separator" role="separator" />
+                                )}
+
+                                {showCreditUsage && (
+                                    <button
+                                        type="button"
+                                        className="cb-header-menu-item"
+                                        onClick={runMenuItem(actions.openCreditUsage)}
+                                        role="menuitem"
+                                    >
+                                        {icons.creditUsage}
+                                        <span>{labels.creditUsage}</span>
+                                    </button>
+                                )}
+
+                                {/* The link when the host can build one (`conversationLink`):
+                                    an id alone opens nothing, and a link is what gets shared. */}
+                                {showCopyId && (
                                     <button
                                         type="button"
                                         className="cb-header-menu-item"
                                         onClick={() => {
-                                            setIsMenuOpen(false);
-                                            onManageMemory();
+                                            if (canCopyLink) actions.copyConversationLink();
+                                            else actions.copyConversationId();
+                                            setCopied(true);
                                         }}
                                         role="menuitem"
                                     >
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                            <polyline points="14 2 14 8 20 8" />
-                                            <line x1="16" y1="13" x2="8" y2="13" />
-                                            <line x1="16" y1="17" x2="8" y2="17" />
-                                            <polyline points="10 9 9 9 8 9" />
-                                        </svg>
-                                        <span>Manage memory</span>
+                                        {canCopyLink ? icons.link : icons.copy}
+                                        <span>
+                                            {canCopyLink
+                                                ? (copied ? labels.copiedConversationLink : labels.copyConversationLink)
+                                                : (copied ? labels.copiedConversationId : labels.copyConversationId)}
+                                        </span>
                                     </button>
                                 )}
 
-                                {allowedModes.length > 1 && onSwitchMode && (
+                                {header.menuItems.map(item => (
                                     <button
+                                        key={item.id}
                                         type="button"
-                                        className="cb-header-menu-item"
-                                        onClick={handleCycleMode}
+                                        className={`cb-header-menu-item${item.danger ? ' cb-header-menu-item-danger' : ''}`}
+                                        onClick={runMenuItem(item.onSelect)}
                                         role="menuitem"
                                     >
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <polyline points="15 3 21 3 21 9" />
-                                            <polyline points="9 21 3 21 3 15" />
-                                            <line x1="21" y1="3" x2="14" y2="10" />
-                                            <line x1="3" y1="21" x2="10" y2="14" />
-                                        </svg>
-                                        <span>Switch view</span>
+                                        {item.icon}
+                                        <span>{item.label}</span>
                                     </button>
-                                )}
+                                ))}
 
-                                {onViewUsage && (
+                                {/* Two clicks: the first asks, in place, and only the second
+                                    deletes — a whole thread is not something to lose to a
+                                    stray click on a menu. */}
+                                {showDeleteThread && (
                                     <button
                                         type="button"
-                                        className="cb-header-menu-item"
-                                        onClick={() => {
-                                            setIsMenuOpen(false);
-                                            onViewUsage();
-                                        }}
+                                        className={`cb-header-menu-item cb-header-menu-item-danger${isConfirmingDelete ? ' is-confirming' : ''}`}
+                                        onClick={isConfirmingDelete ? runMenuItem(deleteThread) : () => setIsConfirmingDelete(true)}
                                         role="menuitem"
                                     >
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <circle cx="12" cy="12" r="10" />
-                                            <polyline points="12 6 12 12 16 14" />
-                                        </svg>
-                                        <span>View my usage</span>
+                                        {icons.delete}
+                                        <span>{isConfirmingDelete ? labels.confirmDeleteThread : labels.deleteThread}</span>
                                     </button>
                                 )}
-
-                                {activeConversationId && (
-                                    <button
-                                        type="button"
-                                        className="cb-header-menu-item"
-                                        onClick={() => {
-                                            if (navigator.clipboard) {
-                                                void navigator.clipboard.writeText(activeConversationId);
-                                            }
-                                            onCopyConversationId?.();
-                                            setCopiedId(true);
-                                            setTimeout(() => setCopiedId(false), 2000);
-                                        }}
-                                        role="menuitem"
-                                    >
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                                        </svg>
-                                        <span>{copiedId ? 'Copied ID!' : 'Copy conversation ID'}</span>
-                                    </button>
-                                )}
-
-                                {onDeleteThread && (
-                                    <button
-                                        type="button"
-                                        className="cb-header-menu-item cb-header-menu-item-danger"
-                                        onClick={() => {
-                                            setIsMenuOpen(false);
-                                            onDeleteThread();
-                                        }}
-                                        role="menuitem"
-                                    >
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <polyline points="3 6 5 6 21 6" />
-                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                            <line x1="10" y1="11" x2="10" y2="17" />
-                                            <line x1="14" y1="11" x2="14" y2="17" />
-                                        </svg>
-                                        <span>Delete thread</span>
-                                    </button>
-                                )}
-
-                                {extraMenuItems}
                             </div>
                         )}
                     </div>
                 )}
 
-                {showClose && onClose && (
+                {header.close && canClose && (
                     <button
                         type="button"
                         className="cb-minimize-btn"
-                        onClick={onClose}
-                        aria-label="Close chat"
-                        title="Close chat"
+                        onClick={actions.close}
+                        aria-label={labels.closeChat}
+                        title={labels.closeChat}
                     >
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M18 6L6 18M6 6l12 12" />
-                        </svg>
+                        {icons.close}
                     </button>
                 )}
             </div>

@@ -1,0 +1,268 @@
+/* Covers the chat it belongs to, not the page: the container is positioned in
+   every mode (fixed, or relative when embedded), so `inset: 0` is the chat. */
+.cb-credit-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--cb-space-4);
+    background-color: var(--cb-scrim);
+    animation: cb-credit-fade 0.15s ease-out;
+}
+
+.cb-credit-dialog {
+    box-sizing: border-box;
+    width: min(360px, 100%);
+    max-height: 100%;
+    overflow-y: auto;
+    padding: var(--cb-space-4) 18px 18px;
+    background-color: var(--cb-bg-elevated);
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-lg);
+    box-shadow: var(--cb-shadow-lg);
+    color: var(--cb-text-primary);
+    animation: cb-credit-rise 0.18s ease-out;
+}
+
+@keyframes cb-credit-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes cb-credit-rise {
+    from { opacity: 0; transform: translateY(6px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+}
+
+.cb-credit-header {
+    display: flex;
+    align-items: center;
+    gap: var(--cb-space-2);
+    margin-bottom: var(--cb-space-4);
+}
+
+.cb-credit-header-icon {
+    display: inline-flex;
+    color: var(--cb-accent-primary);
+}
+
+.cb-credit-title {
+    flex: 1;
+    margin: 0;
+    font-size: var(--cb-text-sm);
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+:root .cb-credit-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--cb-control-sm);
+    height: var(--cb-control-sm);
+    padding: 0;
+    border: none;
+    border-radius: var(--cb-radius-full);
+    background: transparent;
+    color: var(--cb-text-secondary);
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+.cb-credit-close:hover {
+    background-color: var(--cb-surface-hover);
+    color: var(--cb-text-primary);
+}
+
+.cb-credit-close svg {
+    width: 16px;
+    height: 16px;
+}
+
+.cb-credit-hero {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.cb-credit-number {
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+}
+
+.cb-credit-number.is-exhausted {
+    color: var(--cb-status-failed);
+}
+
+.cb-credit-hero-title {
+    font-size: var(--cb-text-base);
+    font-weight: 600;
+}
+
+.cb-credit-caption {
+    color: var(--cb-text-secondary);
+    font-size: var(--cb-text-xs);
+    line-height: 1.4;
+}
+
+.cb-credit-month {
+    margin-top: var(--cb-space-3);
+    color: var(--cb-text-secondary);
+    font-size: var(--cb-text-xs);
+    font-variant-numeric: tabular-nums;
+}
+
+.cb-credit-meter {
+    position: relative;
+    height: 6px;
+    margin-top: var(--cb-space-3);
+    overflow: hidden;
+    border-radius: var(--cb-radius-full);
+    background-color: var(--cb-bg-tertiary);
+}
+
+.cb-credit-meter-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: inherit;
+    background-color: var(--cb-accent-primary);
+    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cb-credit-meter.is-exhausted .cb-credit-meter-fill {
+    background-color: var(--cb-status-failed);
+}
+
+.cb-credit-meter-legend {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--cb-space-2);
+    margin-top: 6px;
+    color: var(--cb-text-tertiary);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Each grant, when there is more than one: a plan allowance and its top-ups. */
+.cb-credit-grants {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: var(--cb-space-3) 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.cb-credit-grant {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    column-gap: var(--cb-space-2);
+    padding: var(--cb-space-2) 10px;
+    border-radius: var(--cb-radius-md);
+    background-color: var(--cb-surface-raised);
+    font-size: var(--cb-text-xs);
+}
+
+.cb-credit-grant-name {
+    font-weight: 500;
+}
+
+.cb-credit-grant-left {
+    color: var(--cb-text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.cb-credit-grant-until {
+    grid-column: 1 / -1;
+    color: var(--cb-text-tertiary);
+    font-size: 11px;
+}
+
+.cb-credit-blocked {
+    margin-top: var(--cb-space-4);
+    padding: 10px var(--cb-space-3);
+    border-inline-start: 3px solid var(--cb-status-failed);
+    border-radius: var(--cb-radius-sm);
+    background-color: var(--cb-surface-raised);
+    color: var(--cb-text-primary);
+    font-size: var(--cb-text-xs);
+    line-height: 1.45;
+}
+
+.cb-credit-message {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--cb-space-2);
+    color: var(--cb-text-secondary);
+    font-size: var(--cb-text-sm);
+}
+
+.cb-credit-message p {
+    margin: 0;
+}
+
+:root .cb-credit-retry {
+    padding: 5px 14px;
+    border: 1px solid var(--cb-border-strong);
+    border-radius: var(--cb-radius-full);
+    background: transparent;
+    color: var(--cb-text-primary);
+    font: inherit;
+    font-size: var(--cb-text-xs);
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+.cb-credit-retry:hover {
+    background-color: var(--cb-surface-hover);
+}
+
+.cb-credit-close:focus-visible,
+.cb-credit-retry:focus-visible {
+    outline: 2px solid var(--cb-focus-ring);
+    outline-offset: 2px;
+}
+
+/* Shaped like the summary it stands in for, so nothing jumps when it lands. */
+.cb-credit-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cb-space-2);
+}
+
+.cb-credit-skeleton-line,
+.cb-credit-skeleton-bar {
+    display: block;
+    border-radius: var(--cb-radius-sm);
+    background-color: var(--cb-bg-tertiary);
+    animation: cb-credit-pulse 1.2s ease-in-out infinite;
+}
+
+.cb-credit-skeleton-line {
+    width: 40%;
+    height: 12px;
+}
+
+.cb-credit-skeleton-line.is-wide {
+    width: 30%;
+    height: 34px;
+}
+
+.cb-credit-skeleton-bar {
+    width: 100%;
+    height: 6px;
+    margin-top: var(--cb-space-2);
+    border-radius: var(--cb-radius-full);
+}
+
+@keyframes cb-credit-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+}

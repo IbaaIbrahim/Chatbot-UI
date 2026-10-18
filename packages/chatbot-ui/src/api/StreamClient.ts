@@ -24,6 +24,11 @@ export interface StreamChatClient {
      * would be wrong — the job keeps running and billing on the server either
      * way, so the reader is parked rather than discarded, and switching back
      * re-opens it.
+     *
+     * Nothing from a parked conversation reaches the caller's ``onEvent`` any
+     * more. The gateway client still answers the parked turn's host requests,
+     * the platform's questions about the application's tools and skills,
+     * because the run cannot find or load them without those answers.
      */
     parkStream?(conversationId: string): void;
 

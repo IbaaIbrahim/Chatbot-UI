@@ -1,5 +1,6 @@
 import * as React from 'react';
 import './QuestionnaireForm.css';
+import { useLabels } from '../../store/hooks';
 
 export type QuestionType = 'single_choice' | 'multi_choice' | 'text';
 
@@ -71,9 +72,17 @@ export function formatAnswers(questions: QuestionSpec[], answers: AnswerState[])
         .join('\n');
 }
 
-const OTHER_LABEL = 'Other';
+let formCount = 0;
 
 export const QuestionnaireForm: React.FC<QuestionnaireFormProps> = ({ questions, onSubmit }) => {
+    const labels = useLabels();
+    // Names this form's radio groups and labels its options with the question.
+    // A counter rather than `useId`, which React 17 hosts do not have.
+    const formIdRef = React.useRef('');
+    if (!formIdRef.current) {
+        formCount += 1;
+        formIdRef.current = `cb-questionnaire-${formCount}`;
+    }
     const [current, setCurrent] = React.useState(0);
     const [answers, setAnswers] = React.useState<AnswerState[]>(() =>
         questions.map(() => emptyAnswer())
@@ -129,25 +138,54 @@ export const QuestionnaireForm: React.FC<QuestionnaireFormProps> = ({ questions,
         onSubmit(formatAnswers(questions, answers));
     };
 
+    const goToNext = () => setCurrent(c => Math.min(total - 1, c + 1));
+
+    // Enter answers from a text field the way it sends from the composer;
+    // Shift+Enter is a new line, and Enter that commits an IME composition is
+    // the composition's, not the form's.
+    const handleAnswerKeyDown = (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+        event.preventDefault();
+        if (isLast) {
+            handleSubmit();
+        } else if (currentAnswered) {
+            goToNext();
+        }
+    };
+
     const options = question.options ?? [];
     const inputType = question.type === 'single_choice' ? 'radio' : 'checkbox';
+    const questionId = `${formIdRef.current}-question-${current}`;
+    // One name per question, so the browser treats its radios as one group:
+    // arrow keys move the choice and Tab enters and leaves the group once.
+    const groupName = `${formIdRef.current}-answer-${current}`;
 
     return (
         <div className="cb-questionnaire">
-            <div className="cb-questionnaire-question">{question.question}</div>
+            <div className="cb-questionnaire-header">
+                <div className="cb-questionnaire-question" id={questionId}>{question.question}</div>
+                {/* A pager for one question is two controls that do nothing. */}
+                {total > 1 && <span className="cb-questionnaire-counter">{current + 1} / {total}</span>}
+            </div>
 
             <div className="cb-questionnaire-body">
                 {question.type === 'text' ? (
                     <textarea
                         className="cb-questionnaire-textarea"
                         value={answer.text}
-                        placeholder="Type your answer…"
-                        rows={3}
+                        placeholder={labels.answerPlaceholder}
+                        aria-labelledby={questionId}
+                        rows={2}
                         autoFocus
                         onChange={e => updateAnswer({ text: e.target.value })}
+                        onKeyDown={handleAnswerKeyDown}
                     />
                 ) : (
-                    <div className="cb-questionnaire-options" role={question.type === 'single_choice' ? 'radiogroup' : 'group'}>
+                    <div
+                        className="cb-questionnaire-options"
+                        role={question.type === 'single_choice' ? 'radiogroup' : 'group'}
+                        aria-labelledby={questionId}
+                    >
                         {options.map(option => {
                             const checked = answer.selected.includes(option);
                             return (
@@ -157,6 +195,7 @@ export const QuestionnaireForm: React.FC<QuestionnaireFormProps> = ({ questions,
                                 >
                                     <input
                                         type={inputType}
+                                        name={groupName}
                                         checked={checked}
                                         onChange={() => toggleOption(option)}
                                     />
@@ -171,19 +210,22 @@ export const QuestionnaireForm: React.FC<QuestionnaireFormProps> = ({ questions,
                                 <label className={`cb-questionnaire-option ${answer.otherSelected ? 'checked' : ''}`}>
                                     <input
                                         type={inputType}
+                                        name={groupName}
                                         checked={answer.otherSelected}
                                         onChange={selectOther}
                                     />
-                                    <span>{OTHER_LABEL}</span>
+                                    <span>{labels.otherOption}</span>
                                 </label>
                                 {answer.otherSelected && (
                                     <input
                                         className="cb-questionnaire-other-input"
                                         type="text"
                                         value={answer.otherText}
-                                        placeholder="Enter custom answer"
+                                        placeholder={labels.customAnswerPlaceholder}
+                                        aria-label={labels.otherOption}
                                         autoFocus
                                         onChange={e => updateAnswer({ otherText: e.target.value })}
+                                        onKeyDown={handleAnswerKeyDown}
                                     />
                                 )}
                             </>
@@ -193,19 +235,19 @@ export const QuestionnaireForm: React.FC<QuestionnaireFormProps> = ({ questions,
             </div>
 
             <div className="cb-questionnaire-footer">
-                <button
-                    type="button"
-                    className="cb-questionnaire-nav"
-                    disabled={current === 0}
-                    aria-label="Previous question"
-                    onClick={() => setCurrent(c => Math.max(0, c - 1))}
-                >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M15 18l-6-6 6-6" />
-                    </svg>
-                </button>
-
-                <span className="cb-questionnaire-counter">{current + 1} / {total}</span>
+                {current > 0 && (
+                    <button
+                        type="button"
+                        className="cb-questionnaire-nav"
+                        aria-label={labels.previousQuestion}
+                        title={labels.previousQuestion}
+                        onClick={() => setCurrent(c => Math.max(0, c - 1))}
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                            <path d="M15 18l-6-6 6-6" />
+                        </svg>
+                    </button>
+                )}
 
                 {isLast ? (
                     <button
@@ -214,17 +256,17 @@ export const QuestionnaireForm: React.FC<QuestionnaireFormProps> = ({ questions,
                         disabled={!allAnswered || submitted}
                         onClick={handleSubmit}
                     >
-                        {submitted ? 'Submitted' : 'Submit'}
+                        {submitted ? labels.submitted : labels.submit}
                     </button>
                 ) : (
                     <button
                         type="button"
-                        className="cb-questionnaire-nav"
+                        className="cb-questionnaire-submit cb-questionnaire-next"
                         disabled={!currentAnswered}
-                        aria-label="Next question"
-                        onClick={() => setCurrent(c => Math.min(total - 1, c + 1))}
+                        onClick={goToNext}
                     >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <span>{labels.nextQuestion}</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" aria-hidden>
                             <path d="M9 18l6-6-6-6" />
                         </svg>
                     </button>
