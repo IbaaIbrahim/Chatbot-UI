@@ -1,6 +1,6 @@
 import React from 'react';
 import './BranchNavigator.css';
-import { useLabels } from '../../store/hooks';
+import { useChatFormat } from '../../store/hooks';
 
 export interface BranchNavigatorProps {
     branchCount: number;
@@ -15,7 +15,8 @@ export const BranchNavigator: React.FC<BranchNavigatorProps> = ({
     onPrevBranch,
     onNextBranch,
 }) => {
-    const labels = useLabels();
+    const format = useChatFormat();
+    const { labels } = format;
     if (branchCount <= 1) return null;
 
     return (
@@ -32,7 +33,10 @@ export const BranchNavigator: React.FC<BranchNavigatorProps> = ({
                 </svg>
             </button>
             <span className="cb-branch-nav-label" aria-live="polite">
-                {activeBranchIndex + 1} / {branchCount}
+                {format.label(labels.positionOf, {
+                    current: format.number(activeBranchIndex + 1),
+                    total: format.number(branchCount),
+                })}
             </span>
             <button
                 className="cb-branch-nav-btn"

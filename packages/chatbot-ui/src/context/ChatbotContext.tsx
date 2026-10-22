@@ -16,6 +16,7 @@ import { isHostRequestSlug } from '../common/hostCatalogue';
 import type { AttachedFile, ConversationDetail, UserCredits } from '../api/types';
 import { summarizeUsage } from '../common/usageSummary';
 import { resolveChatbotConfig } from '../common/chatbotConfig';
+import { formattingLocale, labelledError } from '../common/i18n';
 import { blockLanguagesOf } from '../common/markdownBlocks';
 import type { ChatbotConfig } from '../common/chatbotConfig';
 import type { QuestionSpec } from '../components/Questionnaire/QuestionnaireForm';
@@ -90,16 +91,50 @@ function writeStoredToolIds(next: string[], listedIds: ReadonlySet<string>): voi
     }
 }
 
-const CONFIG_GROUPS = ['labels', 'icons', 'header', 'composer', 'sidebar', 'greeting', 'markdown'] as const;
+const CONFIG_GROUPS = ['icons', 'header', 'composer', 'sidebar', 'greeting', 'markdown'] as const;
 const CONFIG_LISTS = ['suggestions', 'quickActions', 'featureCards'] as const;
+
+/**
+ * Two label maps that say the same: key by key, a counting label's plural
+ * forms compared form by form — so `{ credits: { one, other } }` written
+ * inline is equal to itself on the next render.
+ */
+function labelMapsEqual(left: object | undefined, right: object | undefined): boolean {
+    if (Object.is(left, right)) return true;
+    if (!left || !right) return false;
+    const leftEntries = Object.entries(left);
+    if (leftEntries.length !== Object.keys(right).length) return false;
+    return leftEntries.every(([key, value]) => {
+        if (!Object.prototype.hasOwnProperty.call(right, key)) return false;
+        const other = (right as Record<string, unknown>)[key];
+        return Object.is(value, other)
+            || (typeof value === 'object' && typeof other === 'object' && shallowEqual(value, other));
+    });
+}
+
+/** Two translation maps that say the same: language by language, each map as {@link labelMapsEqual}. */
+function translationsEqual(left: ChatbotConfig['translations'], right: ChatbotConfig['translations']): boolean {
+    if (Object.is(left, right)) return true;
+    if (!left || !right) return false;
+    const languages = Object.keys(left);
+    if (languages.length !== Object.keys(right).length) return false;
+    return languages.every(language =>
+        Object.prototype.hasOwnProperty.call(right, language) && labelMapsEqual(left[language], right[language])
+    );
+}
 
 /**
  * Whether two override layers say the same thing, so re-registering an equal
  * layer — a literal rebuilt on every render — changes nothing downstream.
+ * Groups compare key by key; `labels` and `translations` one level further,
+ * so plural forms and a language's map written inline count as equal.
  */
 function layersEqual(left: ChatbotConfig, right: ChatbotConfig): boolean {
     return CONFIG_GROUPS.every(group => shallowEqual(left[group], right[group]))
-        && CONFIG_LISTS.every(list => Object.is(left[list], right[list]));
+        && labelMapsEqual(left.labels, right.labels)
+        && translationsEqual(left.translations, right.translations)
+        && CONFIG_LISTS.every(list => Object.is(left[list], right[list]))
+        && Object.is(left.language, right.language);
 }
 
 interface OverrideLayer {
@@ -115,6 +150,7 @@ export interface ChatbotProviderProps {
     streamHeaders?: Record<string, string>;
     storageApiUrl?: string;
     accessToken?: string | null;
+    /** Fills `{name}` in the greeting. Defaults to `labels.defaultUserName` ("User"). */
     userName?: string;
     onEvent?: UseStreamChatOptions['onEvent'];
     allowLocalNetworkAccess?: boolean;
@@ -184,7 +220,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     streamHeaders,
     storageApiUrl = '',
     accessToken = null,
-    userName = 'User',
+    userName: userNameProp,
     onEvent,
     allowLocalNetworkAccess = false,
     tools,
@@ -219,6 +255,16 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         () => resolveChatbotConfig([config, ...overrideLayers.map(entry => entry.layer)]),
         [config, overrideLayers]
     );
+    // What the turn's hooks write into a message — a notice, an error, a
+    // check-in — is written in the language in force when it happens: read
+    // through a ref, so the hooks' callbacks need not change with it.
+    const labelsRef = useRef(resolvedConfig.labels);
+    labelsRef.current = resolvedConfig.labels;
+    const languageRef = useRef(resolvedConfig.language);
+    languageRef.current = resolvedConfig.language;
+    const getLabels = useCallback(() => labelsRef.current, []);
+    const getLanguage = useCallback(() => formattingLocale(languageRef.current), []);
+    const userName = userNameProp ?? resolvedConfig.labels.defaultUserName;
 
     // --- Authenticated storage access ---
     // Object URLs of fetched files, by URL, least recently used first — see
@@ -241,7 +287,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
             if (pending) return pending;
 
             if (!accessToken) {
-                throw new Error('No access token available for authenticated fetch');
+                throw labelledError('attachmentNoAuth', 'No access token available for authenticated fetch');
             }
 
             const load = (async () => {
@@ -252,7 +298,11 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Failed to fetch authenticated URL: ${response.status}`);
+                    throw labelledError(
+                        'attachmentLoadFailedStatus',
+                        `Failed to fetch authenticated URL: ${response.status}`,
+                        { status: response.status },
+                    );
                 }
 
                 const blob = await response.blob();
@@ -450,6 +500,8 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         onEvent,
         storageApiUrl,
         tools: registeredTools,
+        getLabels,
+        getLanguage,
     });
 
     const usageSummary = useMemo(
@@ -476,7 +528,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         setStarred,
         renameConversation,
         searchConversations,
-    } = useConversations(gateway, storageApiUrl);
+    } = useConversations(gateway, storageApiUrl, { getLabels, getLanguage });
 
     const [staleClientCall, setStaleClientCall] = useState(false);
 
@@ -728,7 +780,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     const saveFile: ChatActions['saveFile'] = async (jobUuid, file, options) => {
         if (!storageClient) {
             throw new StorageRequestError(
-                'Saving a file needs the provider\'s storageApiUrl and accessToken.', 0
+                'Saving a file needs the provider\'s storageApiUrl and accessToken.', 0, null, 'storageNotConfigured'
             );
         }
         const stored = await storageClient.saveFile(jobUuid, file, options);
@@ -751,7 +803,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     const saveGeneratedFile: ChatActions['saveGeneratedFile'] = async attachmentUuid => {
         if (!storageClient) {
             throw new StorageRequestError(
-                'Saving a file needs the provider\'s storageApiUrl and accessToken.', 0
+                'Saving a file needs the provider\'s storageApiUrl and accessToken.', 0, null, 'storageNotConfigured'
             );
         }
         const stored = await storageClient.saveGeneratedFile(attachmentUuid);
@@ -802,7 +854,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         deleteArtifact: async (attachmentUuid) => {
             if (!storageClient) {
                 throw new StorageRequestError(
-                    'Deleting an artifact needs the provider\'s storageApiUrl and accessToken.', 0
+                    'Deleting an artifact needs the provider\'s storageApiUrl and accessToken.', 0, null, 'storageNotConfigured'
                 );
             }
             await storageClient.deleteArtifact(attachmentUuid);

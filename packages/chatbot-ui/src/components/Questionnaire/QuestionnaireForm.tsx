@@ -1,6 +1,6 @@
 import * as React from 'react';
 import './QuestionnaireForm.css';
-import { useLabels } from '../../store/hooks';
+import { useChatFormat } from '../../store/hooks';
 
 export type QuestionType = 'single_choice' | 'multi_choice' | 'text';
 
@@ -75,7 +75,8 @@ export function formatAnswers(questions: QuestionSpec[], answers: AnswerState[])
 let formCount = 0;
 
 export const QuestionnaireForm: React.FC<QuestionnaireFormProps> = ({ questions, onSubmit }) => {
-    const labels = useLabels();
+    const format = useChatFormat();
+    const { labels } = format;
     // Names this form's radio groups and labels its options with the question.
     // A counter rather than `useId`, which React 17 hosts do not have.
     const formIdRef = React.useRef('');
@@ -163,15 +164,21 @@ export const QuestionnaireForm: React.FC<QuestionnaireFormProps> = ({ questions,
     return (
         <div className="cb-questionnaire">
             <div className="cb-questionnaire-header">
-                <div className="cb-questionnaire-question" id={questionId}>{question.question}</div>
+                {/* The agent's words, in whatever language it asked in. */}
+                <div className="cb-questionnaire-question cb-bidi" id={questionId} dir="auto">{question.question}</div>
                 {/* A pager for one question is two controls that do nothing. */}
-                {total > 1 && <span className="cb-questionnaire-counter">{current + 1} / {total}</span>}
+                {total > 1 && (
+                    <span className="cb-questionnaire-counter">
+                        {format.label(labels.positionOf, { current: format.number(current + 1), total: format.number(total) })}
+                    </span>
+                )}
             </div>
 
             <div className="cb-questionnaire-body">
                 {question.type === 'text' ? (
                     <textarea
                         className="cb-questionnaire-textarea"
+                        dir="auto"
                         value={answer.text}
                         placeholder={labels.answerPlaceholder}
                         aria-labelledby={questionId}
@@ -199,7 +206,7 @@ export const QuestionnaireForm: React.FC<QuestionnaireFormProps> = ({ questions,
                                         checked={checked}
                                         onChange={() => toggleOption(option)}
                                     />
-                                    <span>{option}</span>
+                                    <span className="cb-bidi" dir="auto">{option}</span>
                                 </label>
                             );
                         })}
@@ -219,6 +226,7 @@ export const QuestionnaireForm: React.FC<QuestionnaireFormProps> = ({ questions,
                                 {answer.otherSelected && (
                                     <input
                                         className="cb-questionnaire-other-input"
+                                        dir="auto"
                                         type="text"
                                         value={answer.otherText}
                                         placeholder={labels.customAnswerPlaceholder}

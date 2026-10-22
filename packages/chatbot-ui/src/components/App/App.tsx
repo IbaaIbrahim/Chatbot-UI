@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { ChatContainer } from '../ChatContainer/ChatContainer';
-import type { ChatMode, ChatTheme } from '../ChatContainer/presentation';
+import type { ChatMode, ChatSide, ChatTheme } from '../ChatContainer/presentation';
 import { Composer } from '../Composer/Composer';
 import { MainChat } from '../MainChat/MainChat';
 import { ChatbotProvider } from '../../context/ChatbotContext';
@@ -13,6 +13,14 @@ export interface ChatAppPresentationProps {
     allowedModes?: ChatMode[];
     theme?: ChatTheme;
     embedded?: boolean;
+    /**
+     * The edge the chat attaches to, in the page's direction: `'end'` (the
+     * default — the right in a left-to-right page, the left in a right-to-left
+     * one) or `'start'`. Embedded, `'start'` leads the host's flex row and
+     * `'end'` keeps the DOM place the host gave it (no `order`). See
+     * `ChatContainerProps.side`.
+     */
+    side?: ChatSide;
     noBackground?: boolean;
     /**
      * The floating button's icon — any React node (an SVG, an icon component, a
@@ -42,6 +50,7 @@ const ChatAppLayout: React.FC<ChatAppLayoutProps> = ({
     allowedModes,
     theme,
     embedded,
+    side,
     noBackground,
     launcherIcon,
 }) => {
@@ -60,6 +69,7 @@ const ChatAppLayout: React.FC<ChatAppLayoutProps> = ({
             allowedModes={allowedModes}
             theme={theme}
             embedded={embedded}
+            side={side}
             noBackground={noBackground}
             launcherIcon={launcherIcon}
             footer={isEmptyFullscreen ? null : composer}
@@ -76,6 +86,7 @@ export const App: React.FC<AppProps> = ({
     allowedModes = NO_MODES,
     theme = 'system',
     embedded = false,
+    side = 'end',
     noBackground = false,
     launcherIcon,
     ...providerProps
@@ -100,6 +111,7 @@ export const App: React.FC<AppProps> = ({
             allowedModes={allowedModes}
             theme={theme}
             embedded={embedded}
+            side={side}
             noBackground={noBackground}
             launcherIcon={launcherIcon}
         />

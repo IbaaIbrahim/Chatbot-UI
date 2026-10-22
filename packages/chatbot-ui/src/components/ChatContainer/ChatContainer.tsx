@@ -6,18 +6,22 @@ import { CreditUsageDialog } from '../CreditUsage/CreditUsageDialog';
 import { ArtifactsPanel } from '../Files/ArtifactsPanel';
 import { ConversationFilesPanel } from '../Files/ConversationFilesPanel';
 import { MainChat } from '../MainChat/MainChat';
-import { useChatActions, useChatState, useIcons, useLabels } from '../../store/hooks';
+import { useChatActions, useChatState, useConfiguredLanguage, useIcons, useLabels } from '../../store/hooks';
+import { useInheritedDirection } from '../../common/direction';
 import {
     ALL_MODES,
     ChatMode,
     ChatPresentation,
     ChatPresentationContext,
+    ChatSide,
     ChatTheme,
+    placementClasses,
+    resolveSide,
     themeAttribute,
     useWideViewport,
 } from './presentation';
 
-export type { ChatMode, ChatTheme } from './presentation';
+export type { ChatMode, ChatSide, ChatTheme } from './presentation';
 
 const { useEffect, useMemo, useState } = React;
 
@@ -28,6 +32,20 @@ export interface ChatContainerProps {
     theme?: ChatTheme;
     /** A flex child of the host's layout rather than a fixed overlay. */
     embedded?: boolean;
+    /**
+     * The edge the chat attaches to, in the page's direction: `'end'` (the
+     * default) is the right in a left-to-right page and the left in a
+     * right-to-left one; `'start'` is the other. It places the floating card
+     * and its launcher, and the overlay sidebar (and the side it slides in
+     * from). An embedded chat gets its border on the inner edge, and
+     * `'start'` leads the host's flex row (`order: -1`) whatever its DOM
+     * place; `'end'` sets no `order` and keeps the place the host gave it —
+     * after the host's content only if the host renders it there (give it
+     * `order: 1` to force the end). Fullscreen has no side. The direction is
+     * the one the chat inherits (`dir` on `<html>` or any ancestor), read
+     * from the browser.
+     */
+    side?: ChatSide;
     noBackground?: boolean;
     /**
      * The floating button's icon, shown while a floating chat is closed. Any React
@@ -48,8 +66,9 @@ export interface ChatContainerProps {
 }
 
 /**
- * The chat's frame: placement (floating, docked or fullscreen), theme, the
- * sidebar, the header, the transcript and the footer.
+ * The chat's frame: placement (floating, docked or fullscreen, at the `side`
+ * the host names, in the page's direction), theme, the sidebar, the header,
+ * the transcript and the footer.
  *
  * Reads the open and sidebar state from the provider, so it can be rendered —
  * and moved — anywhere under `ChatbotProvider`; closing it from the host is
@@ -60,6 +79,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     allowedModes,
     theme = 'system',
     embedded = false,
+    side: sideProp,
     noBackground = false,
     launcherIcon,
     header,
@@ -75,8 +95,19 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     const actions = useChatActions();
     const labels = useLabels();
     const icons = useIcons();
+    // `lang` from `config.language` (4.2): screen readers pronounce the chat
+    // in its language, and the browser hyphenates and picks fonts for it. The
+    // layout's direction stays the page's (`useInheritedDirection`) — a
+    // language is not a layout.
+    const language = useConfiguredLanguage();
     const isWideViewport = useWideViewport();
     const [mounted, setMounted] = useState(false);
+    // The element drawn — the launcher or the panel — whose inherited
+    // direction the placement is read in. State, not a ref, so the direction
+    // is read again from whichever of the two is mounted.
+    const [frame, setFrame] = useState<HTMLElement | null>(null);
+    const direction = useInheritedDirection(frame);
+    const side = resolveSide(sideProp);
 
     const effectiveAllowedModes = allowedModes && allowedModes.length > 0 ? allowedModes : ALL_MODES;
     const effectiveMode = effectiveAllowedModes.includes(mode) ? mode : effectiveAllowedModes[0];
@@ -87,8 +118,10 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         allowedModes: effectiveAllowedModes,
         theme,
         embedded,
+        side,
+        direction,
         sidebarInline,
-    }), [effectiveMode, effectiveAllowedModes, theme, embedded, sidebarInline]);
+    }), [effectiveMode, effectiveAllowedModes, theme, embedded, side, direction, sidebarInline]);
 
     useEffect(() => {
         setMounted(true);
@@ -109,9 +142,11 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     if (!isOpen && effectiveMode === 'floating' && !embedded) {
         return (
             <button
+                ref={setFrame}
                 type="button"
-                className="cb-chat-launcher cb-launcher-btn"
+                className={['cb-chat-launcher', 'cb-launcher-btn', ...placementClasses(side, direction)].join(' ')}
                 data-theme={themeAttribute(theme)}
+                lang={language}
                 onClick={actions.open}
                 aria-label={labels.openChat}
             >
@@ -127,6 +162,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         `cb-mode-${effectiveMode}`,
         isOpen ? 'cb-open' : 'cb-closed',
         embedded ? 'cb-embedded' : null,
+        ...placementClasses(side, direction),
         noBackground ? 'cb-no-background' : null,
         className || null,
     ].filter(Boolean).join(' ');
@@ -136,7 +172,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
     return (
         <ChatPresentationContext.Provider value={presentation}>
-            <div className={containerClasses} data-theme={themeAttribute(theme)}>
+            <div ref={setFrame} className={containerClasses} data-theme={themeAttribute(theme)} lang={language}>
                 <div className="cb-chat-body-wrapper">
                     {showSidebar && (
                         <div className={`cb-drawer-wrapper ${isSidebarOpen ? 'open' : ''}`}>

@@ -5,6 +5,7 @@ import type { ChatbotConfig, ResolvedChatbotConfig, ResolvedMarkdownConfig } fro
 import type { StorageClient } from '../api/StorageClient';
 import type { ChatIcons } from '../common/icons';
 import type { ChatLabels } from '../common/labels';
+import { createChatFormat, formattingLocale, type ChatFormat } from '../common/i18n';
 import { createChatStore } from './createChatStore';
 import type {
     ChatActions,
@@ -133,6 +134,7 @@ const selectConfig = (snapshot: { config: ResolvedChatbotConfig }) => snapshot.c
 const selectLabels = (snapshot: { config: ResolvedChatbotConfig }) => snapshot.config.labels;
 const selectIcons = (snapshot: { config: ResolvedChatbotConfig }) => snapshot.config.icons;
 const selectMarkdown = (snapshot: { config: ResolvedChatbotConfig }) => snapshot.config.markdown;
+const selectLanguage = (snapshot: { config: ResolvedChatbotConfig }) => snapshot.config.language;
 
 function useConfigSource(): ConfigSource {
     return useOptionalChatRuntime()?.store ?? DEFAULTS_ONLY;
@@ -141,6 +143,38 @@ function useConfigSource(): ConfigSource {
 export function useLabels(): ChatLabels {
     const source = useConfigSource();
     return useSyncExternalStoreWithSelector(source.subscribe, source.getState, source.getState, selectLabels);
+}
+
+/**
+ * The language the chat writes numbers and dates in: `config.language`, else
+ * the page's `<html lang>`, else `undefined` (the browser's own). Outside a
+ * provider, the page's. Since 4.2.
+ */
+export function useChatLanguage(): string | undefined {
+    const source = useConfigSource();
+    const configured = useSyncExternalStoreWithSelector(source.subscribe, source.getState, source.getState, selectLanguage);
+    return formattingLocale(configured);
+}
+
+/**
+ * The language the host set (`config.language`), as it set it — `undefined`
+ * when none did. What the chat's `lang` attribute says.
+ */
+export function useConfiguredLanguage(): string | undefined {
+    const source = useConfigSource();
+    return useSyncExternalStoreWithSelector(source.subscribe, source.getState, source.getState, selectLanguage);
+}
+
+/**
+ * Write numbers, dates, sizes, lists and counts as the chat does — in its
+ * language, with its labels: `format.plural(labels.credits, 3)`,
+ * `format.fileSize(2048)`, `format.relativeDate(iso)`. For a host's block
+ * renderer or a widget of its own beside the chat. Since 4.2.
+ */
+export function useChatFormat(): ChatFormat {
+    const labels = useLabels();
+    const language = useChatLanguage();
+    return React.useMemo(() => createChatFormat(labels, language), [labels, language]);
 }
 
 export function useIcons(): ChatIcons {

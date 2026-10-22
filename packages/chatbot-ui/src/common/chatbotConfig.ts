@@ -1,5 +1,7 @@
 import type React from 'react';
-import { ChatLabels, DEFAULT_LABELS } from './labels';
+import { DEFAULT_LABELS } from './labels';
+import type { ChatLabelInputs, ChatLabels, ChatTranslations } from './labels';
+import { canonicalLanguage, isUsableLabelValue, resolveLabels } from './i18n';
 import { ChatIcons, DEFAULT_ICONS } from './icons';
 import type { ChatMode } from '../components/ChatContainer/presentation';
 import { isBlockRenderer } from './markdownBlocks';
@@ -18,7 +20,35 @@ import { isBlockRenderer } from './markdownBlocks';
  * when it has both, so a flag can never conjure a button that does nothing.
  */
 export interface ChatbotConfig {
-    labels?: Partial<ChatLabels>;
+    /**
+     * The language the chat is in: a BCP 47 tag such as `'ar'`, `'de'` or
+     * `'de-AT'`. It picks the labels from `translations` (falling back to the
+     * base language, then to English), sets `lang` on the chat, and writes
+     * numbers, dates, sizes and lists for that language. `_` is read as `-`
+     * (`'pt_BR'` is `'pt-BR'`). Without it the chat shows `labels`, then
+     * `translations.en`, then its English, and formats for the page's
+     * `<html lang>`.
+     * Change it at runtime — a new `config`, or a `useChatOverrides` layer —
+     * and every label follows at once. Since 4.2.
+     */
+    language?: string;
+    /**
+     * Labels per language, each a partial map: `{ ar: { newChat: 'محادثة جديدة' }, de: { … } }`.
+     * A key a language leaves out, or gives as `''`, shows its base language's,
+     * then `translations.en`'s, then the library's English. `translations.en`
+     * rewords the English. A later layer's text wins key by key; its `''`
+     * leaves the layer beneath in force. Since 4.2; see
+     * the README's "Internationalisation".
+     */
+    translations?: ChatTranslations;
+    /**
+     * Overrides that win in every language — what a host passed to translate
+     * the chat before 4.2, and still the way to reword one key everywhere.
+     * Keys left out show the translation for `language`, else English. The
+     * deprecated 4.1 names (`creditsOne`, …) still fill their plural labels,
+     * form by form, over the forms beneath them.
+     */
+    labels?: Partial<ChatLabelInputs>;
     icons?: Partial<ChatIcons>;
     header?: HeaderConfig;
     composer?: ComposerConfig;
@@ -372,7 +402,20 @@ export interface FeatureCardItem {
 
 /** The configuration in force: every group present, every flag decided. */
 export interface ResolvedChatbotConfig {
+    /** Every label for `language`, resolved: see `resolveLabels`. */
     labels: ChatLabels;
+    /** The language in force, as the last layer that set one gave it (canonical: `'ru_RU'` → `'ru-RU'`); `undefined` when none did. */
+    language: string | undefined;
+    /**
+     * Every layer's `translations`, in layer order (the last wins). Kept apart
+     * rather than merged, so resolution reads each layer as a source of its
+     * own: a later layer's text wins key by key, its empty value leaves the
+     * one beneath in force, and its deprecated 4.1 names patch the forms
+     * beneath them (`resolveLabels`).
+     */
+    translationLayers: readonly ChatTranslations[];
+    /** Every layer's `labels`, in layer order, read the same way. */
+    labelLayers: readonly Partial<ChatLabelInputs>[];
     icons: ChatIcons;
     header: Required<Omit<HeaderConfig, 'brand' | 'actions' | 'views' | 'allowedViews'>>
         & Pick<HeaderConfig, 'brand' | 'actions' | 'views' | 'allowedViews'>;
@@ -410,6 +453,9 @@ function emptyRendererMap(): Record<string, BlockRenderer> {
  */
 export const DEFAULT_CHATBOT_CONFIG: ResolvedChatbotConfig = {
     labels: DEFAULT_LABELS,
+    language: undefined,
+    translationLayers: [],
+    labelLayers: [],
     icons: DEFAULT_ICONS,
     header: {
         visible: true,
@@ -498,14 +544,41 @@ function definedEntries<Group extends object>(group: Group | undefined): Partial
     ) as Partial<Group>;
 }
 
+/** Whether a layer's map says anything resolution can use: an empty map, or one of empty values only, says nothing. */
+function hasUsableLabels(labels: object | null | undefined): boolean {
+    return Boolean(labels) && Object.values(labels as object).some(isUsableLabelValue);
+}
+
+function hasUsableTranslations(translations: ChatTranslations | null | undefined): boolean {
+    return Boolean(translations) && Object.values(translations as ChatTranslations).some(hasUsableLabels);
+}
+
 /**
  * Lay `layer` over `base`. Groups merge key by key; lists replace whole, so a
  * layer passing `quickActions: []` hides the pills rather than appending none.
+ *
+ * The labels are resolved again — for the language in force, over every
+ * layer's translations and overrides — only when the layer says something
+ * about them; otherwise they stay the same object.
  */
 export function mergeChatbotConfig(base: ResolvedChatbotConfig, layer: ChatbotConfig | undefined): ResolvedChatbotConfig {
     if (!layer) return base;
+    // An empty tag is no language: a host whose own has not loaded yet keeps the one beneath.
+    const language = canonicalLanguage(layer.language) ?? base.language;
+    const translationLayers = hasUsableTranslations(layer.translations)
+        ? [...base.translationLayers, layer.translations as ChatTranslations]
+        : base.translationLayers;
+    const labelLayers = hasUsableLabels(layer.labels)
+        ? [...base.labelLayers, layer.labels as Partial<ChatLabelInputs>]
+        : base.labelLayers;
+    const labelsChanged = language !== base.language
+        || translationLayers !== base.translationLayers
+        || labelLayers !== base.labelLayers;
     return {
-        labels: { ...base.labels, ...definedEntries(layer.labels) },
+        labels: labelsChanged ? resolveLabels(language, translationLayers, labelLayers) : base.labels,
+        language,
+        translationLayers,
+        labelLayers,
         icons: { ...base.icons, ...definedEntries(layer.icons) },
         header: { ...base.header, ...definedEntries(layer.header) },
         composer: { ...base.composer, ...definedEntries(layer.composer) },

@@ -17,7 +17,7 @@
 .cb-menu-overlay {
     position: absolute;
     bottom: 100%;
-    left: 12px;
+    inset-inline-start: 12px;
     margin-bottom: 8px;
     z-index: 1000;
 }
@@ -170,7 +170,7 @@
 }
 
 .cb-toggle {
-    margin-left: auto;
+    margin-inline-start: auto;
     flex-shrink: 0;
     width: 36px;
     height: 20px;
@@ -197,8 +197,9 @@
     background-color: var(--cb-status-success);
 }
 
+/* On toward the end, off toward the start: mirrored in a right-to-left chat. */
 .cb-toggle.on::after {
-    right: 2px;
+    inset-inline-end: 2px;
 }
 
 .cb-toggle.off {
@@ -206,7 +207,7 @@
 }
 
 .cb-toggle.off::after {
-    left: 2px;
+    inset-inline-start: 2px;
 }
 
 /* Count badge on the composer's tools button — how many are on, without having
@@ -214,7 +215,7 @@
 .cb-action-btn-badge {
     position: absolute;
     top: 0;
-    right: 0;
+    inset-inline-end: 0;
     min-width: 15px;
     height: 15px;
     padding: 0 4px;

@@ -462,3 +462,32 @@
   font-family: var(--cb-font-family);
   color: var(--cb-text-primary);
 }
+
+/* Text in its own direction (`dir="auto"`, 2026-10-18) — a greeting, a
+   suggestion, a conversation's or a file's name, an error — aligned as the
+   chat around it is. Its direction comes from its own first strong letter, so
+   an English sentence in a right-to-left chat keeps its full stop at its end;
+   its alignment stays the chat's, so it still begins where the chat's text
+   begins. Without `match-parent` (an older engine) it aligns to its own start,
+   which is only a matter of where a short line sits. Chromium reads only the
+   prefixed spelling. */
+.cb-bidi {
+  text-align: -webkit-match-parent;
+  text-align: match-parent;
+}
+
+/* Text for screen readers only — an answer's footnotes heading (2026-10-18).
+ * The chat's own class, not the host's `sr-only`: remark-rehype names that
+ * one, and a host without Bootstrap would show the heading. Not scoped to
+ * `.cb-root`, as the expanded block's portal draws answers outside it. */
+.cb-visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}

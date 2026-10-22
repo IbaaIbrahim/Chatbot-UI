@@ -2,14 +2,15 @@ import React from 'react';
 import './Composer.css';
 import { AttachedFile } from '../../api/types';
 import { netFetch } from '../../common/localNetwork';
-import { formatLabel } from '../../common/labels';
+import { formatLabel, type LabelKey } from '../../common/labels';
+import { describeLabelledError } from '../../common/i18n';
 import { ToolToggles, hasRunnableTools } from '../ToolToggles/ToolToggles';
 import { UsageIndicator } from '../UsageIndicator/UsageIndicator';
 import {
     resolveStorageUploadUrl,
     parseUploadedFileResponse,
 } from '../../common/attachmentUtils';
-import { useChatActions, useChatRuntime, useChatState, useIcons, useLabels } from '../../store/hooks';
+import { useChatActions, useChatFormat, useChatRuntime, useChatState, useIcons } from '../../store/hooks';
 
 const { useState, useRef, useEffect, useLayoutEffect, useCallback, useImperativeHandle } = React;
 
@@ -50,11 +51,14 @@ const ALLOWED_TYPES = [
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const MAX_TEXTAREA_HEIGHT_PX = 180;
 
-const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
+/**
+ * Why an upload did not happen: a label and its values — written when the
+ * notice renders, so it follows the chat's language — or the storage API's
+ * own reason, as it gave it.
+ */
+type UploadError =
+    | { key: LabelKey; values?: Record<string, string | number> }
+    | { text: string };
 
 const getFileIcon = (contentType?: string | null): string => {
     if (!contentType) return '\u{1F4CE}';
@@ -94,7 +98,8 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     const hasMessages = useChatState(s => s.messages.length > 0);
     const actions = useChatActions();
     const { registerComposer } = useChatRuntime();
-    const labels = useLabels();
+    const format = useChatFormat();
+    const { labels } = format;
     const icons = useIcons();
 
     const disabled = disabledProp ?? (isBusy || hasPendingQuestions);
@@ -117,7 +122,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     attachedFilesRef.current = attachedFiles;
 
     const [uploadingCount, setUploadingCount] = useState(0);
-    const [uploadError, setUploadError] = useState<string | null>(null);
+    const [uploadError, setUploadError] = useState<UploadError | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -219,24 +224,21 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
 
     const uploadFile = useCallback(async (file: File): Promise<AttachedFile | null> => {
         if (!ALLOWED_TYPES.includes(file.type)) {
-            setUploadError(formatLabel(labels.unsupportedFileType, { type: file.type }));
+            setUploadError({ key: 'unsupportedFileType', values: { type: file.type } });
             return null;
         }
 
         if (file.size > MAX_FILE_SIZE) {
-            setUploadError(formatLabel(labels.fileTooLarge, {
-                size: formatFileSize(file.size),
-                max: formatFileSize(MAX_FILE_SIZE),
-            }));
+            setUploadError({ key: 'fileTooLarge', values: { size: file.size, max: MAX_FILE_SIZE } });
             return null;
         }
 
         if (!storageApiUrl) {
-            setUploadError(labels.uploadNeedsStorageUrl);
+            setUploadError({ key: 'uploadNeedsStorageUrl' });
             return null;
         }
         if (!accessToken) {
-            setUploadError(labels.uploadNeedsToken);
+            setUploadError({ key: 'uploadNeedsToken' });
             return null;
         }
 
@@ -257,7 +259,12 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
 
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({}));
-                throw new Error(errData.detail || errData.message || `Upload failed (${response.status})`);
+                const reason = errData.detail || errData.message;
+                // The storage API's reason as it gave it; without one, the label.
+                setUploadError(typeof reason === 'string' && reason.trim()
+                    ? { text: reason }
+                    : { key: 'uploadFailedStatus', values: { status: response.status } });
+                return null;
             }
 
             const parsed = parseUploadedFileResponse(await response.json(), file);
@@ -279,12 +286,14 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                 localBlobUrl,
             };
         } catch (err: any) {
-            setUploadError(err.message || labels.uploadFailed);
+            console.error('[chatbot-ui] uploading a file failed', err);
+            const key = (err as { labelKey?: LabelKey } | null)?.labelKey;
+            setUploadError(key ? { key } : { key: 'uploadFailed' });
             return null;
         } finally {
             setUploadingCount(prev => Math.max(0, prev - 1));
         }
-    }, [storageApiUrl, accessToken, labels]);
+    }, [storageApiUrl, accessToken]);
 
     const handleFileSelect = useCallback(async (files: FileList | File[]) => {
         for (const file of Array.from(files)) {
@@ -368,6 +377,19 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
         }
     }, [composerConfig.attachments, handleFileSelect]);
 
+    /** The notice's text, in the language in force now. */
+    const uploadErrorText = (error: UploadError): string => {
+        if ('text' in error) return error.text;
+        if (error.key === 'fileTooLarge') {
+            return formatLabel(labels.fileTooLarge, {
+                size: format.fileSize(Number(error.values?.size ?? 0)),
+                max: format.fileSize(Number(error.values?.max ?? 0)),
+            });
+        }
+        return describeLabelledError({ labelKey: error.key, labelValues: error.values }, labels, format.locale)
+            ?? labels.uploadFailed;
+    };
+
     const showMic = composerConfig.mic && Boolean(composerConfig.onVoiceInput);
     const showFooter = composerConfig.disclaimer || composerConfig.usage;
     const hasNotices = hasFiles || isUploading || Boolean(uploadError);
@@ -421,8 +443,8 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                                     {attachedFiles.map(f => (
                                         <div key={f.file_id} className="cb-attached-file-chip">
                                             <span className="cb-chip-icon">{getFileIcon(f.content_type)}</span>
-                                            <span className="cb-chip-name">{f.filename}</span>
-                                            <span className="cb-chip-size">{formatFileSize(f.size_bytes)}</span>
+                                            <span className="cb-chip-name cb-bidi" dir="auto">{f.filename}</span>
+                                            <span className="cb-chip-size">{format.fileSize(f.size_bytes)}</span>
                                             <button
                                                 type="button"
                                                 className="cb-chip-remove"
@@ -444,14 +466,14 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                                 <div className="cb-upload-progress-bar">
                                     <div className="cb-upload-progress-text">
                                         <span className="cb-upload-spinner-inline" />
-                                        {formatLabel(labels.uploadingFiles, { count: uploadingCount })}
+                                        {format.plural(labels.uploadingFiles, uploadingCount)}
                                     </div>
                                 </div>
                             )}
 
                             {uploadError && (
                                 <div className="cb-upload-error">
-                                    <span>{uploadError}</span>
+                                    <span className="cb-bidi" dir="auto">{uploadErrorText(uploadError)}</span>
                                     <button
                                         type="button"
                                         className="cb-error-dismiss"
@@ -471,6 +493,10 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                     <textarea
                         ref={textareaRef}
                         className="cb-composer-textarea"
+                        // Its own direction, from what is typed: an English
+                        // question in a right-to-left page starts at the left.
+                        // Empty, it is the chat's — the placeholder's too.
+                        dir="auto"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleKeyDown}
@@ -523,7 +549,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                                 >
                                     {icons.tools}
                                     {activeToolCount > 0 && (
-                                        <span className="cb-action-btn-badge">{activeToolCount}</span>
+                                        <span className="cb-action-btn-badge">{format.number(activeToolCount)}</span>
                                     )}
                                 </button>
                             )}

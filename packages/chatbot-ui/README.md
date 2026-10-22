@@ -15,6 +15,7 @@ changes — not on every streamed token.
 - [Provider props](#provider-props)
 - [Placement: `ChatApp` and `ChatContainer`](#placement-chatapp-and-chatcontainer)
 - [Configuration](#configuration)
+- [Internationalisation](#internationalisation)
 - [Changing the chat on one screen: `useChatOverrides`](#changing-the-chat-on-one-screen-usechatoverrides)
 - [The conversation sidebar](#the-conversation-sidebar)
 - [Rich blocks: charts, tables and cards in an answer](#rich-blocks-charts-tables-and-cards-in-an-answer)
@@ -26,6 +27,7 @@ changes — not on every streamed token.
 - [The `tools` prop](#the-tools-prop)
 - [Theming](#theming)
 - [Developing against a linked host](#developing-against-a-linked-host)
+- [Migrating from 4.1 (4.2)](#migrating-from-41-42)
 - [Migrating from 4.0 (4.1)](#migrating-from-40-41)
 - [Migrating from 3.x](#migrating-from-3x)
 - [Migrating from 2.x](#migrating-from-2x)
@@ -195,7 +197,7 @@ or `useChatEvent('sidebar.opened', …)`. To *replace* the default, control
 | `client` | — | A `GatewayStreamClient` (or any `StreamChatClient`). |
 | `streamUrl`, `streamHeaders` | — | Builds a plain `StreamClient` when no `client` is given. |
 | `storageApiUrl`, `accessToken` | `''`, `null` | Attachments and authenticated images; with both, the conversation files button, the Artifacts entry and `saveFile` / `saveArtifact`. |
-| `userName` | `'User'` | Fills `{name}` in the greeting. |
+| `userName` | `labels.defaultUserName` (`'User'`) | Fills `{name}` in the greeting. |
 | `tools` | — | See [The `tools` prop](#the-tools-prop). |
 | `skills` | — | This app's own skills, loaded on demand. See [Client skills and the host catalogue](#client-skills-and-the-host-catalogue). Memoise it; omit it to leave `client.setSkills` alone, `[]` clears. |
 | `config` | — | See [Configuration](#configuration). Memoise it. |
@@ -227,6 +229,7 @@ same conversation can be floating on one screen and fullscreen on another.
 | `allowedModes` | all three | all three | The modes the built-in "Switch view" entry lists. `mode` falls back to the first when it is not among them. |
 | `theme` | `'system'` | `'system'` | `'light'`, `'dark'`, or `'system'` (follows the OS). |
 | `embedded` | `false` | `false` | A flex child of the host's layout rather than a fixed overlay. |
+| `side` | `'end'` | `'end'` | The edge the chat attaches to, in the page's direction: `'end'` is the right in a left-to-right page and the left in a right-to-left one; `'start'` is the other. Embedded, `'start'` leads the host's row and `'end'` keeps the DOM place the host gave it (no `order`). See [Side and right-to-left pages](#side-and-right-to-left-pages). |
 | `noBackground` | `false` | `false` | No frame or background, for native embedding. |
 | `launcherIcon` | `config.icons.launcher` | `config.icons.launcher` | The floating button's icon — any React node. See [The floating button's icon](#the-floating-buttons-icon). |
 
@@ -239,6 +242,76 @@ A closed floating chat that is not embedded renders its launcher button, which
 reopens it. In fullscreen on a screen at least 960px wide the sidebar is a column
 beside the transcript; everywhere else it is an overlay that closes on Escape and
 after a pick.
+
+### Side and right-to-left pages
+
+`side` (4.2) names an edge in the page's own direction, never a physical one:
+
+| `side` | Left-to-right page | Right-to-left page |
+| --- | --- | --- |
+| `'end'` (default) | right | left |
+| `'start'` | left | right |
+
+```tsx
+// At the end of the layout — the right in English, the left in Arabic.
+<ChatApp mode="sidebar" embedded />
+
+// Opposite something the host keeps at the end, such as a preview pane.
+<ChatApp mode="sidebar" embedded side="start" />
+```
+
+What the side places, per mode:
+
+- **Floating:** the card, and the launcher button a closed card shows, in the
+  bottom corner at that edge — the same corner, so opening still reads as the
+  panel growing out of the button. On a phone (640px and under) the card is
+  full width whatever its side.
+- **Sidebar (overlay):** the panel at that edge of the viewport, its border on
+  the inner edge, sliding in from (and out past) that edge. (The frame's own
+  border is on its outer edge too, as 4.1's panel at the right had it.) Shut,
+  it is `visibility: hidden` once it has slid out, so a change of side or
+  direction while it is shut — the edge flips at once, the slide is animated —
+  never sweeps it across the page.
+- **Embedded:** a flex child of the host's row, its border on the inner edge.
+  `'start'` sets `order: -1`, so the chat lands at the start of the row
+  whatever its place in the DOM; `'end'` leaves `order` alone, so it stays
+  where the host put it — after the content, when the host appends it. That
+  keeps a 4.1 host that placed its chat by DOM order where it was; a host
+  whose DOM order can vary (a portal appended once, with layouts mounted
+  around it) gives the chat `order: 1` itself to hold it at the end. Under
+  768px an embedded docked panel becomes a full-width overlay at that edge.
+- **Fullscreen:** the whole page; `side` changes nothing.
+
+**The direction is the page's, read from the browser.** The chat inherits
+`dir` like any element — from `<html dir="rtl">` or any ancestor — and its
+placement follows what the browser computed for it, a host stylesheet's
+`direction` included. It is read again after every render of the chat and
+whenever a `dir` attribute changes anywhere in the document, so a host that
+switches language at runtime is followed; a direction switched by a
+stylesheet class alone is picked up on the chat's next render. The stylesheet
+is injected from JavaScript, so a host's RTL tooling (`postcss-rtl` and the
+like) never sees it: the library mirrors itself. Everything is drawn with
+logical properties (`inset-inline-end`, `border-inline-start`,
+`margin-inline-end` …), which give a left-to-right page exactly the pixels
+4.1's physical ones did — except inside an element that is `dir="auto"`
+(a message bubble), where a logical property would follow the text's own
+language; those few rules are physical, keyed on the chat's `cb-dir-rtl`.
+
+Inside the chat, in a right-to-left page: the conversation drawer opens from
+the right (the inline start, whatever the chat's side), with its open and
+close icons mirrored; the header's menu and the usage popover align to the
+inline end of their buttons and the composer's tool menu to the inline start;
+switches turn on toward the inline end; meters fill from the right; a user's
+message squares its corner on the left, and an answer is flush right.
+
+**Classes and tokens.** The panel and the launcher carry `cb-side-end` or
+`cb-side-start`, and `cb-dir-ltr` or `cb-dir-rtl`; `ChatRoot` carries the
+same. Two custom properties on the container give the slides their sign,
+because a transform has no logical form: `--cb-dir-sign` (`1` when the inline
+end is the right, `-1` when it is the left) and `--cb-edge-sign` (`1` when the
+chat's edge is the right, `-1` when it is the left). Restyle a placement with
+the logical properties, not `left`/`right` — see [Migrating from 4.1
+(4.2)](#migrating-from-41-42).
 
 ### The floating button's icon
 
@@ -272,7 +345,9 @@ in this order: library defaults, then the provider's `config`, then each
 
 ```tsx
 const config: ChatbotConfig = {
-  labels: { newChat: 'Neuer Chat', starred: 'Markiert' },   // every string; see DEFAULT_LABELS
+  language: 'de',                                           // the chat's language; see Internationalisation
+  translations: { de: { newChat: 'Neuer Chat' }, ar: { newChat: 'محادثة جديدة' } },
+  labels: { brandTitle: 'Acme Assistant' },                 // overrides, in every language; see DEFAULT_LABELS
   icons: { sidebarToggle: <MyPanelIcon /> },                // every icon; see DEFAULT_ICONS
   header: { close: false, switchView: false, actions: <MyHeaderButtons />, menuItems: [...] },
   composer: { mic: true, onVoiceInput: startDictation, usageDetails: false },
@@ -475,21 +550,33 @@ quickActions: [{
 
 ### Labels
 
-Every string the chat shows is a key of `ChatLabels`, with its English default in
-`DEFAULT_LABELS`. Pass a partial map; keys you leave out keep the default.
+Every string the chat shows is a key of `ChatLabels`, with its English default
+in `DEFAULT_LABELS` — since 4.2 every one of them, the components' fallback and
+error texts and the welcome cards' pictures included (a test,
+`common/hardcodedText.test.ts`, fails on English written into a component). The
+library ships English only; a host translates it with `translations` and says
+which language is in force with `language` — see
+[Internationalisation](#internationalisation). `labels` is the layer above
+both: a key given there wins **in every language**, so use it to reword a key
+everywhere (or to translate the 4.1 way, for one language at a time).
 
-- Placeholders are `{name}` style (`uploadingFiles: 'Uploading {count} file(s)…'`),
+- Placeholders are `{name}` style (`fileTooLarge: 'File too large ({size}). Max: {max}'`),
   so a label can come straight from a translation file. Fill your own with
-  `formatLabel(template, values)`.
-- Counts take one/other pairs — `creditsOne` / `creditsOther`, `stepsOne` /
-  `stepsOther`, `turnsOne` / `turnsOther` — filled with
-  `formatCount(count, one, other)`.
-- A host that translates through its own message catalogue can map every key at
-  once: `Object.keys(DEFAULT_LABELS)` is the full list, so
-  `labels[key] = messages[`chat.${key}`] ?? DEFAULT_LABELS[key]` translates whatever
-  the catalogue has and leaves the rest in English. Read the raw message rather
-  than formatting it: the library fills its own placeholders, and a formatter such
-  as IntlMessageFormat throws on a placeholder it was given no value for.
+  `formatLabel(template, values)`; `labelPlaceholders(value)` lists a label's.
+- **A counting label is a plural label** (4.2): one text per CLDR plural
+  category — `credits: { one: '{count} credit', other: '{count} credits' }`,
+  Arabic's `{ zero, one, two, few, many, other }` — chosen for the chat's
+  language by `formatPlural(label, count, values?, language?)`, which also writes
+  `{count}` as that language's number ("1,250", "1.250"). A plain text is every
+  form; a form a label leaves out uses its `other`. `PLURAL_LABEL_KEYS` lists
+  them. The 4.1 one/other pairs (`creditsOne` / `creditsOther`, …) still work as
+  deprecated aliases — see [Migrating from 4.1](#migrating-from-41-42).
+- **An empty value falls through** (4.2): `''` or a text of spaces shows the
+  next source's text, not nothing. To hide a control, use its visibility flag.
+- `LABEL_KEYS` is the full list (the deprecated names are not in it). Read a
+  host catalogue's raw messages rather than formatting them: the library fills
+  its own placeholders, and a formatter such as IntlMessageFormat throws on a
+  placeholder it was given no value for.
 
 The keys, by area: header (`brandTitle`, `openSidebar`, `closeSidebar`, `newChat`,
 `newChatTitle`, `share`, `moreOptions`, `switchView`, `viewFloating`,
@@ -503,7 +590,7 @@ The keys, by area: header (`brandTitle`, `openSidebar`, `closeSidebar`, `newChat
 `previous7Days`, `older`); transcript (`scrollToLatest`, `staleClientCall`,
 `greetingTitle`); composer (`composerPlaceholder`, `questionnairePlaceholder`,
 `dropFiles`, `addAttachment`, `attachmentsUnavailable`, `removeAttachment`,
-`uploadingFiles`, `unsupportedFileType`, `fileTooLarge`, `uploadNeedsStorageUrl`,
+`uploadingFiles`¹, `unsupportedFileType`, `fileTooLarge`, `uploadNeedsStorageUrl`,
 `uploadNeedsToken`, `uploadFailed`, `tools`, `voiceInput`, `send`,
 `waitingForUploads`, `stop`, `stopping`, `disclaimer`); messages
 (`assistantName`, `copy`, `copied`, `reply`, `edit`, `retry`, `continue`,
@@ -513,18 +600,18 @@ The keys, by area: header (`brandTitle`, `openSidebar`, `closeSidebar`, `newChat
 `nextVersion`, `confirm`, `cancel`, `executingTool`, `confirmedExecuting`,
 `cancelled`); meta-tool steps (`metaSearchingTools`, `metaSearchedTools`,
 `metaLoadingTools`, `metaLoadedTools`, `metaSearchingSkills`,
-`metaSearchedSkills`, `metaLoadingSkill`, `metaLoadedSkill`, `metaRefused` —
+`metaSearchedSkills`, `metaLoadingSkill`, `metaLoadedSkill`, `metaRefused`¹ —
 see [Meta-tool steps](#meta-tool-steps)); the activity section
-(`activityThoughtOne`/`Other`, `activitySearchedOne`/`Other`,
-`activityLoadedSkillOne`/`Other`, `activityLoadedToolsOne`/`Other`,
-`activityRanOne`, `activityRanRepeated`, `activityRanOther`,
-`activityAgentOne`/`Other`, `activityAgentWorking`, `activityFailed`,
-`activitySeparator` — see [The activity section](#the-activity-section));
+(`activityThoughts`¹, `activitySearches`¹, `activitySkillLoads`¹,
+`activityToolLoads`¹, `activityRanTool`, `activityRanToolTimes`¹,
+`activityRanTools`¹, `activityUsedAgent`, `activityUsedAgents`¹,
+`activityAgentWorking`, `activityFailed`¹, `activitySeparator` — see
+[The activity section](#the-activity-section));
 rich blocks (`blockPreparing`, `blockFailed`, `blockShowSource`, `blockExpand`,
 `blockMore`, `blockCopySource`, `blockClose` — see [Rich blocks](#rich-blocks-charts-tables-and-cards-in-an-answer));
 attachment viewer (`close`, `closeAttachment`, `attachmentLoadFailed`,
-`attachmentNoAuth`, `pdfLoadFailed`, `downloadFile`, `downloadFailed`,
-`previewTruncated`); conversation files and artifacts (`conversationFiles`,
+`attachmentLoadFailedStatus`, `attachmentNoAuth`, `pdfLoadFailed`, `downloadFile`,
+`downloadFailed`, `previewTruncated`¹); conversation files and artifacts (`conversationFiles`,
 `conversationFilesEmpty`, `filesLoadFailed`, `fileArtifactBadge`,
 `fileGeneratedBadge`, `previewFile`, `artifacts`, `artifactsEmpty`,
 `artifactsLoadFailed`, `searchArtifacts`, `noArtifactResults`,
@@ -537,7 +624,7 @@ attachment viewer (`close`, `closeAttachment`, `attachmentLoadFailed`,
 `filesFilterVisuals`, `filesFilterFiles`, `conversationVisualsEmpty`, `artifactStatus`,
 `artifactStatusAll`, `artifactStatusSaved`, `artifactStatusUnsaved`, `artifactsSavedEmpty`,
 `artifactsUnsavedEmpty`); the files panel's look (`conversationFilesEmptyTitle`,
-`conversationFilesEmptyHint`, `filesItemsOne`, `filesItemsOther`, `filesSavedCount`,
+`conversationFilesEmptyHint`, `filesItems`¹, `filesSavedCount`¹,
 `itemKindChart`, `itemKindTable`, `itemKindKpi`, `itemKindReport`, `itemKindFile`,
 `itemKindImage`, `itemKindPdf`, `itemKindSpreadsheet`); questionnaire (`answerPlaceholder`,
 `otherOption`, `customAnswerPlaceholder`, `previousQuestion`, `nextQuestion`,
@@ -545,14 +632,48 @@ attachment viewer (`close`, `closeAttachment`, `attachmentLoadFailed`,
 `usageSummaryWithWindow`, `usageSummary`, `usageContextWindow`, `usageLimitUnknown`,
 `usageLastPromptNote`, `usageSubAgentContext`, `usageLargestPrompt`,
 `usageOwnContextNote`, `usageNearLimit`, `usageThisTurn`, `usageThisAgent`,
-`usageSubAgents`, `usageWholeConversation`, `usageFreeCalls`, `usageWaived`,
-`usageSubAgentTree`, `usageTreeLimitReached`, `usageTokens`, `creditsOne`,
-`creditsOther`, `stepsOne`, `stepsOther`, `turnsOne`, `turnsOther`); credit usage
-(`creditsLeftOne`, `creditsLeftOther`, `creditsUsedOfCap`, `creditGrantPlan`,
+`usageSubAgents`¹, `usageWholeConversation`, `usageFreeCalls`, `usageWaived`,
+`usageSubAgentTree`, `usageTreeLimitReached`, `usageTokens`, `credits`¹,
+`steps`¹, `turns`¹); credit usage
+(`creditsLeft`¹, `creditsUsedOfCap`, `creditGrantPlan`,
 `creditGrantTopUp`, `creditGrantLeft`, `creditsValidUntil`, `creditsNoLimitTitle`,
 `creditsNoLimitBody`, `creditsUsedThisMonth`, `creditsBlockedUser`,
 `creditsBlockedOrganization`, `creditsBlockedProvider`, `creditsBlockedNoPlan`,
 `creditsLoadFailed`, `creditsUnavailable`).
+
+Since 4.2, what the components and hooks wrote in English: how a label and a
+name are put together (`actionOnItem` "Download: Q3 report",
+`actionOnItemUnavailable`, `parenthetical` "a (1 refused)", `quotedText` “…”,
+`positionOf` "2 / 5", `pageOf`, `usageOfLimit` "12k / 200k (6.0%)"); units
+(`fileSizeBytes`, `fileSizeKilobytes`, `fileSizeMegabytes`, `tokensThousands`,
+`tokensMillions`, `durationSeconds`, `durationMinutes`); names for what has none
+(`defaultUserName`, `subAgentName`, `toolName`, `attachmentName`, `fileName`,
+`downloadFileName`, `imageAlt`, `imageUnavailable`, `confirmAction`); messages and
+the viewer (`editSend`, `subAgentFailed`, `closeWithShortcut`, `previousPage`,
+`nextPage`, `blockFailedReason`); what the chat writes into a turn
+(`stoppedNotice`, `staleTurnNotice`, `continuePrompt`, `waitingForCapacity`,
+`waitingForCapacityIn`, `checkInTitle`, `checkInBody`, `checkInBodyWithCredits`,
+`checkInRecorded`, `approvalInApp`, `approvalOnServer`, `approvalInAppWith`,
+`approvalOnServerWith`, `errorGeneric`, `errorTryAgain`, `errorGatewayUnreachable`,
+`errorRateLimited`, `errorServiceUnavailable`, `errorRequestRefused`,
+`errorStreamLost`, `errorStreamFailed`, `errorNoStream`, `errorNoStreamBody`,
+`errorHttpStatus`, `errorNoResponseBody`, `uploadFailedStatus`,
+`uploadMissingFileId`); and the welcome cards' pictures (`featureCardAgentPrimary`,
+`featureCardAgentSecondary`, `featureCardQuestion`, `featureCardSource`).
+
+Also since 4.2, what a review of the first pass found still in English: the PDF
+viewer's own messages (`pdfPageLoadFailed`, `pdfNoFile`, `pdfNoPage`,
+`pdfPasswordProtected` — a protected PDF is refused, never asked a password
+for); an answer's footnotes (`footnotes`, the screen-reader heading, and
+`footnoteBack`, "Back to reference {reference}"); the storage API's failures
+as `StorageRequestError.labelKey` names them (`storageNotConfigured`,
+`storageUnreachable`, `storageRequestFailed`, `storageBadResponse`); and **the
+platform's tools by name** — `toolNameWebSearch` "Web search",
+`toolNameFetchWebPage`, `toolNameContextRetrieve`, … one per entry of
+`TOOL_NAME_LABELS` (slug → label key; `DEFAULT_TOOL_NAMES` is their English).
+See [Internationalisation](#internationalisation) for how a tool is named.
+
+¹ A plural label.
 
 ### Icons
 
@@ -577,6 +698,170 @@ in the files panel).
 reversed: the header shows the first while the sidebar is closed and the second
 while it is open, and the sidebar's own collapse button shows the second.
 Replace them as a pair.
+
+## Internationalisation
+
+The library ships English. A host gives it the words of any other language,
+and says which language is in force (4.2):
+
+```tsx
+import { ChatbotProvider, ChatbotConfig, ChatTranslations } from 'iocloud-chatbot-library';
+
+// Partial maps of the label keys (see Labels), per BCP 47 language tag.
+// Typically built once from the host's own locale files.
+const TRANSLATIONS: ChatTranslations = {
+  de: {
+    newChat: 'Neuer Chat',
+    artifacts: 'Artefakte',
+    composerPlaceholder: 'Beschreibe, was du tun möchtest…',
+    credits: { one: '{count} Credit', other: '{count} Credits' },
+    filesItems: { one: '{count} Element', other: '{count} Elemente' },
+  },
+  ar: {
+    newChat: 'محادثة جديدة',
+    artifacts: 'العناصر المحفوظة',
+    composerPlaceholder: 'صف ما تريد القيام به…',
+    // Arabic has six plural categories; a category left out uses `other`.
+    filesItems: {
+      zero: 'لا عناصر',
+      one: 'عنصر واحد',
+      two: 'عنصران',
+      few: '{count} عناصر',
+      many: '{count} عنصرًا',
+      other: '{count} عنصر',
+    },
+  },
+};
+
+function Chat({ uiLanguage }: { uiLanguage: string }) {
+  // `uiLanguage` is the host's current language — 'de', 'ar', 'de-AT' …
+  const config = React.useMemo<ChatbotConfig>(
+    () => ({ language: uiLanguage, translations: TRANSLATIONS }),
+    [uiLanguage]
+  );
+  return <ChatbotProvider client={client} config={config}>{/* … */}</ChatbotProvider>;
+}
+```
+
+**Which text a label shows.** Each key on its own, the first source that has a
+text for it winning:
+
+1. `config.labels[key]` — an explicit override, in every language;
+2. `translations[language][key]`, then the language's shorter tags (`'de-AT'`
+   → `'de'`); tags match without regard to case (`'DE-at'`, `'de_AT'`);
+3. `translations.en[key]` — the host's own English, when it rewords any;
+4. `DEFAULT_LABELS[key]` — the library's English.
+
+A missing key, `''` and a text of spaces fall through. A tag is read as BCP 47
+with `_` taken for `-` (`'pt_BR'` is `'pt-BR'`), and canonicalised for the plural
+rules, the formats and `lang`. Without `language` the chat shows `labels`, then
+`translations.en`, then the library's English, and formats for the page.
+
+`useChatOverrides` layers are sources of their own, in layer order: a later
+layer's text wins key by key (in `labels`, and in each language of
+`translations`), its empty text leaves the layer beneath in force, and a layer
+may set its own `language`. Resolution is `resolveLabels(language,
+translations, labels)`, exported; `translations` and `labels` may each be one
+map or a list of them in layer order.
+
+**Switching at runtime** is a new `language` — a new `config` (memoised on the
+language, as above) or a layer. Every label re-resolves at once, `useLabels()`
+re-renders what reads them, and the chat's `lang` follows. So does text the
+chat *wrote into a turn* itself — an error, a "waiting for capacity" notice, a
+check-in's question, an approval card: the step keeps it as a function of the
+language (`MessageStep.localizedContent`, `localizedConfirmLabel`,
+`localizedConfirmDescription` — `LocalizedText`), drawn again in the language in
+force each render, beside the text as first written (`content`, …) for whatever
+reads the step. A reloaded conversation rebuilds its pending check-ins and
+approvals the same way; its errors and notices were never kept (they belong to
+the page that saw them). Two exceptions keep the language they were written in,
+because they are part of the answer's own text — copied with it, saved with
+it: "Stopped." after an answer the user stopped (`stoppedNotice`) and the
+stale-turn notice (`staleTurnNotice`). Row errors in the files panels are kept
+as label keys and follow a switch too.
+
+**Counts.** A plural label's form is chosen with `Intl.PluralRules` for the
+language its forms are written in: the translation's, or English's for the
+English a missing translation fell back to (French counts 0 as `one`; the English
+fallback still says "0 credits"). The categories are CLDR's, not numbers — in
+Russian `one` is also 21 and 31 — so write `{count}` in every form unless the
+category holds one number only.
+
+**Numbers, dates, sizes, lists** are written for `language` — "1.250", "2,0 KB",
+"vor 5 Minuten", "a und b", "12 %" — and without one for the page's
+`<html lang>`, as before 4.2. The units themselves are labels
+(`fileSizeKilobytes: '{size} KB'`, `durationMinutes`, `tokensThousands`).
+`useChatFormat()` gives a host's own widgets or block renderers the same:
+`format.plural(labels.credits, n)`, `format.number(n)`, `format.fileSize(bytes)`,
+`format.date(iso)`, `format.dateTime(iso)`, `format.relativeDate(iso)`,
+`format.list(names)`, `format.percent(ratio)`, `format.duration(seconds)`;
+`useChatLanguage()` is the locale they use. Outside React, `createChatFormat(labels, language)`.
+
+**Language and direction.** `lang` is set on the chat (`.cb-chat-container`,
+the launcher, `ChatRoot`, and the attachment viewer and a block's expanded view,
+which are portals) from `language`, so screen readers pronounce it in that
+language; without one the chat inherits the page's `lang`. The **layout's**
+direction stays the page's (`dir` on `<html>` or an ancestor — see [Side and
+right-to-left pages](#side-and-right-to-left-pages)): a language is not a
+layout. Text whose direction can differ from the page's is `dir="auto"` — its
+own first strong letter decides — so an English sentence in a right-to-left chat
+reads "What would you like to do?", not "?What would you like to do": the
+greeting, privacy badges, suggestions, quick actions and their prompts, feature
+cards, conversation titles, file names, attachment chips, a sub-agent's name,
+errors and notices, the activity header, the questionnaire's question and
+options, approval cards, and in an answer every paragraph, list item, heading,
+quote and table cell (code stays left-to-right). The composer, the edit box and
+the search fields are `dir="auto"` too: empty, they — and their placeholders —
+take the chat's direction. Chrome text of that kind keeps the chat's alignment
+(`.cb-bidi`: `text-align: match-parent`); an answer's blocks align to their own
+start.
+
+**A tool's name** is worked out when its row is drawn — never stored — so it
+follows the language, live and in a reloaded conversation alike
+(`resolveToolDisplayName(slug, tools, { labels, rawName })`):
+
+1. the host's `tools[slug]` entry's `name` / `displayName` (or its definition's)
+   — a host translates its own tools' names itself, as it renders;
+2. the platform tool's label (`TOOL_NAME_LABELS[slug]`: `web_search` →
+   `toolNameWebSearch`), translated like every label;
+3. the platform's own name for it (the event's `tool_name`, kept on the step
+   as `MessageStep.toolName`) — English, for a tool neither names;
+4. the slug in words (`list_inspections` → "List Inspections").
+
+**Not labels:** what the user, the model, the platform or the host wrote — the
+messages, agent and conversation names, a server's error message (shown as it
+came), the platform's name for a tool nothing above names, and the host's
+welcome content, header entries and views (`suggestions`, `quickActions`,
+`featureCards`, `header.menuItems`, `header.views`, `sidebar.items`: pass them
+translated). Text the library sends *to the model* (a questionnaire's answers,
+a tool failure's description, a host request's answer) stays English: the
+model words its reply in the user's language. A failure a host shows — a
+`StorageRequestError` from `saveFile`, say — names a label (`labelKey`): show
+`describeLabelledError(error, useLabels(), useChatLanguage())` rather than its
+`message`, which is for a developer.
+
+**For a host's tests:** `LABEL_KEYS` (every key), `PLURAL_LABEL_KEYS`,
+`DEPRECATED_LABEL_ALIASES` (`{ creditsOne: { key: 'credits', form: 'one' }, … }`),
+`labelPlaceholders(DEFAULT_LABELS[key])` (to check a translation keeps the
+placeholders), and `missingTranslations(translations, language?)` — the keys a
+language lacks (counting its base language), or, without a language, a map of
+every language's:
+
+```ts
+expect(missingTranslations(TRANSLATIONS, 'de')).toEqual([]);
+Object.entries(TRANSLATIONS.ar).forEach(([given, value]) => {
+  // A deprecated 4.1 name (`creditsOne`) is checked against the label it fills.
+  const key = (DEPRECATED_LABEL_ALIASES[given as DeprecatedLabelKey]?.key ?? given) as LabelKey;
+  expect(LABEL_KEYS).toContain(key);
+  expect(labelPlaceholders(value!)).toEqual(labelPlaceholders(DEFAULT_LABELS[key]));
+});
+```
+
+`labelPlaceholders` takes the placeholders of every form of a plural label
+together, so a form may leave `{count}` out where its category holds one number
+— as the English `{ one: 'thought once', … }` does — and the label still
+matches. (A lone deprecated `…One` is a single form: compare it with that form's
+placeholders, or rename it.)
 
 ## Changing the chat on one screen: `useChatOverrides`
 
@@ -625,8 +910,10 @@ function AuditScreen() {
   `config`.
 - **Pass a stable object** — a module constant or a `useMemo` result. A layer equal
   to the one already registered is ignored, which keeps a literal of plain values
-  cheap, but a literal holding elements or functions is new on every render and
-  re-registers every render.
+  cheap — `labels` and `translations` are compared one level further, so plural
+  forms (`{ credits: { one, other } }`) and a language's map written inline are
+  plain values too. A literal holding elements or functions is new on every
+  render and re-registers every render.
 - A screen with a provider of its own (a separate chat) configures that provider
   directly; overrides affect the nearest provider above the caller.
 
@@ -1044,7 +1331,7 @@ which supplies the design tokens and theme without the frame:
 
 | Component | Props |
 | --- | --- |
-| `ChatRoot` | `theme`, `mode` (default `'fullscreen'`: what the widgets inside lay themselves out for), `className`, `style` |
+| `ChatRoot` | `theme`, `mode` (default `'fullscreen'`: what the widgets inside lay themselves out for), `side` (default `'end'`: reported to the widgets inside; the root places nothing itself), `className`, `style` |
 | `ChatHeader` | `className`, `style` |
 | `ConversationSidebar` | `embedded` (a column the host placed: no collapse button, and a pick does not close it), `className`, `style` |
 | `MainChat` | `emptyComposer` (centred under the greeting while empty), `className`, `style` |
@@ -1211,16 +1498,20 @@ tool, think — becomes a section, closed by default:
   click away; `'turn'` and `'turn-end'` actions are hoisted to the turn's row as
   before, so a result the user must act on is never hidden.
 - The header's words are the `activity*` labels, joined by `activitySeparator`
-  with the first letter capitalised — so write them lower-case. One tool called
-  several times reads `activityRanRepeated` ("ran web_search 3 times"), several
-  tools `activityRanOther` ("ran 4 tools").
+  with the first letter capitalised (in the chat's language) — so write them
+  lower-case. The counts are plural labels (4.2): `activityThoughts`,
+  `activitySearches`, `activitySkillLoads`, `activityToolLoads`. One call reads
+  `activityRanTool` ("ran web_search"), one tool called several times
+  `activityRanToolTimes` ("ran web_search 3 times"), several tools
+  `activityRanTools` ("ran 4 tools"); one sub-agent `activityUsedAgent`, several
+  `activityUsedAgents`; failures `activityFailed`.
 - Restyle through `.cb-activity` (`.is-running`, `.is-finished`, `.has-failed`),
   `.cb-activity-btn`, `.cb-activity-text`, `.cb-activity-detail` and
   `.cb-activity-items`.
 - For a renderer of your own: `groupActivity(steps)` returns the items to draw
-  (`single` or `activity`), `summarizeActivity(steps, labels, toolName?)` the
-  finished header, `describeLatestActivity(steps, labels, toolName?)` the live one
-  as `{ text, detail? }`.
+  (`single` or `activity`), `summarizeActivity(steps, labels, toolName?, language?)`
+  the finished header, `describeLatestActivity(steps, labels, toolName?, language?)`
+  the live one as `{ text, detail? }`. Pass `useLabels()` and `useChatLanguage()`.
 
 ## Meta-tool steps
 
@@ -1240,8 +1531,9 @@ render as one line saying what happened, not "Ran Load tools":
   When one has to ask the browser, the question rides on the meta-tool's own step,
   so it adds no row.
 - "Loaded tools" lists what the platform loaded (`{ loaded, refused }`), named the
-  way every tool row is: the host's `tools[slug].name`, then
-  `DEFAULT_TOOL_NAMES`, then the slug title-cased. "Loaded skill" shows the
+  way every tool row is: the host's `tools[slug].name`, then the platform tool's
+  label (`TOOL_NAME_LABELS`, in the chat's language), then the slug title-cased
+  (see [Internationalisation](#internationalisation)). "Loaded skill" shows the
   skill's name, else its slug, else the slug the model asked for
   (`{ skill: { slug, name, source, uuid? }, tools_loaded, tools_unavailable }`;
   `source` is `platform` or `host`, and an app's skill has no `uuid`). What a load
@@ -1255,11 +1547,12 @@ render as one line saying what happened, not "Ran Load tools":
 - Restyle them through `.cb-modern-tool-call--meta` (`.cb-modern-tool-meta-text`,
   `.cb-modern-tool-meta-detail`), or `.cb-tool-invocation--meta` on the legacy
   `ToolInvocation`. The words are the `meta*` labels:
-  `metaLoadedTools: 'Loaded tools · {names}'`,
-  `metaLoadedSkill: 'Loaded skill · {name}'`, `metaRefused: '{count} refused'`
-  and the running/searched pairs.
+  `metaLoadedTools: 'Loaded tools · {names}'` (the names joined as the
+  language joins a list), `metaLoadedSkill: 'Loaded skill · {name}'`,
+  `metaRefused: { other: '{count} refused' }` (a plural label, put in brackets by
+  `parenthetical`), a query in `quotedText`, and the running/searched pairs.
 - For a renderer of your own, `describeMetaTool(slug, status, args, result,
-  labels, toolName?)` returns `{ text, detail? }`, or `null` where the generic
+  labels, toolName?, language?)` returns `{ text, detail? }`, or `null` where the generic
   row belongs; `isMetaTool(slug)` and `META_TOOL_SLUGS` say which steps qualify.
 
 ## Client skills and the host catalogue
@@ -1575,7 +1868,12 @@ Things to know while linked:
   CJS bundle too, build to another directory (`vite build --outDir <tmp>`) and copy
   its `index.cjs.js` over.
 - **A watch build does not rebuild `index.cjs.js`.** Jest resolves the package
-  through `main`, so run `yarn build` once before the host's tests.
+  through `main`, so run `yarn build` once before the host's tests — or, for a
+  test that only needs the label catalogue (`LABEL_KEYS`, `DEFAULT_LABELS`,
+  `labelPlaceholders`, `missingTranslations`), read the linked package's
+  source, `src/common/i18n.ts`, which imports nothing but `labels.ts`. A host
+  test should *fail* rather than skip when neither has the catalogue: a skipped
+  check is one nobody runs (Flowdit's `locales.test.ts` does this).
 - **Two copies of `@types/react`.** The linked package resolves React's types
   from this workspace, so a host's `React.ReactNode` may not be assignable to the
   library's (`Type 'bigint' is not assignable to type 'ReactNode'`). Pass elements
@@ -1586,6 +1884,179 @@ Things to know while linked:
 Publishing: bump `version` in `package.json`, then `npm run release:chatbot` from
 `frontend/` (build and publish). Bump the host's dependency only after the publish;
 before it, `yarn install` in the host fails to resolve the version.
+
+## Migrating from 4.1 (4.2)
+
+**Not published yet** (2026-10-18): npm has 4.1.0, and `package.json` says
+4.2.0. Develop against it linked (see [Developing against a linked
+host](#developing-against-a-linked-host)); bump a host's dependency to `^4.2.0`
+only once it is published, or `yarn install` there fails to resolve it.
+
+4.2.0 keeps a 4.1 host working (2026-10-18). Its layout is additive: a host in
+a left-to-right page sees no change, pixel for pixel, and needs no change — but
+for a shut overlay sidebar (below). Its internationalisation keeps every 4.1
+label working, given and read, but rewords some English and changes some data
+a host may read: see [What a 4.1 host may notice](#what-a-41-host-may-notice).
+An answer's flush side is read from the chat's direction, not its own: the
+bubble is `dir="auto"`, so in a left-to-right chat an Arabic answer keeps
+4.1's padding (flush left) as an English one does.
+
+- **New:** `side?: 'end' | 'start'` on `ChatApp`, `ChatContainer` and
+  `ChatRoot`, and the `ChatSide` type — see [Side and right-to-left
+  pages](#side-and-right-to-left-pages).
+- **Looks different in a right-to-left page.** The chat used to sit at the
+  right whatever the page's direction, with a drawer, menus and switches laid
+  out for left-to-right inside it. It now attaches to the page's end — the
+  **left** under `dir="rtl"` — and mirrors its inside. To keep a chat at the
+  right of a right-to-left page, pass `side="start"`.
+- **Positions are logical properties.** A host stylesheet that moved the chat
+  with `right`/`left` (`.cb-mode-floating { right: 80px }`) still works in a
+  left-to-right page, but in a right-to-left one it now competes with the
+  library's `inset-inline-end` (which is the *left* there) and pins both
+  sides. Write `inset-inline-end` / `inset-inline-start` instead; they follow
+  the direction as the library's own rules do.
+- **New classes:** `cb-side-end` / `cb-side-start` and `cb-dir-ltr` /
+  `cb-dir-rtl` on `.cb-chat-container`, `.cb-launcher-btn` and `.cb-root`; and
+  the custom properties `--cb-dir-sign` and `--cb-edge-sign` on the first and
+  last. An embedded `side="start"` chat has `order: -1`; `side="end"` sets
+  no `order`.
+- **A shut overlay sidebar is hidden.** `.cb-mode-sidebar.cb-closed` (not
+  embedded) is `visibility: hidden` once it has slid out; it slides out as
+  before. It was painted off-screen until now, so its shadow showed as a
+  faint line at the viewport's edge and its controls stayed in the Tab order.
+  A host that reads the shut panel's visibility, or shows something inside it
+  with `visibility: visible`, sees the difference.
+
+### Internationalisation (4.2)
+
+- **New:** `config.language` and `config.translations` — see
+  [Internationalisation](#internationalisation); `useChatLanguage()`,
+  `useChatFormat()`, `createChatFormat`, `resolveLabels`, `missingTranslations`,
+  `languageFallbacks`, `formatPlural`, `pluralCategory`, `isPluralLabel`,
+  `labelPlaceholders`, `labelledError`, `LABEL_KEYS`, `PLURAL_LABEL_KEYS`,
+  `PLURAL_CATEGORIES`, `DEPRECATED_LABEL_ALIASES`, `canonicalLanguage`,
+  `describeLabelledError`, `TOOL_NAME_LABELS`, and the types `ChatTranslations`,
+  `ChatLabelInputs`, `ChatLabelTexts`, `PluralLabel`, `PluralCategory`,
+  `LabelValue`, `LabelKey`, `PluralLabelKey`, `DeprecatedLabels`,
+  `DeprecatedLabelInputs`, `DeprecatedLabelKey`, `ChatFormat`, `LabelledError`,
+  `ToolNameOptions`, `ToolNamer`, `LocalizedText`, `LocalizeContext`. 109 new
+  labels — every English text the components and hooks wrote until then (61),
+  then what a review found still English: the platform's 38 tool names, the
+  PDF viewer's 4 messages, the footnotes' 2 and the storage API's 4 failures
+  (see [Labels](#labels)) — and 14 new names for the counting labels (below).
+- **Counting labels are plural labels, and the 4.1 names are deprecated
+  aliases** — kept working both ways:
+  - **given**, in `labels` or in a translation, each still shows the 4.1 text:
+    a pair's `…One` fills the `one` form and its `…Other` the `other`, each
+    laid over the forms beneath it — a lone `creditsOther` keeps the English
+    `one` ("1 credit", as 4.1's `formatCount` showed it); a name that was not a
+    pair is the whole value. In one map the new name wins when both are given;
+    in a later configuration layer an old name wins over an earlier layer's
+    new one, as any later layer does.
+  - **read**, from `useLabels()` or `DEFAULT_LABELS`, each is the 4.1 text
+    (`creditsOne` is `credits.one`, `activityRanRepeated` is
+    `activityRanToolTimes.other`) — not enumerable, so not in `LABEL_KEYS`,
+    `Object.keys` or a spread. `formatCount(n, labels.creditsOne,
+    labels.creditsOther)` keeps working. `formatLabel` given a label that
+    counts since 4.2 (`uploadingFiles`, `metaRefused`, …) picks the form for
+    `values.count`, else `other`. `summarizeActivity` and
+    `describeLatestActivity` still take a hand-made 4.1 label object (the old
+    pairs, no new names).
+
+  | 4.1 (deprecated) | 4.2 |
+  | --- | --- |
+  | `creditsOne` / `creditsOther` | `credits` (`one` / `other`) |
+  | `stepsOne` / `stepsOther` | `steps` |
+  | `turnsOne` / `turnsOther` | `turns` |
+  | `creditsLeftOne` / `creditsLeftOther` | `creditsLeft` |
+  | `filesItemsOne` / `filesItemsOther` | `filesItems` |
+  | `activityThoughtOne` / `activityThoughtOther` | `activityThoughts` |
+  | `activitySearchedOne` / `activitySearchedOther` | `activitySearches` |
+  | `activityLoadedSkillOne` / `activityLoadedSkillOther` | `activitySkillLoads` |
+  | `activityLoadedToolsOne` / `activityLoadedToolsOther` | `activityToolLoads` |
+  | `activityRanOne` | `activityRanTool` (a text) |
+  | `activityRanRepeated` | `activityRanToolTimes` |
+  | `activityRanOther` | `activityRanTools` |
+  | `activityAgentOne` | `activityUsedAgent` (a text) |
+  | `activityAgentOther` | `activityUsedAgents` |
+
+  Plural-capable under their own names: `activityFailed`, `filesSavedCount`,
+  `uploadingFiles`, `metaRefused`, `usageSubAgents`, `previewTruncated` — a text
+  given for one still works as every form.
+- **A host that copied every key of `DEFAULT_LABELS` into `labels`** (4.1's
+  suggestion, with English for what its catalogue lacked) now passes English as
+  overrides, and an override wins in every language: pass `translations` and
+  `language` instead, and leave `labels` for a deliberate rewording. Such a
+  loop also no longer reads a catalogue's `…One` / `…Other` entries (they are
+  not keys any more): rename them, or keep them — they work as aliases in
+  `translations` too.
+- **Types.** `config.labels` is `Partial<ChatLabelInputs>` (was
+  `Partial<ChatLabels>`; a counting key accepts a text or plural forms, and the
+  deprecated names are accepted). In `ChatLabels` — what `useLabels()` returns —
+  a counting key is a `PluralLabel`: read it with `formatPlural`, not as a
+  string — or as 4.1 did, by its deprecated names (above). `ActivityLabels`
+  names the new keys and still accepts the 4.1 ones; `MetaToolLabels` names the
+  new keys; `summarizeActivity`, `describeLatestActivity` and `describeMetaTool`
+  take an optional `language` last. `formatTokens(count, language?, labels?)`;
+  `describeApprovalRequest(…, labels?)`; `describeStreamError(error, labels?,
+  language?)`; `useStreamChat` takes `getLabels` / `getLanguage`, and
+  `useConversations` a third argument `{ getLabels, getLanguage }`.
+  `AuthenticatedImage`'s `alt` defaults to the label `imageAlt`; the provider's
+  `userName` to `defaultUserName`.
+- **An empty label falls through** to the next source, where 4.1 showed nothing.
+- **English that reads differently:** "Uploading 1 file…" / "Uploading 3
+  files…" (was "Uploading 3 file(s)…"); counts are written as numbers of the
+  locale ("1,250 credits" where the usage card wrote "1250 credits"); the image
+  placeholder says "Loading…" (was "Loading..."); a tool row with neither a name
+  nor a slug says "Tool" (was "Command"); a failure the client describes for a
+  developer shows its label (`Gateway unreachable: TypeError: …` →
+  "Gateway unreachable"), and an attachment the storage API refused says "Failed
+  to load attachment (500)" rather than the fetch's message.
+- **Data:** an unnamed sub-agent's step has no `agentName` (was `'Sub-agent'`)
+  and its run's `agentName` is `null`; a tool step with neither a name nor a
+  slug has no `toolName` (was `'Tool'`). The renderers show the labels.
+- `formatCount` is deprecated (English's one/other rule in every language):
+  use `formatPlural`. `STOPPED_NOTICE`, `STALE_TURN_NOTICE` and `CONTINUE_PROMPT`
+  are the labels' English; the chat writes the labels in force.
+- **In the DOM:** `lang` on `.cb-chat-container`, the launcher, `.cb-root`, the
+  attachment viewer's and a block's expanded overlay when `language` is set;
+  `dir="auto"` on the texts listed in [Internationalisation](#internationalisation),
+  and the class `cb-bidi` (`text-align: match-parent`) on those in the chat's
+  chrome.
+
+#### What a 4.1 host may notice
+
+- **Tool names.** A platform tool the host has not named shows its label —
+  "Web search" — where the platform's `tool_name` ("Web Search") showed
+  before; a slug no label names still shows the platform's name. The name is
+  worked out when drawn, so a host's `displayName` now applies to a reloaded
+  conversation too (it did not: the stored name won).
+- **`MessageStep.toolName`** is the platform's name as sent, or absent — no
+  longer the name shown. An approval step has no `confirmLabel` (the card shows
+  the tool's name), and approval, check-in, error and notice steps carry
+  `localized…` functions beside their text (see [Switching at
+  runtime](#internationalisation)).
+- **`resolveToolDisplayName(slug, tools, options)`** takes `{ labels, rawName,
+  fallback }` third (a fallback text is still accepted). `DEFAULT_TOOL_NAMES`
+  is the labels' English, and the chat no longer reads it: a host that added
+  names to it names its tools with `displayName`, or translates the labels.
+  `summarizeActivity` and `describeLatestActivity` without a namer name tools
+  as the chat does (they showed the stored name); a namer is called
+  `(slug, rawName?)`.
+- **`describeApprovalRequest(…, labels?, toolName?)`** fills `{tool}` with the
+  tool's name; the chat passes the name shown (was the slug).
+- **Errors.** `StorageRequestError` carries `labelKey` / `labelValues` (the
+  `storage…` labels; `saveFileFailed`); `StreamClient`'s network and read
+  failures are labelled (`errorGatewayUnreachable`, `errorStreamLost`), and
+  their `message` reads "Request failed: …" / "Stream read failed: …".
+- **The PDF viewer** refuses a password-protected PDF with
+  `pdfPasswordProtected`; react-pdf asked for a password with an English
+  `window.prompt`.
+- **An answer's footnotes** heading has the class `cb-visually-hidden` (the
+  chat's own, hidden by its stylesheet) instead of `sr-only`, and is worded by
+  `footnotes`.
+- **The sidebar's date groups** are keyed `today` / `yesterday` / `week` /
+  `older`, not by their words.
 
 ## Migrating from 4.0 (4.1)
 

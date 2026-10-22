@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { StreamChatClient, StreamEvent } from '../api/StreamClient';
-import { MessageProps, MessageStep } from '../components/MessageBubble/MessageBubble';
+import { MessageProps, MessageStep, type LocalizedText } from '../components/MessageBubble/MessageBubble';
 import { AttachedFile, ContextFigures, RunUsage, UsageFigures, UsagePayload } from '../api/types';
 import { turnUsage } from '../common/usageSummary';
 import { resolveToolDisplayName } from '../common/toolConfig';
@@ -8,6 +8,8 @@ import { isHostRequestSlug } from '../common/hostCatalogue';
 import { settledToolStatus } from '../api/toolOutput';
 import { StepPath, appendStepAt, appendTextAt, patchStepAt } from './subAgentSteps';
 import { resolveStorageAttachmentFileUrl } from '../common/attachmentUtils';
+import { DEFAULT_LABELS, formatLabel, type ChatLabels } from '../common/labels';
+import { createChatFormat, describeLabelledError } from '../common/i18n';
 
 export interface UseStreamChatOptions {
     client: StreamChatClient | null;
@@ -15,6 +17,14 @@ export interface UseStreamChatOptions {
     storageApiUrl?: string;
     /** Per-tool handlers and presentation, forwarded to MessageBubble. */
     tools?: MessageProps['tools'];
+    /**
+     * The labels in force, read when the hook writes into a message — a
+     * notice, an error, a check-in, "Stopped." — so it is written in the
+     * chat's language at that moment. The library's English without it.
+     */
+    getLabels?: () => ChatLabels;
+    /** The locale numbers in such text are written for. */
+    getLanguage?: () => string | undefined;
 }
 
 /**
@@ -62,15 +72,16 @@ export function describeApprovalRequest(
     toolSlug: string,
     toolInput: any,
     dispatchMode?: string,
+    labels: Pick<ChatLabels, 'approvalInApp' | 'approvalOnServer' | 'approvalInAppWith' | 'approvalOnServerWith'> = DEFAULT_LABELS,
+    /** What `{tool}` says: the tool's name as the chat shows it. Its slug without one. */
+    toolName: string = toolSlug,
 ): string {
-    const where = dispatchMode === 'client'
-        ? 'in this app'
-        : 'on the server';
+    const inApp = dispatchMode === 'client';
     const entries = toolInput && typeof toolInput === 'object'
         ? Object.entries(toolInput as Record<string, any>)
         : [];
     if (entries.length === 0) {
-        return `The assistant wants to run ${toolSlug} ${where}.`;
+        return formatLabel(inApp ? labels.approvalInApp : labels.approvalOnServer, { tool: toolName });
     }
     const rendered = entries
         .map(([key, value]) => {
@@ -81,7 +92,7 @@ export function describeApprovalRequest(
     const clipped = rendered.length > MAX_APPROVAL_ARGS_CHARS
         ? `${rendered.slice(0, MAX_APPROVAL_ARGS_CHARS)}…`
         : rendered;
-    return `The assistant wants to run ${toolSlug} ${where} with:\n${clipped}`;
+    return `${formatLabel(inApp ? labels.approvalInAppWith : labels.approvalOnServerWith, { tool: toolName })}\n${clipped}`;
 }
 
 /**
@@ -123,8 +134,11 @@ const NON_RETRYABLE_ERROR_PATTERNS: RegExp[] = [
  * an error and why retrying is not suggested — the run is still going and its
  * output will be in the transcript once it finishes.
  */
-/** Shown in place of the rest of an answer the user chose to stop. */
-export const STOPPED_NOTICE = '_Stopped._';
+/**
+ * Shown in place of the rest of an answer the user chose to stop: the label
+ * `stoppedNotice`, in italics. This constant is its English.
+ */
+export const STOPPED_NOTICE = `_${DEFAULT_LABELS.stoppedNotice}_`;
 
 /**
  * What "Continue" says to the agent when the run it would have reattached to has
@@ -134,20 +148,46 @@ export const STOPPED_NOTICE = '_Stopped._';
  * of asking what the user meant, and kept short so it does not dominate the
  * context it is appended to.
  */
-export const CONTINUE_PROMPT = 'Please continue from where you stopped.';
+export const CONTINUE_PROMPT = DEFAULT_LABELS.continuePrompt;
 
-export const STALE_TURN_NOTICE =
-    'This turn is still running, but this page can no longer follow it live. '
-    + 'Reload once it has finished to see the rest.';
+/** The label `staleTurnNotice`'s English. */
+export const STALE_TURN_NOTICE = DEFAULT_LABELS.staleTurnNotice;
 
-export function describeStreamError(error: Error | undefined): string {
-    const detail = error?.message?.trim();
-    if (!detail) return 'Something went wrong. Please try again.';
+/**
+ * A stream failure as the transcript shows it: the label an error names when
+ * it names one (a client's own failures, `labelledError`), else the server's
+ * reason as it sent it — then, for a failure a retry may fix, the label
+ * `errorTryAgain` on a line of its own.
+ */
+export function describeStreamError(
+    error: Error | undefined,
+    labels: ChatLabels = DEFAULT_LABELS,
+    language?: string,
+): string {
+    const detail = describeLabelledError(error, labels, language) ?? error?.message?.trim();
+    if (!detail) return labels.errorGeneric;
     const permanent = NON_RETRYABLE_ERROR_PATTERNS.some((pattern) => pattern.test(detail));
-    return permanent ? detail : `${detail}\n\nPlease try again.`;
+    return permanent ? detail : `${detail}\n\n${labels.errorTryAgain}`;
 }
 
-export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStreamChatOptions) => {
+const englishLabels = () => DEFAULT_LABELS;
+const noLanguage = () => undefined;
+
+export const useStreamChat = ({
+    client,
+    onEvent,
+    storageApiUrl,
+    tools,
+    getLabels = englishLabels,
+    getLanguage = noLanguage,
+}: UseStreamChatOptions) => {
+    // Read through refs: a host passing new getters must not rebuild the stream handlers.
+    const getLabelsRef = React.useRef(getLabels);
+    getLabelsRef.current = getLabels;
+    const getLanguageRef = React.useRef(getLanguage);
+    getLanguageRef.current = getLanguage;
+    const currentLabels = React.useCallback(() => getLabelsRef.current(), []);
+    const currentLanguage = React.useCallback(() => getLanguageRef.current(), []);
     const [messages, setMessages] = React.useState<MessageProps[]>([]);
     const [isThinking, setIsThinking] = React.useState(false);
     // Kept apart from isThinking so a resumed turn can show an indicator without
@@ -390,7 +430,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
         const recordSubAgentRun = (
             jobUuid: string,
             figures: UsageFigures,
-            agentName?: string,
+            agentName?: string | null,
             context?: ContextFigures | null,
         ) => {
             patchTurn(m => {
@@ -422,16 +462,27 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
             patchTurn(m => (m.jobUuid ? {} : { jobUuid: turnJobUuid }));
         };
 
+        // Text the chat writes into a step itself is kept as a function of the
+        // language (`LocalizedText`), drawn again in the one in force each
+        // render; the step's plain field holds it as written now.
+        const writeNow = (text: LocalizedText): string => {
+            const labels = currentLabels();
+            return text({
+                format: createChatFormat(labels, currentLanguage()),
+                toolName: (slug, rawName) => resolveToolDisplayName(slug, tools, { labels, rawName }),
+            });
+        };
+
         // A check-in is answered through the same endpoint as an approval, so
         // it is rendered as the same card; this is what the card says.
-        const describeCheckIn = (elapsedSeconds: number, credits?: number): string => {
-            const minutes = Math.floor(elapsedSeconds / 60);
-            const seconds = elapsedSeconds % 60;
-            const worked = minutes > 0 ? `${minutes} min ${seconds} s` : `${seconds} s`;
-            const spent = credits !== undefined && credits > 0
-                ? ` and used ${credits} ${credits === 1 ? 'credit' : 'credits'}`
-                : '';
-            return `The agent has been working for ${worked}${spent}. Continue?`;
+        const describeCheckIn = (elapsedSeconds: number, credits?: number): LocalizedText => ({ format }) => {
+            const duration = format.duration(elapsedSeconds);
+            return credits !== undefined && credits > 0
+                ? format.label(format.labels.checkInBodyWithCredits, {
+                    duration,
+                    credits: format.plural(format.labels.credits, credits),
+                })
+                : format.label(format.labels.checkInBody, { duration });
         };
 
         const handleEvent = (event: StreamEvent) => {
@@ -486,12 +537,14 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                     );
                     // The child's meter starts at zero under its name, so the
                     // consumption card can count it before its first step settles.
-                    recordSubAgentRun(child_job_uuid, NO_USAGE, agent_name || 'Sub-agent');
+                    // No name: the meter's name is `null` and the block's empty —
+                    // each shows the label `subAgentName` in the language in force.
+                    recordSubAgentRun(child_job_uuid, NO_USAGE, agent_name || null);
                     if (!handoff) {
                         editSteps(steps => appendStepAt(steps, parentPath, {
                             id: step_uuid,
                             type: 'sub-agent',
-                            agentName: agent_name || 'Sub-agent',
+                            agentName: agent_name || undefined,
                             toolStatus: 'running',
                             subSteps: [],
                         }));
@@ -506,7 +559,9 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                     editSteps(steps => appendStepAt(steps, pathFor(event), {
                         id: step_uuid,
                         type: 'tool-call',
-                        toolName: tool_name || resolveToolDisplayName(tool_slug, tools),
+                        // The platform's name, as sent: the name shown is
+                        // worked out from the slug when the row is drawn.
+                        toolName: tool_name || undefined,
                         toolSlug: tool_slug,
                         toolArgs: tool_input,
                         toolStatus: 'running',
@@ -552,7 +607,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                     editSteps(steps => appendStepAt(steps, pathFor(event), {
                         id: step_uuid,
                         type: 'tool-call',
-                        toolName: tool_name || resolveToolDisplayName(tool_slug, tools),
+                        toolName: tool_name || undefined,
                         toolSlug: tool_slug,
                         toolArgs: tool_input,
                         toolStatus: isInteractive ? 'running' : 'completed',
@@ -573,17 +628,19 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                     if (owningJob) {
                         approvalJobRef.current.set(approval_uuid, String(owningJob));
                     }
-                    const displayName = tool_name || resolveToolDisplayName(tool_slug, tools);
+                    // The card's title is the tool's name, worked out when
+                    // drawn; its words follow the language in force.
+                    const describe: LocalizedText = ({ format, toolName }) => describeApprovalRequest(
+                        tool_slug, tool_input, dispatch_mode, format.labels, toolName(tool_slug, tool_name || undefined)
+                    );
                     editSteps(steps => appendStepAt(steps, pathFor(event), {
                         id: approval_uuid,
                         type: 'confirm-request',
                         toolCallId: approval_uuid,
-                        toolName: displayName,
+                        toolName: tool_name || undefined,
                         toolSlug: tool_slug,
-                        confirmLabel: displayName,
-                        confirmDescription: describeApprovalRequest(
-                            tool_slug, tool_input, dispatch_mode
-                        ),
+                        confirmDescription: writeNow(describe),
+                        localizedConfirmDescription: describe,
                         confirmStatus: 'pending',
                     }));
                 }
@@ -596,14 +653,16 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                 const seconds = Number(
                     event.data?.payload?.retry_after_seconds ?? 0
                 );
+                const waiting: LocalizedText = ({ format }) => (seconds > 0
+                    ? format.label(format.labels.waitingForCapacityIn, { seconds: format.number(seconds) })
+                    : format.labels.waitingForCapacity);
                 editSteps(steps => [
                     ...steps.filter(step => step.type !== 'notice'),
                     {
                         id: `${assistantId}-waiting`,
                         type: 'notice' as const,
-                        content: seconds > 0
-                            ? `Waiting for capacity — resuming in ${seconds}s…`
-                            : 'Waiting for capacity…',
+                        content: writeNow(waiting),
+                        localizedContent: waiting,
                     },
                 ]);
             }
@@ -677,16 +736,20 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                     }
                     setMessages(prev => prev.map(m => {
                         if (m.id !== assistantId) return m;
+                        const title: LocalizedText = ({ format }) => format.labels.checkInTitle;
+                        const body = describeCheckIn(
+                            Number(elapsed_seconds ?? 0),
+                            turnUsage(m).turn.credits_charged,
+                        );
                         const step: MessageStep = {
                             id: check_in_uuid,
                             type: 'confirm-request',
                             toolCallId: check_in_uuid,
                             toolName: 'continue_working',
-                            confirmLabel: 'Continue working?',
-                            confirmDescription: describeCheckIn(
-                                Number(elapsed_seconds ?? 0),
-                                turnUsage(m).turn.credits_charged,
-                            ),
+                            confirmLabel: writeNow(title),
+                            confirmDescription: writeNow(body),
+                            localizedConfirmLabel: title,
+                            localizedConfirmDescription: body,
                             confirmStatus: 'pending',
                         };
                         return { ...m, steps: appendStepAt(m.steps ?? [], pathFor(event), step) };
@@ -839,7 +902,8 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                         {
                             id: `${assistantId}-error`,
                             type: 'error' as const,
-                            content: describeStreamError(error),
+                            content: describeStreamError(error, currentLabels(), currentLanguage()),
+                            localizedContent: ({ format }) => describeStreamError(error, format.labels, format.locale),
                             recovery: producedSomething
                                 ? ('continue' as const)
                                 : ('retry' as const),
@@ -850,7 +914,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
         };
 
         return { handleEvent, handleError };
-    }, [onEvent, tools, setApprovalStatus, storageApiUrl, updateAssistantContent]);
+    }, [onEvent, tools, setApprovalStatus, storageApiUrl, updateAssistantContent, currentLabels, currentLanguage]);
 
     const sendMessage = React.useCallback(async (text: string, attachedFiles?: AttachedFile[]) => {
         const hasText = Boolean(text && text.trim());
@@ -912,7 +976,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
             // charged for.
             if (stoppingRef.current) {
                 updateAssistantContent(assistantId, (prev) =>
-                    (prev ? prev + '\n\n' : '') + STOPPED_NOTICE
+                    (prev ? prev + '\n\n' : '') + `_${currentLabels().stoppedNotice.trim()}_`
                 );
             }
             stoppingRef.current = false;
@@ -925,7 +989,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
             assistantIdRef.current = null;
             currentUserMessageIdRef.current = null;
         }
-    }, [client, isThinking, buildStreamHandlers, tools, updateAssistantContent]);
+    }, [client, isThinking, buildStreamHandlers, tools, updateAssistantContent, currentLabels]);
 
     /**
      * Re-attach to a turn that is still running and let the replay rebuild it.
@@ -1013,7 +1077,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                 // Not describeStreamError: nothing failed. The turn is still
                 // running on the server, this page just can no longer watch it.
                 updateAssistantContent(assistantMessageId, (prev) =>
-                    (prev ? prev + '\n\n' : '') + STALE_TURN_NOTICE
+                    (prev ? prev + '\n\n' : '') + currentLabels().staleTurnNotice
                 );
             }
         } finally {
@@ -1028,7 +1092,7 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
         }
     }, [
         client, buildStreamHandlers, tools,
-        updateAssistantContent,
+        updateAssistantContent, currentLabels,
     ]);
 
     /**
@@ -1106,8 +1170,8 @@ export const useStreamChat = ({ client, onEvent, storageApiUrl, tools }: UseStre
                 return;
             }
         }
-        await sendMessage(CONTINUE_PROMPT);
-    }, [client, sendMessage]);
+        await sendMessage(currentLabels().continuePrompt);
+    }, [client, sendMessage, currentLabels]);
 
     resumeTurnRef.current = resumeTurn;
 

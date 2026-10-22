@@ -3,7 +3,7 @@
     align-items: center;
     opacity: 0;
     transition: opacity 0.15s ease;
-    margin-left: 8px;
+    margin-inline-start: 8px;
 }
 
 .cb-conversation-item:hover .cb-sidebar-item-actions,
@@ -35,7 +35,7 @@
 }
 
 .cb-conversation-sidebar-embedded {
-    border-right: 1px solid var(--cb-border-subtle);
+    border-inline-end: 1px solid var(--cb-border-subtle);
     width: 100%;
     max-width: 320px;
     height: 100%;
@@ -236,7 +236,7 @@
 .cb-sidebar-row-menu {
     position: absolute;
     top: calc(100% + 2px);
-    right: 4px;
+    inset-inline-end: 4px;
     z-index: 20;
     min-width: 172px;
     display: flex;

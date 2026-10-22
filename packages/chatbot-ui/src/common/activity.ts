@@ -1,6 +1,17 @@
 import type { MessageStep } from '../components/MessageBubble/MessageBubble';
-import { formatLabel, type ChatLabels } from './labels';
-import { describeMetaTool, isMetaTool, type MetaToolDescription } from './metaTools';
+import {
+    canonicalLanguage,
+    formatLabel,
+    formatPlural,
+    withCurrentNames,
+    type ChatLabels,
+    type DeprecatedLabelInputs,
+    type LabelKey,
+    type LabelValue,
+    type PluralLabel,
+} from './labels';
+import { describeMetaTool, isMetaTool, type MetaToolDescription, type MetaToolLabels } from './metaTools';
+import { resolveToolDisplayName } from './toolConfig';
 
 /**
  * The agent's working between two pieces of its answer, as one section.
@@ -32,39 +43,69 @@ export interface ActivityLine {
     detail?: string;
 }
 
-export type ActivityLabels = Pick<
+/** Labels as a helper takes them: a counting one may be a plain text (every form) as well as plural forms. */
+type Given<Labels> = { [Key in keyof Labels]: Labels[Key] extends PluralLabel ? LabelValue : Labels[Key] };
+
+/** The activity labels 4.2 renamed: a hand-made 4.1 object gives them by their old names. */
+const RENAMED_ACTIVITY_KEYS = [
+    'activityThoughts',
+    'activitySearches',
+    'activitySkillLoads',
+    'activityToolLoads',
+    'activityRanTool',
+    'activityRanToolTimes',
+    'activityRanTools',
+    'activityUsedAgent',
+    'activityUsedAgents',
+] as const satisfies readonly LabelKey[];
+
+type RenamedActivityKey = typeof RENAMED_ACTIVITY_KEYS[number];
+
+/** The 4.1 names of {@link RENAMED_ACTIVITY_KEYS}. */
+type DeprecatedActivityKey =
+    | 'activityThoughtOne' | 'activityThoughtOther'
+    | 'activitySearchedOne' | 'activitySearchedOther'
+    | 'activityLoadedSkillOne' | 'activityLoadedSkillOther'
+    | 'activityLoadedToolsOne' | 'activityLoadedToolsOther'
+    | 'activityRanOne' | 'activityRanRepeated' | 'activityRanOther'
+    | 'activityAgentOne' | 'activityAgentOther';
+
+/**
+ * The labels the activity header is written in — `useLabels()` has them all.
+ * The counts are plural labels since 4.2 (`activityThoughts`, …). A host that
+ * calls these helpers with a hand-made 4.1 object, by the 4.1 one/other
+ * names (`activityThoughtOne` / `activityThoughtOther`, …), still may: each
+ * renamed label it leaves out is read from its 4.1 names, else the library's
+ * English.
+ */
+export type ActivityLabels = Given<Pick<
     ChatLabels,
     | 'thinking'
     | 'thoughtBriefly'
     | 'toolRunning'
     | 'toolRan'
     | 'toolFailed'
-    | 'activityThoughtOne'
-    | 'activityThoughtOther'
-    | 'activitySearchedOne'
-    | 'activitySearchedOther'
-    | 'activityLoadedSkillOne'
-    | 'activityLoadedSkillOther'
-    | 'activityLoadedToolsOne'
-    | 'activityLoadedToolsOther'
-    | 'activityRanOne'
-    | 'activityRanRepeated'
-    | 'activityRanOther'
-    | 'activityAgentOne'
-    | 'activityAgentOther'
+    | 'toolName'
+    | 'subAgentName'
     | 'activityAgentWorking'
     | 'activityFailed'
     | 'activitySeparator'
-    | 'metaSearchingTools'
-    | 'metaSearchedTools'
-    | 'metaLoadingTools'
-    | 'metaLoadedTools'
-    | 'metaSearchingSkills'
-    | 'metaSearchedSkills'
-    | 'metaLoadingSkill'
-    | 'metaLoadedSkill'
-    | 'metaRefused'
->;
+>> & Partial<Given<Pick<ChatLabels, RenamedActivityKey>>>
+    & Pick<DeprecatedLabelInputs, DeprecatedActivityKey>
+    & MetaToolLabels;
+
+/** How a helper names a tool: by its slug, with the platform's own name for it as the last resort. */
+export type ToolNamer = (slugOrName: string, rawName?: string) => string;
+
+/** {@link ActivityLabels} with every renamed label present by its current name. */
+function current(labels: ActivityLabels): ActivityLabels & Given<Pick<ChatLabels, RenamedActivityKey>> {
+    return withCurrentNames(labels, RENAMED_ACTIVITY_KEYS) as ActivityLabels & Given<Pick<ChatLabels, RenamedActivityKey>>;
+}
+
+/** Without a namer of the host's: the platform tool's label, else the platform's name, else the slug in words. */
+function defaultNamer(labels: ActivityLabels): ToolNamer {
+    return (slugOrName, rawName) => resolveToolDisplayName(slugOrName, undefined, { labels: labels as Pick<ChatLabels, 'toolName'>, rawName });
+}
 
 /** Longest a live thought is shown in a header before it is cut. */
 export const LIVE_THOUGHT_CHARS = 120;
@@ -110,23 +151,29 @@ function slugOf(step: MessageStep): string {
     return step.toolSlug || step.toolName || '';
 }
 
-function capitalise(text: string): string {
-    return text ? text.charAt(0).toLocaleUpperCase() + text.slice(1) : text;
-}
-
-function count(n: number, one: string, other: string, values: Record<string, string | number> = {}): string {
-    return formatLabel(n === 1 ? one : other, { count: n, ...values });
+function capitalise(text: string, language?: string): string {
+    if (!text) return text;
+    try {
+        return text.charAt(0).toLocaleUpperCase(canonicalLanguage(language)) + text.slice(1);
+    } catch {
+        return text.charAt(0).toLocaleUpperCase() + text.slice(1);
+    }
 }
 
 /**
  * The finished section's header: what happened, counted, in a fixed order —
- * thinking, searches, loads, tools, sub-agents — then how many failed.
+ * thinking, searches, loads, tools, sub-agents — then how many failed. Each
+ * count's form is the one `language`'s plural rules choose (see `formatPlural`).
  */
 export function summarizeActivity(
     steps: MessageStep[],
-    labels: ActivityLabels,
-    toolName: (name: string) => string = name => name,
+    given: ActivityLabels,
+    toolName: ToolNamer = defaultNamer(given),
+    language?: string,
 ): string {
+    const labels = current(given);
+    const count = (label: LabelValue, n: number, values: Record<string, string | number> = {}) =>
+        formatPlural(label, n, values, language);
     let thoughts = 0;
     let searches = 0;
     let skillLoads = 0;
@@ -142,7 +189,7 @@ export function summarizeActivity(
         }
         if (step.toolStatus === 'failed') failed += 1;
         if (step.type === 'sub-agent') {
-            agents.push(step.agentName || 'Sub-agent');
+            agents.push(step.agentName || labels.subAgentName);
             continue;
         }
         const slug = slugOf(step);
@@ -150,27 +197,35 @@ export function summarizeActivity(
         else if (slug === 'load_skill') skillLoads += 1;
         else if (slug === 'load_tool') toolLoads += 1;
         else if (isMetaTool(slug)) continue;
-        else toolCalls.push(toolName(step.toolName || slug || 'tool'));
+        else toolCalls.push(slug ? toolName(slug, step.toolName) : labels.toolName);
     }
 
     const parts: string[] = [];
-    if (thoughts) parts.push(count(thoughts, labels.activityThoughtOne, labels.activityThoughtOther));
-    if (searches) parts.push(count(searches, labels.activitySearchedOne, labels.activitySearchedOther));
-    if (skillLoads) parts.push(count(skillLoads, labels.activityLoadedSkillOne, labels.activityLoadedSkillOther));
-    if (toolLoads) parts.push(count(toolLoads, labels.activityLoadedToolsOne, labels.activityLoadedToolsOther));
+    if (thoughts) parts.push(count(labels.activityThoughts, thoughts));
+    if (searches) parts.push(count(labels.activitySearches, searches));
+    if (skillLoads) parts.push(count(labels.activitySkillLoads, skillLoads));
+    if (toolLoads) parts.push(count(labels.activityToolLoads, toolLoads));
     if (toolCalls.length) {
+        // One call names its tool; several calls to one tool name it and count
+        // them; calls to several tools are counted.
         const distinct = [...new Set(toolCalls)];
         parts.push(
-            distinct.length === 1
-                ? count(toolCalls.length, labels.activityRanOne, labels.activityRanRepeated, { name: distinct[0] })
-                : count(toolCalls.length, labels.activityRanOne, labels.activityRanOther, { name: distinct[0] }),
+            toolCalls.length === 1
+                ? formatLabel(labels.activityRanTool, { name: distinct[0] })
+                : distinct.length === 1
+                    ? count(labels.activityRanToolTimes, toolCalls.length, { name: distinct[0] })
+                    : count(labels.activityRanTools, toolCalls.length, { name: distinct[0] }),
         );
     }
     if (agents.length) {
-        parts.push(count(agents.length, labels.activityAgentOne, labels.activityAgentOther, { name: agents[0] }));
+        parts.push(
+            agents.length === 1
+                ? formatLabel(labels.activityUsedAgent, { name: agents[0] })
+                : count(labels.activityUsedAgents, agents.length, { name: agents[0] }),
+        );
     }
-    if (failed) parts.push(formatLabel(labels.activityFailed, { count: failed }));
-    return capitalise(parts.join(labels.activitySeparator));
+    if (failed) parts.push(count(labels.activityFailed, failed));
+    return capitalise(parts.join(labels.activitySeparator), language);
 }
 
 /** The last non-empty line of a thought, cut to {@link LIVE_THOUGHT_CHARS}. */
@@ -194,9 +249,11 @@ export function latestThoughtLine(content: string | undefined): string | null {
  */
 export function describeLatestActivity(
     steps: MessageStep[],
-    labels: ActivityLabels,
-    toolName: (name: string) => string = name => name,
+    given: ActivityLabels,
+    toolName: ToolNamer = defaultNamer(given),
+    language?: string,
 ): ActivityLine {
+    const labels = current(given);
     const running = [...steps].reverse().find(isStepRunning);
     const step = running ?? steps[steps.length - 1];
     if (!step) return { text: labels.thinking };
@@ -207,12 +264,13 @@ export function describeLatestActivity(
     }
 
     if (step.type === 'sub-agent') {
-        const name = step.agentName || 'Sub-agent';
+        const name = step.agentName || labels.subAgentName;
         return {
             text: capitalise(
                 step.toolStatus === 'running'
                     ? formatLabel(labels.activityAgentWorking, { name })
-                    : formatLabel(labels.activityAgentOne, { name }),
+                    : formatLabel(labels.activityUsedAgent, { name }),
+                language,
             ),
         };
     }
@@ -220,10 +278,10 @@ export function describeLatestActivity(
     const slug = slugOf(step);
     const status = step.toolStatus ?? 'completed';
     const meta: MetaToolDescription | null = isMetaTool(slug)
-        ? describeMetaTool(slug, status, step.toolArgs, step.toolResult, labels, toolName)
+        ? describeMetaTool(slug, status, step.toolArgs, step.toolResult, labels, name => toolName(name), language)
         : null;
     if (meta) return meta.detail ? { text: meta.text, detail: meta.detail } : { text: meta.text };
 
     const verb = status === 'running' ? labels.toolRunning : status === 'failed' ? labels.toolFailed : labels.toolRan;
-    return { text: verb, detail: toolName(step.toolName || slug || 'tool') };
+    return { text: verb, detail: slug ? toolName(slug, step.toolName) : labels.toolName };
 }

@@ -17,6 +17,8 @@ export {
     useMarkdownConfig,
     useStorageClient,
     useActiveConversationId,
+    useChatLanguage,
+    useChatFormat,
 } from './store/hooks';
 export { shallowEqual } from './store/createChatStore';
 export type {
@@ -31,8 +33,45 @@ export type {
 
 // --- Configuration: words, icons, which controls exist, welcome content ----
 export * from './common/chatbotConfig';
-export { DEFAULT_LABELS, formatLabel, formatCount } from './common/labels';
-export type { ChatLabels } from './common/labels';
+export {
+    DEFAULT_LABELS,
+    LABEL_KEYS,
+    PLURAL_LABEL_KEYS,
+    PLURAL_CATEGORIES,
+    DEPRECATED_LABEL_ALIASES,
+    formatLabel,
+    formatPlural,
+    formatCount,
+    pluralCategory,
+    isPluralLabel,
+    labelPlaceholders,
+    canonicalLanguage,
+} from './common/labels';
+export type {
+    ChatLabels,
+    ChatLabelTexts,
+    DeprecatedLabels,
+    ChatLabelInputs,
+    ChatTranslations,
+    PluralLabel,
+    PluralCategory,
+    LabelValue,
+    LabelKey,
+    PluralLabelKey,
+    DeprecatedLabelInputs,
+    DeprecatedLabelKey,
+} from './common/labels';
+// Internationalisation (4.2): the labels for a language, what a language's
+// translations lack, and writing numbers, dates and counts in it.
+export {
+    resolveLabels,
+    missingTranslations,
+    languageFallbacks,
+    createChatFormat,
+    labelledError,
+    describeLabelledError,
+} from './common/i18n';
+export type { ChatFormat, LabelledError } from './common/i18n';
 export { DEFAULT_ICONS } from './common/icons';
 export type { ChatIcons } from './common/icons';
 
@@ -134,14 +173,15 @@ export type { GatewayStreamClientConfig, EnablableTool, ChatAgent, HostContext, 
 // The tool contract: what a host application declares per tool in the
 // provider's `tools` prop. One entry per tool; `run` handles a client-dispatched
 // call, `preview` a server-dispatched tool's output.
-export { isClientTool, isServerTool, DEFAULT_TOOL_NAMES, formatToolSlug, resolveToolDisplayName } from './common/toolConfig';
+export { isClientTool, isServerTool, DEFAULT_TOOL_NAMES, TOOL_NAME_LABELS, formatToolSlug, resolveToolDisplayName } from './common/toolConfig';
+export type { ToolNameOptions } from './common/toolConfig';
 // The platform's four meta-tools — how a central-mode run finds and loads
 // tools and skills — and the compact text their steps render as.
 export { META_TOOL_SLUGS, isMetaTool, describeMetaTool } from './common/metaTools';
 // The activity section: runs of thinking, tool calls and sub-agents drawn as one
 // collapsible row, with a live header and a finished count.
 export { groupActivity, summarizeActivity, describeLatestActivity, isActivityStep, isStepRunning } from './common/activity';
-export type { ActivityItem, ActivityLine, ActivityLabels } from './common/activity';
+export type { ActivityItem, ActivityLine, ActivityLabels, ToolNamer } from './common/activity';
 export type { MetaToolSlug, MetaToolStatus, MetaToolDescription, MetaToolLabels } from './common/metaTools';
 export type {
     ToolConfig,

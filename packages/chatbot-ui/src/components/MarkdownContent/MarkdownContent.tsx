@@ -4,7 +4,7 @@ import type { Components, ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { BlockRenderer } from '../../common/chatbotConfig';
 import { isFenceClosed, normalizeLineEndings, rendererFor } from '../../common/markdownBlocks';
-import { useActiveConversationId, useMarkdownConfig } from '../../store/hooks';
+import { useActiveConversationId, useChatFormat, useMarkdownConfig } from '../../store/hooks';
 import { MarkdownBlock } from '../MarkdownBlock/MarkdownBlock';
 
 const { createContext, useCallback, useContext, useMemo, useRef } = React;
@@ -119,8 +119,37 @@ const Pre = ({
     );
 };
 
+/**
+ * A block of text in its own direction (2026-10-18). The answer's container is
+ * `dir="auto"` as a whole, so an answer that opens in English stayed
+ * left-to-right throughout — an Arabic paragraph, list item or cell in it
+ * read with its punctuation on the wrong side. Each block now resolves its
+ * own direction from its first strong letter, as a paragraph of a mixed
+ * document does in a word processor. Code is not prose and keeps `ltr`
+ * (MessageBubble.css).
+ */
+function ownDirection<Tag extends 'p' | 'li' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'td' | 'th' | 'blockquote'>(tag: Tag) {
+    const Block = ({ node: _node, ...rest }: React.ComponentPropsWithoutRef<Tag> & ExtraProps) =>
+        React.createElement(tag, { dir: 'auto', ...rest });
+    Block.displayName = `Markdown_${tag}`;
+    return Block;
+}
+
 /** Never recreated — see {@link BlockScopeValue}. */
-const COMPONENTS: Components = { pre: Pre };
+const COMPONENTS: Components = {
+    pre: Pre,
+    p: ownDirection('p'),
+    li: ownDirection('li'),
+    h1: ownDirection('h1'),
+    h2: ownDirection('h2'),
+    h3: ownDirection('h3'),
+    h4: ownDirection('h4'),
+    h5: ownDirection('h5'),
+    h6: ownDirection('h6'),
+    td: ownDirection('td'),
+    th: ownDirection('th'),
+    blockquote: ownDirection('blockquote'),
+};
 
 export interface MarkdownContentProps {
     /** The markdown. */
@@ -175,6 +204,20 @@ export const MarkdownContent: React.FC<MarkdownContentProps> = ({
 }) => {
     const { blockRenderers: configured } = useMarkdownConfig();
     const blockRenderers = blocks ? configured : NO_RENDERERS;
+    const format = useChatFormat();
+    // GFM footnotes: remark-rehype writes an English heading ("Footnotes")
+    // and back-link names ("Back to reference 1") unless told otherwise. The
+    // heading is for screen readers only, hidden by a class of the chat's own
+    // rather than the host's `sr-only`, which not every host defines.
+    const remarkRehypeOptions = useMemo(() => ({
+        footnoteLabel: format.labels.footnotes,
+        footnoteLabelProperties: { className: ['cb-visually-hidden'] },
+        footnoteBackLabel: (referenceIndex: number, rereferenceIndex: number) => format.label(format.labels.footnoteBack, {
+            reference: rereferenceIndex > 1
+                ? `${format.number(referenceIndex + 1)}-${format.number(rereferenceIndex)}`
+                : format.number(referenceIndex + 1),
+        }),
+    }), [format]);
     const activeConversationId = useActiveConversationId();
 
     // A stable reader of the latest content, so a block (memoised on its
@@ -200,7 +243,7 @@ export const MarkdownContent: React.FC<MarkdownContentProps> = ({
 
     return (
         <BlockScope.Provider value={scope}>
-            <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
+            <ReactMarkdown remarkPlugins={REMARK_PLUGINS} remarkRehypeOptions={remarkRehypeOptions} components={COMPONENTS}>
                 {content}
             </ReactMarkdown>
         </BlockScope.Provider>

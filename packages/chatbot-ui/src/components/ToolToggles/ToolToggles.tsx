@@ -242,9 +242,9 @@ export const ToolToggles: React.FC<ToolTogglesProps> = ({
                                     </svg>
                                 </div>
                                 <div className="cb-menu-info">
-                                    <span className="cb-menu-title">{tool.name}</span>
+                                    <span className="cb-menu-title cb-bidi" dir="auto">{tool.name}</span>
                                     {tool.description && (
-                                        <span className="cb-menu-desc" title={tool.description}>{tool.description}</span>
+                                        <span className="cb-menu-desc cb-bidi" dir="auto" title={tool.description}>{tool.description}</span>
                                     )}
                                 </div>
                                 <div className={`cb-toggle ${on ? 'on' : 'off'}`} />

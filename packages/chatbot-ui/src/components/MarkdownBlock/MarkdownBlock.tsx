@@ -7,11 +7,12 @@ import type {
     BlockRenderer,
     BlockRenderProps,
 } from '../../common/chatbotConfig';
+import { readDirection, type TextDirection } from '../../common/direction';
 import { FOCUSABLE, trapTab } from '../../common/focusTrap';
 import { formatLabel } from '../../common/labels';
 import { blockKeyOf, extractBlockTitle } from '../../common/markdownBlocks';
 import { useStableId } from '../../common/useStableId';
-import { useIcons, useLabels, useMarkdownConfig } from '../../store/hooks';
+import { useConfiguredLanguage, useIcons, useLabels, useMarkdownConfig } from '../../store/hooks';
 import { themeAttribute, useChatPresentation } from '../ChatContainer/presentation';
 
 const { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } = React;
@@ -490,10 +491,12 @@ class BlockErrorBoundary extends React.Component<
 /** What a block that could not be drawn shows: why, and the source it was given. */
 const BlockFallback: React.FC<{ label: string; reason: string | null; source: string }> = ({ label, reason, source }) => {
     const labels = useLabels();
-    const headline = formatLabel(labels.blockFailed, { label });
+    const headline = reason
+        ? formatLabel(labels.blockFailedReason, { label, reason })
+        : formatLabel(labels.blockFailed, { label });
     return (
         <div className="cb-md-block-fallback" role="alert">
-            <p className="cb-md-block-fallback-text">{reason ? `${headline}: ${reason}` : headline}</p>
+            <p className="cb-md-block-fallback-text" dir="auto">{headline}</p>
             <details className="cb-md-block-source">
                 <summary>{labels.blockShowSource}</summary>
                 <pre dir="ltr"><code>{source}</code></pre>
@@ -523,6 +526,8 @@ const BlockOverlay: React.FC<{
     children: React.ReactNode;
 }> = ({ label, themeAttr, onClose, returnFocusTo, children }) => {
     const dialogRef = useRef<HTMLDivElement>(null);
+    // A portal outside the chat: it says the chat's language itself.
+    const language = useConfiguredLanguage();
 
     useEffect(() => {
         const opener = typeof document !== 'undefined' ? document.activeElement as HTMLElement | null : null;
@@ -553,6 +558,7 @@ const BlockOverlay: React.FC<{
         <div
             className="cb-root cb-md-block-overlay"
             data-theme={themeAttr}
+            lang={language}
             onMouseDown={event => {
                 if (event.target === event.currentTarget) onClose();
             }}
@@ -731,12 +737,12 @@ function useElementWidth(ref: React.RefObject<HTMLElement>): number {
  * container is `dir="auto"`, so an Arabic answer is right-to-left and an
  * English one beside it is not; only the browser knows which this is.
  */
-function useDirection(ref: React.RefObject<HTMLElement>): 'ltr' | 'rtl' {
-    const [direction, setDirection] = useState<'ltr' | 'rtl'>('ltr');
+function useDirection(ref: React.RefObject<HTMLElement>): TextDirection {
+    const [direction, setDirection] = useState<TextDirection>('ltr');
     useLayoutEffect(() => {
         const element = ref.current;
-        if (!element || typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') return;
-        setDirection(window.getComputedStyle(element).direction === 'rtl' ? 'rtl' : 'ltr');
+        if (!element) return;
+        setDirection(readDirection(element));
     }, [ref]);
     return direction;
 }

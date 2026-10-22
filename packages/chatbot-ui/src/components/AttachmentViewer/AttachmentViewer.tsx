@@ -5,8 +5,9 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import './AttachmentViewer.css';
 import { netFetch } from '../../common/localNetwork';
-import { formatLabel } from '../../common/labels';
-import { useAuthenticatedFetch, useIcons, useLabels } from '../../store/hooks';
+import { describeLabelledError, formatFileSize as formatSize } from '../../common/i18n';
+import type { LabelKey } from '../../common/labels';
+import { useAuthenticatedFetch, useChatFormat, useConfiguredLanguage, useIcons, useLabels } from '../../store/hooks';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -45,11 +46,12 @@ const SPREADSHEET_TYPES = new Set([
 const CSV_PREVIEW_ROWS = 50;
 const CSV_PREVIEW_COLUMNS = 20;
 
-export const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
+/**
+ * A file's size: "2.0 KB". The units are labels (`fileSizeBytes`, …) and the
+ * number is written for `language` since 4.2; without labels, English.
+ * Components use `useChatFormat().fileSize`.
+ */
+export const formatFileSize = formatSize;
 
 export const getFileIcon = (contentType?: string): string => {
     if (!contentType) return '\u{1F4CE}';
@@ -135,7 +137,7 @@ export function parseCsv(text: string, maxRows = Number.POSITIVE_INFINITY): stri
 
 /** The first rows of a CSV, header first, with how many rows the file has. */
 const CsvPreview: React.FC<{ text: string }> = ({ text }) => {
-    const labels = useLabels();
+    const format = useChatFormat();
     const all = parseCsv(text);
     const total = Math.max(0, all.length - 1);
     const [header = [], ...body] = all.slice(0, CSV_PREVIEW_ROWS + 1);
@@ -144,19 +146,22 @@ const CsvPreview: React.FC<{ text: string }> = ({ text }) => {
         <div className="cb-attachment-viewer-csv">
             {total > body.length && (
                 <p className="cb-attachment-viewer-note">
-                    {formatLabel(labels.previewTruncated, { shown: body.length, total })}
+                    {format.plural(format.labels.previewTruncated, total, {
+                        shown: format.number(body.length),
+                        total: format.number(total),
+                    })}
                 </p>
             )}
             <div className="cb-attachment-viewer-table-wrap">
                 <table className="cb-attachment-viewer-table" dir="auto">
                     <thead>
-                        <tr>{columns.map((cell, index) => <th key={index} title={cell}>{cell}</th>)}</tr>
+                        <tr>{columns.map((cell, index) => <th key={index} title={cell} dir="auto">{cell}</th>)}</tr>
                     </thead>
                     <tbody>
                         {body.map((cells, rowIndex) => (
                             <tr key={rowIndex}>
                                 {columns.map((_, index) => (
-                                    <td key={index} title={cells[index] ?? ''}>{cells[index] ?? ''}</td>
+                                    <td key={index} title={cells[index] ?? ''} dir="auto">{cells[index] ?? ''}</td>
                                 ))}
                             </tr>
                         ))}
@@ -186,7 +191,9 @@ export function useAttachmentLoad(attachment: Attachment | null, active: boolean
     const [blobUrl, setBlobUrl] = useState<string | null>(null);
     const [textContent, setTextContent] = useState<string | null>(null);
     const [state, setState] = useState<'loading' | 'error' | 'ready'>('loading');
-    const [errorMsg, setErrorMsg] = useState<string>('');
+    // Why it failed, as a label: the message is written at render, in the
+    // language in force then. The thrown error's own text is for the console.
+    const [failure, setFailure] = useState<{ labelKey: LabelKey; labelValues?: Record<string, string | number> } | null>(null);
     const fetchAuthenticatedUrl = useAuthenticatedFetch();
     const labels = useLabels();
 
@@ -198,11 +205,11 @@ export function useAttachmentLoad(attachment: Attachment | null, active: boolean
             setState('loading');
             setBlobUrl(null);
             setTextContent(null);
-            setErrorMsg('');
+            setFailure(null);
 
             if (!fetchAuthenticatedUrl) {
                 setState('error');
-                setErrorMsg(labels.attachmentNoAuth);
+                setFailure({ labelKey: 'attachmentNoAuth' });
                 return;
             }
 
@@ -221,15 +228,21 @@ export function useAttachmentLoad(attachment: Attachment | null, active: boolean
                 setState('ready');
             } catch (e) {
                 if (cancelled) return;
+                console.error('[chatbot-ui] loading an attachment failed', e);
                 setState('error');
-                setErrorMsg(e instanceof Error ? e.message : labels.attachmentLoadFailed);
+                // The label the error names (the storage API's status), else the general one.
+                const named = e as { labelKey?: LabelKey; labelValues?: Record<string, string | number> };
+                setFailure(named?.labelKey
+                    ? { labelKey: named.labelKey, labelValues: named.labelValues }
+                    : { labelKey: 'attachmentLoadFailed' });
             }
         };
 
         load();
         return () => { cancelled = true; };
-    }, [active, attachment, fetchAuthenticatedUrl, labels]);
+    }, [active, attachment, fetchAuthenticatedUrl]);
 
+    const errorMsg = failure ? describeLabelledError(failure, labels) ?? labels.attachmentLoadFailed : '';
     return { state, blobUrl, textContent, errorMsg };
 }
 
@@ -295,15 +308,20 @@ export interface AttachmentPreviewProps {
  * in place in the Artifacts view, which has no lightbox around it.
  */
 export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({ attachment, load, inline = false, onClose }) => {
-    const labels = useLabels();
+    const format = useChatFormat();
+    const { labels } = format;
     const [pdfPageNumber, setPdfPageNumber] = useState(1);
     const [pdfNumPages, setPdfNumPages] = useState<number | null>(null);
     const [pdfBox, setPdfBox] = useState<HTMLDivElement | null>(null);
+    // The viewer asks for no password: a protected PDF is refused at once,
+    // and says so — react-pdf's own way is an English window.prompt.
+    const [pdfLocked, setPdfLocked] = useState(false);
     const pdfWidth = useContentWidth(pdfBox, inline);
     const { state, blobUrl, textContent, errorMsg } = load;
+    useEffect(() => setPdfLocked(false), [blobUrl]);
     const ct = inferContentType(attachment.name, attachment.contentType);
     const download = () => {
-        if (blobUrl) downloadObjectUrl(blobUrl, attachment.name || 'download');
+        if (blobUrl) downloadObjectUrl(blobUrl, attachment.name || labels.downloadFileName);
     };
 
     return (
@@ -330,20 +348,38 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({ attachment
                 <div className="cb-attachment-viewer-content">
 
                     {ct.startsWith('image/') ? (
-                        <img src={blobUrl} alt={attachment.name || 'Attachment'} />
+                        <img src={blobUrl} alt={attachment.name || labels.attachmentName} />
                     ) : ct === 'application/pdf' ? (
                         <div className="cb-pdf-viewer" ref={setPdfBox}>
                             <Document
                                 file={blobUrl}
                                 onLoadSuccess={({ numPages }) => {
+                                    setPdfLocked(false);
                                     setPdfNumPages(numPages);
                                     setPdfPageNumber(1);
                                 }}
+                                onPassword={answer => {
+                                    setPdfLocked(true);
+                                    // An Error, not a password: pdf.js (5.x) rejects the load with it and
+                                    // the document fails. `null` would only be asked about again, forever.
+                                    // react-pdf's type says `string | null`; pdf.js takes an Error too.
+                                    (answer as unknown as (password: Error) => void)(
+                                        new Error('The PDF needs a password; the viewer asks for none.')
+                                    );
+                                }}
                                 loading={<div className="cb-attachment-viewer-loading"><span className="cb-att-chip-spinner" aria-hidden /></div>}
-                                error={<div className="cb-attachment-viewer-error-msg">{labels.pdfLoadFailed}</div>}
+                                error={<div className="cb-attachment-viewer-error-msg">{pdfLocked ? labels.pdfPasswordProtected : labels.pdfLoadFailed}</div>}
+                                noData={<div className="cb-attachment-viewer-error-msg">{labels.pdfNoFile}</div>}
                             >
                                 {/* In place, a page as wide as the column; in the lightbox, at its own size. */}
-                                <Page pageNumber={pdfPageNumber} width={inline && pdfWidth > 0 ? pdfWidth : undefined} />
+                                <Page
+                                    pageNumber={pdfPageNumber}
+                                    width={inline && pdfWidth > 0 ? pdfWidth : undefined}
+                                    // Every message of react-pdf's own is English: each page shows the chat's.
+                                    loading={<div className="cb-attachment-viewer-loading"><span className="cb-att-chip-spinner" aria-hidden /></div>}
+                                    error={<div className="cb-attachment-viewer-error-msg">{labels.pdfPageLoadFailed}</div>}
+                                    noData={<div className="cb-attachment-viewer-error-msg">{labels.pdfNoPage}</div>}
+                                />
                             </Document>
                             {pdfNumPages != null && pdfNumPages > 1 && (
                                 <div className="cb-pdf-pagination">
@@ -351,12 +387,16 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({ attachment
                                         className="cb-attachment-viewer-action-btn"
                                         onClick={() => setPdfPageNumber(p => Math.max(1, p - 1))}
                                         disabled={pdfPageNumber <= 1}
+                                        aria-label={labels.previousPage}
+                                        title={labels.previousPage}
                                     >&#8249;</button>
-                                    <span>{pdfPageNumber} / {pdfNumPages}</span>
+                                    <span>{format.label(labels.pageOf, { page: format.number(pdfPageNumber), total: format.number(pdfNumPages) })}</span>
                                     <button
                                         className="cb-attachment-viewer-action-btn"
                                         onClick={() => setPdfPageNumber(p => Math.min(pdfNumPages, p + 1))}
                                         disabled={pdfPageNumber >= pdfNumPages}
+                                        aria-label={labels.nextPage}
+                                        title={labels.nextPage}
                                     >&#8250;</button>
                                 </div>
                             )}
@@ -368,9 +408,9 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({ attachment
                     ) : (
                         <div className="cb-attachment-viewer-fallback">
                             <div className="cb-attachment-viewer-fallback-icon">{getFileIcon(ct)}</div>
-                            <div className="cb-attachment-viewer-fallback-name" dir="auto">{attachment.name || 'File'}</div>
+                            <div className="cb-attachment-viewer-fallback-name" dir="auto">{attachment.name || labels.fileName}</div>
                             {attachment.size != null && attachment.size > 0 && (
-                                <div className="cb-attachment-viewer-fallback-size">{formatFileSize(attachment.size)}</div>
+                                <div className="cb-attachment-viewer-fallback-size">{format.fileSize(attachment.size)}</div>
                             )}
                             <div className="cb-attachment-viewer-actions">
                                 <button className="cb-attachment-viewer-action-btn primary" onClick={download}>
@@ -404,6 +444,8 @@ export const AttachmentViewerModal: React.FC<AttachmentViewerProps> = ({ attachm
     const load = useAttachmentLoad(attachment, isOpen);
     const labels = useLabels();
     const icons = useIcons();
+    // A portal outside the chat: it says the chat's language itself.
+    const language = useConfiguredLanguage();
     const closeRef = useRef<HTMLButtonElement | null>(null);
 
     // Focus moves in once per opening — not whenever `onClose` is a new
@@ -430,20 +472,20 @@ export const AttachmentViewerModal: React.FC<AttachmentViewerProps> = ({ attachm
     if (!isOpen || !attachment) return null;
 
     const handleDownload = () => {
-        if (load.blobUrl) downloadObjectUrl(load.blobUrl, attachment.name || 'download');
+        if (load.blobUrl) downloadObjectUrl(load.blobUrl, attachment.name || labels.downloadFileName);
     };
 
     return ReactDOM.createPortal(
-        <div className="cb-attachment-viewer-overlay" onClick={onClose}>
+        <div className="cb-attachment-viewer-overlay" onClick={onClose} lang={language}>
             <div
                 className="cb-attachment-viewer-inner"
                 onClick={(e) => e.stopPropagation()}
                 role="dialog"
                 aria-modal="true"
-                aria-label={attachment.name || 'Attachment'}
+                aria-label={attachment.name || labels.attachmentName}
             >
                 <div className="cb-attachment-viewer-toolbar">
-                    <span className="cb-attachment-viewer-filename" dir="auto">{attachment.name || 'Attachment'}</span>
+                    <span className="cb-attachment-viewer-filename" dir="auto">{attachment.name || labels.attachmentName}</span>
                     <div className="cb-attachment-viewer-toolbar-actions">
                         {load.state === 'ready' && load.blobUrl && (
                             <button
@@ -462,7 +504,7 @@ export const AttachmentViewerModal: React.FC<AttachmentViewerProps> = ({ attachm
                             type="button"
                             className="cb-attachment-viewer-close"
                             onClick={onClose}
-                            title={`${labels.close} (Esc)`}
+                            title={labels.closeWithShortcut}
                             aria-label={labels.closeAttachment}
                         >
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

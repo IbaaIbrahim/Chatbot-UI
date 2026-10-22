@@ -15,7 +15,8 @@
        by side in fullscreen and their bottom borders have to meet. */
     height: var(--cb-header-height);
     flex-shrink: 0;
-    padding: 0 var(--cb-space-2) 0 var(--cb-space-4);
+    padding-block: 0;
+    padding-inline: var(--cb-space-4) var(--cb-space-2);
     border-bottom: 1px solid var(--cb-border-subtle);
 }
 
@@ -88,7 +89,8 @@
 
 .cb-drawer-search-icon {
     position: absolute;
-    left: 10px;
+    /* At the start of the field, which pads that side for it. */
+    inset-inline-start: 10px;
     top: 50%;
     transform: translateY(-50%);
     color: var(--cb-text-tertiary);
@@ -104,7 +106,8 @@
 .cb-drawer-search-input {
     width: 100%;
     height: 34px;
-    padding: 0 10px 0 32px;
+    padding-block: 0;
+    padding-inline: 32px 10px;
     border-radius: var(--cb-radius-md, 8px);
     border: 1px solid var(--cb-border-subtle);
     background: var(--cb-bg-primary);

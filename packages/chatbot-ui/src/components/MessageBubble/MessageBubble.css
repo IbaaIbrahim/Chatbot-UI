@@ -49,7 +49,7 @@
     font-size: var(--cb-text-xs);
     color: var(--cb-text-tertiary);
     margin-bottom: var(--cb-space-1);
-    margin-left: var(--cb-space-2);
+    margin-inline-start: var(--cb-space-2);
 }
 
 .cb-message-bubble {
@@ -68,6 +68,15 @@
     border: 1px solid var(--cb-border-subtle);
 }
 
+/* The squared corner points at the user's side of the row, which is the left
+   in a right-to-left chat. Read from the chat's direction, not the bubble's:
+   the bubble is `dir="auto"` and an English message in an Arabic chat still
+   sits on the left. */
+.cb-dir-rtl .cb-message-bubble.user {
+    border-top-right-radius: var(--cb-radius-lg);
+    border-top-left-radius: 4px;
+}
+
 .cb-message-bubble.assistant {
     background: transparent;
     color: var(--cb-text-primary);
@@ -77,6 +86,16 @@
     font-weight: 400;
     /* Better readability than 300 */
     letter-spacing: 0.01em;
+}
+
+/* An answer's flush side is the chat's inline start: the right in a
+   right-to-left chat. Read from the chat's direction, like the user bubble's
+   corner, not with `padding-inline-start` — the bubble is `dir="auto"`, so a
+   logical property would follow each answer's language and indent an Arabic
+   answer in an English chat (and the reverse) on the other side. */
+.cb-dir-rtl .cb-message-bubble.assistant {
+    padding-left: var(--cb-space-4);
+    padding-right: 0;
 }
 
 .cb-markdown-content {
@@ -299,7 +318,8 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 10px 6px 6px;
+    padding-block: 6px;
+    padding-inline: 6px 10px;
     background: rgba(255, 255, 255, 0.07);
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 10px;
@@ -451,7 +471,7 @@
 .cb-lightbox-close {
     position: absolute;
     top: -40px;
-    right: -8px;
+    inset-inline-end: -8px;
     width: 32px;
     height: 32px;
     border-radius: 50%;
@@ -491,8 +511,11 @@
     margin-bottom: 4px;
     font-size: 12px;
     color: var(--cb-text-tertiary);
-    border-left: 2px solid var(--cb-accent-primary, #6366f1);
-    border-radius: 0 4px 4px 0;
+    border-inline-start: 2px solid var(--cb-accent-primary, #6366f1);
+    border-start-start-radius: 0;
+    border-start-end-radius: 4px;
+    border-end-end-radius: 4px;
+    border-end-start-radius: 0;
     background: rgba(255, 255, 255, 0.03);
 }
 
@@ -920,6 +943,16 @@
     padding-left: 0;
 }
 
+/* An item in another direction than its list (2026-10-18): each item is
+   `dir="auto"` (MarkdownContent), so an Arabic item of an English list reads
+   right-to-left — and its marker, drawn at the item's own start, would hang
+   outside the list's indent on the far side. Inside, it sits with the text.
+   An engine without `:dir()` leaves the marker outside, as before. */
+.cb-markdown-content :is(ul, ol):dir(ltr) > li:dir(rtl),
+.cb-markdown-content :is(ul, ol):dir(rtl) > li:dir(ltr) {
+    list-style-position: inside;
+}
+
 /* A table's cells align with their own content, not with the page. */
 .cb-markdown-content th,
 .cb-markdown-content td {
@@ -1081,7 +1114,7 @@
     color: var(--cb-text-secondary);
     font-size: 13px;
     cursor: pointer;
-    text-align: left;
+    text-align: start;
     transition: background-color 0.15s, color 0.15s;
     user-select: none;
 }
@@ -1163,11 +1196,14 @@
 
 .cb-modern-tool-details {
     margin-top: 4px;
-    margin-left: 12px;
+    margin-inline-start: 12px;
     padding: 8px 12px;
-    border-left: 2px solid var(--cb-border-subtle);
+    border-inline-start: 2px solid var(--cb-border-subtle);
     background: var(--cb-bg-secondary);
-    border-radius: 0 var(--cb-radius-md, 8px) var(--cb-radius-md, 8px) 0;
+    border-start-start-radius: 0;
+    border-start-end-radius: var(--cb-radius-md, 8px);
+    border-end-end-radius: var(--cb-radius-md, 8px);
+    border-end-start-radius: 0;
     font-size: 12px;
     overflow-x: auto;
 }
@@ -1251,7 +1287,7 @@
     color: var(--cb-text-tertiary);
     transition: transform 0.2s ease;
     flex-shrink: 0;
-    margin-left: 2px;
+    margin-inline-start: 2px;
 }
 
 .cb-modern-chevron.cb-chevron-open {
@@ -1310,9 +1346,12 @@
 
 .cb-modern-thinking-content {
     margin-top: 4px;
-    margin-left: 8px;
+    margin-inline-start: 8px;
     padding: 8px 12px;
-    border-left: 2px solid var(--cb-border-subtle);
+    border-inline-start: 2px solid var(--cb-border-subtle);
     background: var(--cb-surface-sunken, var(--cb-bg-secondary));
-    border-radius: 0 var(--cb-radius-md, 8px) var(--cb-radius-md, 8px) 0;
+    border-start-start-radius: 0;
+    border-start-end-radius: var(--cb-radius-md, 8px);
+    border-end-end-radius: var(--cb-radius-md, 8px);
+    border-end-start-radius: 0;
 }

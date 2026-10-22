@@ -1,4 +1,5 @@
 import { netFetch } from '../common/localNetwork';
+import { labelledError } from '../common/i18n';
 
 export interface StreamEvent {
     type: string;
@@ -132,18 +133,24 @@ export class StreamClient {
                 body: JSON.stringify({ message: text }),
             });
         } catch (err) {
-            onError(err instanceof Error ? err : new Error(String(err)));
+            // The browser's words ("Failed to fetch") are for the console: the
+            // transcript shows the label, in the chat's language.
+            onError(labelledError('errorGatewayUnreachable', `Request failed: ${String(err)}`));
             return;
         }
 
         if (!response.ok) {
-            onError(new Error(`HTTP ${response.status}: ${response.statusText}`));
+            onError(labelledError(
+                'errorHttpStatus',
+                `HTTP ${response.status}: ${response.statusText}`,
+                { status: response.status, statusText: response.statusText },
+            ));
             return;
         }
 
         const reader = response.body?.getReader();
         if (!reader) {
-            onError(new Error('No response body'));
+            onError(labelledError('errorNoResponseBody', 'No response body'));
             return;
         }
 
@@ -183,7 +190,7 @@ export class StreamClient {
             }
             onComplete();
         } catch (err) {
-            onError(err instanceof Error ? err : new Error(String(err)));
+            onError(labelledError('errorStreamLost', `Stream read failed: ${String(err)}`));
         } finally {
             reader.releaseLock();
         }
