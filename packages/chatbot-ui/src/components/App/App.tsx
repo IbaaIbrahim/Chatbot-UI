@@ -28,6 +28,12 @@ export interface ChatAppPresentationProps {
      * `ChatContainerProps.launcherIcon`.
      */
     launcherIcon?: React.ReactNode;
+    /**
+     * Replaces the floating button; `null` removes it, for a host that opens
+     * the chat from a control of its own. Defaults to the round button drawn
+     * with `launcherIcon`. See `ChatContainerProps.launcher`.
+     */
+    launcher?: React.ReactNode;
 }
 
 /**
@@ -40,10 +46,11 @@ export interface ChatAppPresentationProps {
  */
 export type AppProps = ChatAppPresentationProps & Omit<ChatbotProviderProps, 'children'>;
 
-// Every placement prop decided by `App`'s defaults; the icon stays optional, so an
-// omitted one falls through to `config.icons.launcher`.
-type ChatAppLayoutProps = Required<Omit<ChatAppPresentationProps, 'launcherIcon'>>
-    & Pick<ChatAppPresentationProps, 'launcherIcon'>;
+// Every placement prop decided by `App`'s defaults; the icon and the launcher
+// stay optional, so an omitted icon falls through to `config.icons.launcher`
+// and an omitted launcher to the round button.
+type ChatAppLayoutProps = Required<Omit<ChatAppPresentationProps, 'launcherIcon' | 'launcher'>>
+    & Pick<ChatAppPresentationProps, 'launcherIcon' | 'launcher'>;
 
 const ChatAppLayout: React.FC<ChatAppLayoutProps> = ({
     mode,
@@ -53,6 +60,7 @@ const ChatAppLayout: React.FC<ChatAppLayoutProps> = ({
     side,
     noBackground,
     launcherIcon,
+    launcher,
 }) => {
     const isEmpty = useChatState(s => s.messages.length === 0);
     const isEmptyFullscreen = mode === 'fullscreen' && isEmpty;
@@ -72,6 +80,7 @@ const ChatAppLayout: React.FC<ChatAppLayoutProps> = ({
             side={side}
             noBackground={noBackground}
             launcherIcon={launcherIcon}
+            launcher={launcher}
             footer={isEmptyFullscreen ? null : composer}
         >
             <MainChat emptyComposer={isEmptyFullscreen ? composer : undefined} />
@@ -89,6 +98,7 @@ export const App: React.FC<AppProps> = ({
     side = 'end',
     noBackground = false,
     launcherIcon,
+    launcher,
     ...providerProps
 }) => {
     const runtime = useOptionalChatRuntime();
@@ -114,6 +124,7 @@ export const App: React.FC<AppProps> = ({
             side={side}
             noBackground={noBackground}
             launcherIcon={launcherIcon}
+            launcher={launcher}
         />
     );
 

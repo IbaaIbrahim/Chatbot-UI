@@ -232,6 +232,7 @@ same conversation can be floating on one screen and fullscreen on another.
 | `side` | `'end'` | `'end'` | The edge the chat attaches to, in the page's direction: `'end'` is the right in a left-to-right page and the left in a right-to-left one; `'start'` is the other. Embedded, `'start'` leads the host's row and `'end'` keeps the DOM place the host gave it (no `order`). See [Side and right-to-left pages](#side-and-right-to-left-pages). |
 | `noBackground` | `false` | `false` | No frame or background, for native embedding. |
 | `launcherIcon` | `config.icons.launcher` | `config.icons.launcher` | The floating button's icon — any React node. See [The floating button's icon](#the-floating-buttons-icon). |
+| `launcher` | the round button | the round button | Replaces the floating button; `null` removes it. See [No floating button](#no-floating-button). |
 
 `ChatContainer` also takes slots: `header` (defaults to `<ChatHeader />`, `null`
 removes it), `sidebar` (defaults to `<ConversationSidebar />`, `null` removes it),
@@ -335,6 +336,31 @@ The button stays a 56px circle on `--cb-accent-gradient` with a white
 (`currentColor`) icon: an SVG is drawn at 24px, an `<img>` at 28px, a font icon
 at `font-size: 24px`. Restyle the icon's box through `.cb-launcher-icon`, the
 button through `.cb-launcher-btn`. Its accessible name is `labels.openChat`.
+
+### No floating button
+
+A host that opens the chat from a control of its own — a button in its header,
+say — removes the floating button with `launcher={null}` (2026-10-22), or
+replaces it with a node of its own. The control opens the chat through the
+provider, so the host's `onOpenChange` still decides:
+
+```tsx
+const AssistantButton = () => {
+  const chat = useChatActions();
+  const isOpen = useChatState(s => s.isOpen);
+  return (
+    <button type="button" aria-pressed={isOpen} onClick={isOpen ? chat.close : chat.open}>
+      <AssistantIcon />
+    </button>
+  );
+};
+
+<ChatApp mode="floating" launcher={null} />
+```
+
+Only a closed floating chat draws a launcher, so `launcher` changes nothing
+while the chat is open, docked (`sidebar`) or `fullscreen`. A replacement is
+drawn as it is, with none of the round button's placement, theme or label.
 
 ## Configuration
 
@@ -1901,6 +1927,9 @@ An answer's flush side is read from the chat's direction, not its own: the
 bubble is `dir="auto"`, so in a left-to-right chat an Arabic answer keeps
 4.1's padding (flush left) as an English one does.
 
+- **New:** `launcher?: React.ReactNode` on `ChatApp` and `ChatContainer`
+  (2026-10-22) — `null` removes the floating button, for a host that opens
+  the chat from its own header. See [No floating button](#no-floating-button).
 - **New:** `side?: 'end' | 'start'` on `ChatApp`, `ChatContainer` and
   `ChatRoot`, and the `ChatSide` type — see [Side and right-to-left
   pages](#side-and-right-to-left-pages).

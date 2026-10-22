@@ -54,6 +54,14 @@ export interface ChatContainerProps {
      * for every instance needs nothing here.
      */
     launcherIcon?: React.ReactNode;
+    /**
+     * Replaces the floating button a closed floating chat shows; `null` removes
+     * it, for a host that opens the chat from a control of its own — a button
+     * in its header calling `useChatActions().open()`. Defaults to the round
+     * button drawn with `launcherIcon`. A replacement is drawn as it is, with
+     * none of the button's placement or theme.
+     */
+    launcher?: React.ReactNode;
     /** Replaces the header; `null` removes it. Defaults to `<ChatHeader />`. */
     header?: React.ReactNode;
     /** Replaces the conversation sidebar; `null` removes it. Defaults to `<ConversationSidebar />`. */
@@ -82,6 +90,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     side: sideProp,
     noBackground = false,
     launcherIcon,
+    launcher,
     header,
     sidebar,
     footer,
@@ -140,6 +149,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     if (!mounted) return null;
 
     if (!isOpen && effectiveMode === 'floating' && !embedded) {
+        if (launcher !== undefined) return <>{launcher}</>;
         return (
             <button
                 ref={setFrame}

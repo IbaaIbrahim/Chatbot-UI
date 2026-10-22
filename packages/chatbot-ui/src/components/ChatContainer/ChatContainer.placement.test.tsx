@@ -266,6 +266,62 @@ describe('ChatApp — side', () => {
     });
 });
 
+/**
+ * `launcher`: the host's own floating button, or none — for a host that opens
+ * the chat from a control of its own, such as a button in its header.
+ */
+describe('ChatContainer and ChatApp — the launcher', () => {
+    const closedFloating = (launcher?: React.ReactNode) => (
+        <ChatbotProvider config={{}} open={false}>
+            <ChatContainer mode="floating" launcher={launcher} header={null} sidebar={null}>
+                <div className="transcript" />
+            </ChatContainer>
+        </ChatbotProvider>
+    );
+
+    it('draws nothing for a closed floating chat when the host passes null', () => {
+        const page = render(closedFloating(null));
+        expect(launcher(page)).toBeNull();
+        expect(panel(page)).toBeNull();
+        expect(page.innerHTML).toBe('');
+    });
+
+    it("draws the host's launcher, as it is, in place of the round button", () => {
+        const page = render(closedFloating(<button type="button" className="host-launcher">AI</button>));
+        expect(launcher(page)).toBeNull();
+        expect(page.querySelector('.host-launcher')).not.toBeNull();
+        expect(page.querySelector('.host-launcher')!.classList.contains('cb-chat-launcher')).toBe(false);
+    });
+
+    it('keeps the round button when the host passes nothing', () => {
+        const page = render(closedFloating());
+        expect(classesOf(launcher(page))).toContain('cb-chat-launcher');
+    });
+
+    it('leaves the open chat alone', () => {
+        const page = render(
+            <ChatbotProvider config={{}} open>
+                <ChatContainer mode="floating" launcher={null} header={null} sidebar={null}>
+                    <div className="transcript" />
+                </ChatContainer>
+            </ChatbotProvider>
+        );
+        expect(panel(page)).not.toBeNull();
+    });
+
+    it('is passed on by ChatApp, as a placement prop: no "ignored" warning under a provider', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const page = render(
+            <ChatbotProvider config={{}} open={false}>
+                <ChatApp mode="floating" launcher={null} />
+            </ChatbotProvider>
+        );
+        expect(launcher(page)).toBeNull();
+        expect(page.innerHTML).toBe('');
+        expect(warn.mock.calls.filter(([message]) => String(message).includes('ignored'))).toEqual([]);
+    });
+});
+
 describe('ChatRoot — side and direction', () => {
     it('stamps both on the root and gives them to the widgets inside', () => {
         const probe = presentationProbe();
