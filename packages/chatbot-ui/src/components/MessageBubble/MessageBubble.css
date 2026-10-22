@@ -23,7 +23,7 @@
     height: 32px;
     border-radius: var(--cb-radius-full);
     background: var(--cb-accent-gradient);
-    color: white;
+    color: var(--cb-on-accent);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -602,7 +602,7 @@
 .cb-edit-textarea:focus {
     border-color: var(--cb-focus-ring);
     background: var(--cb-bg-primary);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2), inset 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 0 0 3px var(--cb-accent-tint-18), inset 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* Floating reply button on text selection */
@@ -674,19 +674,19 @@
 
 .cb-edit-save {
     background: var(--cb-accent-gradient, linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%));
-    color: #ffffff;
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+    color: var(--cb-on-accent);
+    box-shadow: 0 4px 12px var(--cb-accent-tint-30), inset 0 1px 1px rgba(255, 255, 255, 0.2);
 }
 
 .cb-edit-save:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+    box-shadow: 0 6px 16px var(--cb-accent-tint-45), inset 0 1px 1px rgba(255, 255, 255, 0.2);
     filter: brightness(1.1);
 }
 
 .cb-edit-save:active:not(:disabled) {
     transform: translateY(1px) scale(0.97);
-    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 2px 8px var(--cb-accent-tint-30);
 }
 
 .cb-edit-save:disabled {

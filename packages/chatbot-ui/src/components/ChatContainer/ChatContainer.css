@@ -326,7 +326,7 @@
     height: 30px;
     padding: 0 11px;
     border-radius: var(--cb-radius-md, 8px);
-    border: 1px solid rgba(99, 102, 241, 0.3);
+    border: 1px solid var(--cb-accent-tint-30);
     background: transparent;
     color: var(--cb-accent-primary, #6366f1);
     font-size: 13px;
@@ -344,25 +344,25 @@
 }
 
 .cb-header-new-chat-btn:hover {
-    background: rgba(99, 102, 241, 0.08);
+    background: var(--cb-accent-tint-8);
     border-color: var(--cb-accent-primary, #6366f1);
 }
 
 [data-theme='dark'] .cb-header-new-chat-btn,
 .cb-chat-container:not([data-theme='light']) .cb-header-new-chat-btn {
-    color: #818cf8;
-    border-color: rgba(99, 102, 241, 0.4);
+    color: var(--cb-accent-primary);
+    border-color: var(--cb-accent-tint-45);
 }
 
 [data-theme='dark'] .cb-header-new-chat-btn svg,
 .cb-chat-container:not([data-theme='light']) .cb-header-new-chat-btn svg {
-    color: #818cf8;
+    color: var(--cb-accent-primary);
 }
 
 [data-theme='dark'] .cb-header-new-chat-btn:hover,
 .cb-chat-container:not([data-theme='light']) .cb-header-new-chat-btn:hover {
-    background: rgba(99, 102, 241, 0.18);
-    border-color: #818cf8;
+    background: var(--cb-accent-tint-18);
+    border-color: var(--cb-accent-primary);
 }
 
 .cb-header-dropdown-menu {
@@ -950,7 +950,7 @@
     border: none !important;
     border-radius: var(--cb-radius-full) !important;
     background: var(--cb-accent-gradient) !important;
-    color: #ffffff !important;
+    color: var(--cb-on-accent) !important;
     box-shadow: var(--cb-shadow-lg) !important;
     cursor: pointer !important;
     /* Below the open container (2000) but above ordinary host chrome, so the

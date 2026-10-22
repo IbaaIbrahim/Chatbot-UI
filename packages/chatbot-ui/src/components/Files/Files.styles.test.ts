@@ -157,6 +157,36 @@ function colour(value: string, tokens: Tokens): Rgba {
     throw new Error(`not a colour: ${text}`);
 }
 
+/** `list` split at its top-level commas — not those inside a function's parentheses. */
+function topLevelParts(list: string): string[] {
+    const parts: string[] = [];
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < list.length; i++) {
+        if (list[i] === '(') depth++;
+        if (list[i] === ')') depth--;
+        if (list[i] === ',' && depth === 0) {
+            parts.push(list.slice(start, i).trim());
+            start = i + 1;
+        }
+    }
+    return parts.concat(list.slice(start).trim());
+}
+
+/** The colours a value paints: one colour, or a `linear-gradient()`'s stops in order. */
+function paints(value: string, tokens: Tokens): Rgba[] {
+    const text = value.trim();
+    const variable = /^var\((--[\w-]+)(?:,\s*(.+))?\)$/.exec(text);
+    if (variable) {
+        const found = tokens[variable[1]] ?? variable[2];
+        if (found === undefined) throw new Error(`no token ${variable[1]}`);
+        return paints(found, tokens);
+    }
+    const gradient = /^linear-gradient\((.+)\)$/.exec(text);
+    if (gradient) return topLevelParts(gradient[1]).slice(1).map(stop => colour(stop.replace(/\s+\d+%$/, ''), tokens));
+    return [colour(text, tokens)];
+}
+
 /** color-mix in sRGB, with premultiplied alpha, as CSS mixes. */
 function mix(first: Rgba, share: number, second: Rgba): Rgba {
     const alpha = first[3] * share + second[3] * (1 - share);
@@ -416,6 +446,8 @@ describe.each(['dark', 'light'] as const)('the focus ring in the %s theme', them
 
 /** Where the stylesheet gives a browser without `color-mix()` plain colours instead. */
 const NO_COLOR_MIX = '@supports not (color: color-mix(in srgb, red 50%, blue))';
+/** The tokens' own rule, both themes' base. */
+const BASE_SELECTOR = '.cb-chat-container, .cb-chat-launcher, .cb-root';
 
 /** The text of the block that opens at or after `start`, braces balanced, with its prelude. */
 function blockFrom(css: string, start: number): string {
@@ -447,32 +479,42 @@ describe('the focus ring in a browser without color-mix()', () => {
 
     it('gives every token mixed with color-mix() a plain colour there, in each block that mixes it', () => {
         expect(start).toBeGreaterThan(-1);
-        // The light theme's two blocks, and nothing else, mix a token.
+        // The base block (the accent's derived tokens, 2026-10-22) and the
+        // light theme's two blocks, and nothing else, mix a token.
         expect(mixedRules.map(rule => rule.selector)).toEqual([
+            BASE_SELECTOR,
             ".cb-chat-container[data-theme='light'], .cb-chat-launcher[data-theme='light'], .cb-root[data-theme='light']",
             ".cb-chat-container:not([data-theme='dark']), .cb-chat-launcher:not([data-theme='dark']), .cb-root:not([data-theme='dark'])",
         ]);
-        // The second one, as its own, under the OS's light preference.
+        // The third one, as its own, under the OS's light preference.
         expect(fallback.indexOf('@media (prefers-color-scheme: light)')).toBeGreaterThan(-1);
         expect(fallback.indexOf('@media (prefers-color-scheme: light)')).toBeLessThan(fallback.indexOf(":not([data-theme='dark'])"));
-        const light = themeTokens('light');
         mixedRules.forEach(({ selector, names }) => {
             const plain = fallbackRules.find(rule => rule.selector === selector);
             expect(plain, selector).toBeDefined();
+            const tokens = themeTokens(selector === BASE_SELECTOR ? 'dark' : 'light');
             names.forEach(name => {
                 const value = plain!.tokens[name];
-                expect(value, `${name} in ${selector}`).toMatch(/^#[0-9a-f]{6}$/i);
-                // The colour the mix gives the default accent, to the nearest unit.
-                const [mixed, flat] = [colour(`var(${name})`, light), colour(value, {})];
-                [0, 1, 2].forEach(i => expect(Math.abs(mixed[i] - flat[i]), `${name}, channel ${i}`).toBeLessThanOrEqual(1));
+                expect(value, `${name} in ${selector}`).toBeDefined();
+                expect(value, `${name} in ${selector}`).not.toContain('color-mix(');
+                // The colours the mix gives with no brand, to the nearest unit —
+                // one, or a gradient's every stop.
+                const [mixed, flat] = [paints(`var(${name})`, tokens), paints(value, {})];
+                expect(flat, name).toHaveLength(mixed.length);
+                mixed.forEach((paint, stop) => {
+                    [0, 1, 2].forEach(i => expect(Math.abs(paint[i] - flat[stop][i]), `${name}, stop ${stop}, channel ${i}`).toBeLessThanOrEqual(1));
+                    expect(paint[3], `${name}, stop ${stop}, alpha`).toBeCloseTo(flat[stop][3], 3);
+                });
             });
         });
     });
 
     it('keeps the light ring solid and 3:1 or more on every surface, lifted or not', () => {
+        const base = fallbackRules.find(rule => rule.selector === BASE_SELECTOR);
         const plain = fallbackRules.find(rule => rule.selector.includes("[data-theme='light']"));
+        expect(base).toBeDefined();
         expect(plain).toBeDefined();
-        const tokens = { ...themeTokens('light'), ...plain!.tokens };
+        const tokens = { ...themeTokens('light'), ...base!.tokens, ...plain!.tokens };
         expect(JSON.stringify(Object.values(tokens))).not.toContain('color-mix(');
         expectRingOnEverySurface(tokens);
     });
@@ -520,5 +562,121 @@ describe('focus across the chat', () => {
         const panel = over(colour(ruleValue('.cb-attachment-viewer-inner', 'background'), {}), scrim);
         const ring = colour(ruleValue(':root .cb-attachment-viewer-close:focus-visible', 'outline').replace(/^2px solid /, ''), {});
         expect(contrast(ring, panel)).toBeGreaterThanOrEqual(3);
+    });
+});
+
+describe('the brand (`--cb-brand-*`)', () => {
+    // A host colours the chat with the public `--cb-brand-*` properties, read
+    // in styles.css and never declared there (2026-10-22). Here: the chat
+    // with none is the chat it was, one colour moves every accent token, the
+    // optional inputs win, and no component paints the accent's states with a
+    // colour of its own.
+    const BRAND = '#1477f2';
+    const dark = themeTokens('dark');
+    const light = themeTokens('light');
+    const branded = (tokens: Tokens, extra: Tokens = {}): Tokens => ({ ...tokens, '--cb-brand-primary': BRAND, ...extra });
+    const hex = (value: string) => colour(value, {});
+    const near = (actual: Rgba, expected: Rgba, label: string) => {
+        [0, 1, 2].forEach(i => expect(Math.abs(actual[i] - expected[i]), `${label}, channel ${i}`).toBeLessThanOrEqual(1));
+        expect(actual[3], `${label}, alpha`).toBeCloseTo(expected[3], 3);
+    };
+    const TINTS = [8, 12, 18, 24, 30, 45];
+
+    it('is declared nowhere in the library, so a host value on any ancestor is inherited', () => {
+        const declared = [{ file: 'styles.css', css: tokensCss }, ...componentStylesheets()]
+            .flatMap(({ file, css }) => Array.from(css.matchAll(/(--cb-brand-[\w-]+)\s*:/g)).map(match => `${file} ${match[1]}`));
+        expect(declared).toEqual([]);
+    });
+
+    it('leaves a chat with no brand as it was: the literals the tokens replaced', () => {
+        near(colour('var(--cb-accent-primary)', dark), hex('#6390f1'), 'accent');
+        near(colour('var(--cb-accent-hover)', dark), hex('#093ce3'), 'hover');
+        const [start, end] = paints('var(--cb-accent-gradient)', dark);
+        near(start, hex('#2d67f8'), 'gradient start');
+        near(end, hex('#265bee'), 'gradient end');
+        near(colour('var(--cb-on-accent)', dark), hex('#ffffff'), 'on accent');
+        TINTS.forEach(tint => near(colour(`var(--cb-accent-tint-${tint})`, dark), [99, 102, 241, tint / 100], `tint ${tint}`));
+        near(colour('var(--cb-border-focus)', dark), [99, 102, 241, 0.5], 'soft edge');
+        expect(dark['--cb-font-family']).toBe("var(--cb-brand-font-family, 'Inter', system-ui, -apple-system, sans-serif)");
+    });
+
+    it('moves every accent token with one colour, in both themes', () => {
+        const brand = hex(BRAND);
+        const shade = (share: number) => mix(brand, share, [0, 0, 0, 1]);
+        [dark, light].forEach((theme, index) => {
+            const tokens = branded(theme);
+            const label = index === 0 ? 'dark' : 'light';
+            near(colour('var(--cb-accent-primary)', tokens), brand, `${label} accent`);
+            near(colour('var(--cb-accent-hover)', tokens), shade(0.89), `${label} hover`);
+            const [start, end] = paints('var(--cb-accent-gradient)', tokens);
+            near(start, brand, `${label} gradient start`);
+            near(end, shade(0.94), `${label} gradient end`);
+            TINTS.forEach(tint => near(colour(`var(--cb-accent-tint-${tint})`, tokens), [...brand.slice(0, 3), tint / 100] as Rgba, `${label} tint ${tint}`));
+            near(colour('var(--cb-border-focus)', tokens), [...brand.slice(0, 3), 0.5] as Rgba, `${label} soft edge`);
+        });
+        // The strong accent, the focus ring and a chart's tile follow it too.
+        near(colour('var(--cb-focus-ring)', branded(dark)), brand, 'dark ring');
+        near(colour('var(--cb-focus-ring)', branded(light)), mix(brand, 0.7, colour('var(--cb-text-primary)', light)), 'light ring');
+        near(colour('var(--cb-kind-chart)', branded(light)), mix(brand, 0.7, colour('var(--cb-text-primary)', light)), 'chart tile');
+    });
+
+    it("takes the host's own hover, gradient, text on the accent and typeface over the derived ones", () => {
+        const tokens = branded(dark, {
+            '--cb-brand-primary-hover': '#0b3d91',
+            '--cb-brand-gradient': 'linear-gradient(135deg, #111111 0%, #222222 100%)',
+            '--cb-brand-on-primary': '#000000',
+            '--cb-brand-font-family': "'FFMarkWebPro', Helvetica, Arial, serif",
+        });
+        near(colour('var(--cb-accent-hover)', tokens), hex('#0b3d91'), 'hover');
+        const [start, end] = paints('var(--cb-accent-gradient)', tokens);
+        near(start, hex('#111111'), 'gradient start');
+        near(end, hex('#222222'), 'gradient end');
+        near(colour('var(--cb-on-accent)', tokens), hex('#000000'), 'on accent');
+        expect(/^var\(--cb-brand-font-family, (.+)\)$/.exec(tokens['--cb-font-family'])?.[1]).toBe("'Inter', system-ui, -apple-system, sans-serif");
+    });
+
+    it('keeps text on the default accent fills at 4.5:1 or more', () => {
+        const onAccent = colour('var(--cb-on-accent)', dark);
+        [...paints('var(--cb-accent-gradient)', dark), colour('var(--cb-accent-hover)', dark)]
+            .forEach((fill, index) => expect(contrast(onAccent, fill), `fill ${index}`).toBeGreaterThanOrEqual(4.5));
+    });
+
+    it('draws the text and icons on every accent fill in `--cb-on-accent`', () => {
+        const FILLS: Array<[string, string]> = [
+            ['ChatContainer/ChatContainer.css', '.cb-launcher-btn'],
+            ['Composer/Composer.css', '.cb-send-btn.active'],
+            ['MessageBubble/MessageBubble.css', '.cb-avatar-assistant'],
+            ['MessageBubble/MessageBubble.css', '.cb-edit-save'],
+            ['Questionnaire/QuestionnaireForm.css', ':root .cb-questionnaire-submit'],
+            ['AttachmentViewer/AttachmentViewer.css', '.cb-attachment-viewer-action-btn.primary'],
+        ];
+        const sheets = componentStylesheets();
+        FILLS.forEach(([file, selector]) => {
+            const css = sheets.find(sheet => sheet.file === file)!.css;
+            const value = declaredIn(css, selector, 'color');
+            expect(value, `${file} ${selector}`).toMatch(/^var\(--cb-on-accent[,)]/);
+        });
+    });
+
+    it('paints no state of the accent with the old indigo, but for the art that is the library’s own', () => {
+        // Where a literal indigo may stay, and why: these draw the library's
+        // multi-hue mark and its illustrations, not the accent; or they are a
+        // `var()` fallback outside the tokens' scope.
+        const OWN_COLOURS: Record<string, string> = {
+            '.cb-header-sparkle': 'the tile behind `icons.brand`',
+            '.cb-welcome-sparkle-badge': "the welcome screen's mark",
+            '.cb-suggestion-icon-badge.cb-icon-message': "a suggestion category's hue",
+            '.cb-chip-secondary': "a feature card's illustration",
+            '.cb-card-visual-chart-mini': "a feature card's illustration",
+            '.cb-edit-save': '`var(--cb-accent-gradient, …)` fallback',
+            '.cb-attachment-viewer-action-btn.primary': 'fallbacks in the lightbox, portalled outside the tokens',
+        };
+        const INDIGO = /rgba\(99, 102, 241|#818cf8|#ede9fe|(?<!--cb-[\w-]+, )#6366f1/i;
+        const stray = componentStylesheets().flatMap(({ file, css }) => Array.from(css.matchAll(/([^{};]+)\{([^{}]*)\}/g))
+            .filter(match => INDIGO.test(match[2]))
+            .map(match => match[1].trim().replace(/\s+/g, ' '))
+            .filter(selector => !(selector in OWN_COLOURS))
+            .map(selector => `${file} ${selector}`));
+        expect(stray).toEqual([]);
     });
 });

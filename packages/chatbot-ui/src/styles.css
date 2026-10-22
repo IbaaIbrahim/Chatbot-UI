@@ -55,10 +55,42 @@
   --cb-text-secondary: #A0A0A0 !important;
   --cb-text-tertiary: #666666 !important;
 
-  /* Accents */
-  --cb-accent-primary: #6390f1 !important;
-  --cb-accent-hover: #093ce3 !important;
-  --cb-accent-gradient: linear-gradient(135deg, #2d67f8 0%, #265bee 100%) !important;
+  /* Accents — from the host's brand (2026-10-22).
+   *
+   * A host colours the chat with the public `--cb-brand-*` properties, which
+   * this stylesheet reads and never declares: set on `:root` (or any
+   * ancestor), they are inherited by every root of the chat — the panel, the
+   * launcher, and the dialogs portalled to `<body>` — with no `!important`
+   * and no selector to outrank:
+   *
+   *   --cb-brand-primary        the accent; everything below follows it
+   *   --cb-brand-primary-hover  a filled accent control under the pointer (optional)
+   *   --cb-brand-gradient       the accent's gradient fill (optional)
+   *   --cb-brand-on-primary     text and icons on an accent fill (optional)
+   *   --cb-brand-font-family    the chat's typeface (optional)
+   *
+   * With no brand the chat looks as it always has: each derived token falls
+   * back to its own seed, chosen so its formula gives the old literal — the
+   * hover is #093ce3 (#0a43ff at 89%), the gradient #2d67f8 to #265bee
+   * (#2861fd at 94%), the tints the old indigo (#6366f1). Given a brand, they
+   * all come from it, and the internal tokens stay free to change. */
+  --cb-accent-primary: var(--cb-brand-primary, #6390f1) !important;
+  --cb-accent-hover: var(--cb-brand-primary-hover, color-mix(in srgb, var(--cb-brand-primary, #0a43ff) 89%, #000000)) !important;
+  --cb-accent-gradient: var(--cb-brand-gradient, linear-gradient(135deg, var(--cb-brand-primary, #2d67f8) 0%, color-mix(in srgb, var(--cb-brand-primary, #2861fd) 94%, #000000) 100%)) !important;
+  /* Text and icons on an accent fill: the send button, the launcher, the
+   * assistant's avatar, a primary button. White on the default fills is
+   * 4.8:1 or more; a host with a light brand sets a dark one. */
+  --cb-on-accent: var(--cb-brand-on-primary, #ffffff) !important;
+  /* The accent at fixed opacities, for every state drawn in it: a hover's
+   * wash (8, 12), a chosen row or an open pill (12, 24), a soft edge or a
+   * halo (18, 30, 45). Until 2026-10-22 these were `rgba(99, 102, 241, …)`
+   * written into each component — an indigo no host could change. */
+  --cb-accent-tint-8: color-mix(in srgb, var(--cb-brand-primary, #6366f1) 8%, transparent) !important;
+  --cb-accent-tint-12: color-mix(in srgb, var(--cb-brand-primary, #6366f1) 12%, transparent) !important;
+  --cb-accent-tint-18: color-mix(in srgb, var(--cb-brand-primary, #6366f1) 18%, transparent) !important;
+  --cb-accent-tint-24: color-mix(in srgb, var(--cb-brand-primary, #6366f1) 24%, transparent) !important;
+  --cb-accent-tint-30: color-mix(in srgb, var(--cb-brand-primary, #6366f1) 30%, transparent) !important;
+  --cb-accent-tint-45: color-mix(in srgb, var(--cb-brand-primary, #6366f1) 45%, transparent) !important;
   /* The accent where it must keep 3:1 against a light surface or a tint of
    * itself: an icon on its tile, a focus ring (2026-10-14). The accent here;
    * mixed toward the text in the light theme, where #6390f1 on its own 14%
@@ -159,7 +191,7 @@
   /* A soft accent edge for a state that is not focus: a questionnaire's
    * checked option, a quick-action card under the pointer. Not a focus ring:
    * at 50% it is about 1.9:1 on the dark surfaces and 2.0:1 on white. */
-  --cb-border-focus: rgba(99, 102, 241, 0.5) !important;
+  --cb-border-focus: color-mix(in srgb, var(--cb-brand-primary, #6366f1) 50%, transparent) !important;
   /* Every focus ring and focused field's edge in the chat (2026-10-14): the
    * strong accent, solid, so it keeps 3:1 against every surface it lands on
    * in both themes — 4.5:1 or more on the four backgrounds, 3.3:1 or more
@@ -192,8 +224,8 @@
     transform var(--cb-transition-fast) !important;
   --cb-transition-normal: 300ms cubic-bezier(0.4, 0, 0.2, 1) !important;
 
-  /* Typography */
-  --cb-font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+  /* Typography — the host's typeface when it gives one (`--cb-brand-font-family`). */
+  --cb-font-family: var(--cb-brand-font-family, 'Inter', system-ui, -apple-system, sans-serif) !important;
   --cb-text-xs: 0.75rem !important;
   --cb-text-sm: 0.875rem !important;
   --cb-text-base: 1rem !important;
@@ -328,8 +360,28 @@
  * `#4a6cb4` is the mix of the default accent, rounded — 5.1:1 on white. It
  * does not follow a rebranded accent; only these browsers see it. Both
  * selector forms, after the light blocks, so it wins where they apply
- * (`Files.styles.test.ts` checks both, and the ring they give). */
+ * (`Files.styles.test.ts` checks both, and the ring they give).
+ *
+ * The accent's derived tokens likewise (2026-10-22), in both themes: the
+ * hover and the gradient keep their old colours, or the brand flat when the
+ * host gives one (`var()` falls back stop by stop), and the tints and the
+ * soft edge are the old indigo, whatever the brand. A host that sets
+ * `--cb-brand-primary-hover` or `--cb-brand-gradient` gets them here too. */
 @supports not (color: color-mix(in srgb, red 50%, blue)) {
+
+  .cb-chat-container,
+  .cb-chat-launcher,
+  .cb-root {
+    --cb-accent-hover: var(--cb-brand-primary-hover, var(--cb-brand-primary, #093ce3)) !important;
+    --cb-accent-gradient: var(--cb-brand-gradient, linear-gradient(135deg, var(--cb-brand-primary, #2d67f8) 0%, var(--cb-brand-primary, #265bee) 100%)) !important;
+    --cb-accent-tint-8: rgba(99, 102, 241, 0.08) !important;
+    --cb-accent-tint-12: rgba(99, 102, 241, 0.12) !important;
+    --cb-accent-tint-18: rgba(99, 102, 241, 0.18) !important;
+    --cb-accent-tint-24: rgba(99, 102, 241, 0.24) !important;
+    --cb-accent-tint-30: rgba(99, 102, 241, 0.3) !important;
+    --cb-accent-tint-45: rgba(99, 102, 241, 0.45) !important;
+    --cb-border-focus: rgba(99, 102, 241, 0.5) !important;
+  }
 
   .cb-chat-container[data-theme='light'],
   .cb-chat-launcher[data-theme='light'],

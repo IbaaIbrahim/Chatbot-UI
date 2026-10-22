@@ -140,7 +140,7 @@
 .cb-questionnaire-option.checked {
     border-color: var(--cb-border-focus);
     color: var(--cb-text-primary);
-    background: rgba(99, 102, 241, 0.08);
+    background: var(--cb-accent-tint-8);
     box-shadow: 0 0 0 1px var(--cb-border-focus);
 }
 
@@ -198,7 +198,7 @@
 .cb-questionnaire-textarea:focus {
     border-color: var(--cb-focus-ring);
     outline: 2px solid transparent;
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    box-shadow: 0 0 0 3px var(--cb-accent-tint-18);
 }
 
 /* The way forward on the right, the way back — when there is one — on the left. */
@@ -239,7 +239,7 @@
     border: none;
     border-radius: var(--cb-radius-full);
     background: var(--cb-accent-primary);
-    color: #ffffff;
+    color: var(--cb-on-accent);
     font-size: var(--cb-text-xs);
     font-weight: 600;
     cursor: pointer;

@@ -1812,14 +1812,71 @@ prop sets `data-theme` on those roots; `'system'` sets nothing and follows the O
 Only the tokens change per theme, so a component styled from tokens works in
 both.
 
+### Your brand: `--cb-brand-*`
+
+A host colours the chat with five public custom properties (2026-10-22). The
+library reads them and never declares them, so they are **inherited**: set them
+on `:root` and every part of the chat follows — the panel, the launcher, and the
+dialogs it portals to `<body>` — with no `!important` and no selector to
+outrank.
+
+| Property | Default | What follows it |
+| --- | --- | --- |
+| `--cb-brand-primary` | `#6390f1` | The accent and everything derived from it: the hover, the gradient fill, the strong accent and the focus ring, the tints of every state (hover washes, the chosen conversation, open pills, halos), the soft accent edge, a chart's file tile. |
+| `--cb-brand-primary-hover` | the brand at 89%, toward black | A filled accent control under the pointer (send, launcher, questionnaire submit). |
+| `--cb-brand-gradient` | the brand to itself at 94%, toward black | The accent's gradient fill (launcher, assistant avatar, Save, scroll progress). Any `background-image` value. |
+| `--cb-brand-on-primary` | `#ffffff` | Text and icons on an accent fill. Set a dark one for a light brand. |
+| `--cb-brand-font-family` | `'Inter', system-ui, -apple-system, sans-serif` | The chat's typeface. |
+
+```css
+:root {
+  --cb-brand-primary: #0f766e;
+  /* Optional; derived from the primary when left out. */
+  --cb-brand-on-primary: #ffffff;
+  --cb-brand-font-family: 'Source Sans 3', sans-serif;
+}
+```
+
+From an SCSS host, map its own variables — or its runtime ones, so a brand
+switched at runtime carries over (Bootstrap 4 emits `--primary` on `:root`):
+
+```scss
+:root {
+  --cb-brand-primary: var(--primary);   // or #{$primary}
+  --cb-brand-font-family: var(--font-family-sans-serif);
+}
+```
+
+With no brand the chat looks exactly as it did before 4.2: each derived token
+falls back to its own seed, chosen so its formula gives the old colour (the
+hover `#093ce3`, the gradient `#2d67f8` → `#265bee`, the tints the old indigo).
+`Files.styles.test.ts` checks that, and that one brand colour moves every
+accent token in both themes.
+
+Keep the brand's contrast in mind: the library measures its defaults (white on
+the default fills is 4.8:1 or more), not yours. `--cb-brand-on-primary` on
+`--cb-brand-primary` should be 4.5:1 for the Save button's label, and the light
+theme's strong accent (the brand mixed 70/30 toward the text) 3:1 against white
+for the focus ring.
+
+What stays the library's own: the multi-hue sparkle (`config.icons.brand`) and
+the welcome screen's badge, the feature cards' illustrations, the suggestion
+categories' hues, and the status colours (`--cb-status-*`), which mean the same
+whatever the brand. A browser without `color-mix()` (Chrome/Edge before 111,
+Safari before 16.2, Firefox before 113) gets the brand flat for the hover and
+the gradient, unless the host sets them, and the tints in the old indigo.
+
+### The internal tokens
+
 The tokens carry `!important` so that a host's CSS reset cannot repaint the
-widget. To restyle it on purpose, redefine tokens with `!important` from a more
-specific selector:
+widget. They are internal and may change between releases; theme through
+`--cb-brand-*` above. To restyle one on purpose all the same, redefine it with
+`!important` from a more specific selector:
 
 ```css
 .my-app .cb-chat-container,
 .my-app .cb-root {
-  --cb-accent-primary: #0f766e !important;
+  --cb-bg-primary: #0b1020 !important;
 }
 ```
 
@@ -1927,6 +1984,12 @@ An answer's flush side is read from the chat's direction, not its own: the
 bubble is `dir="auto"`, so in a left-to-right chat an Arabic answer keeps
 4.1's padding (flush left) as an English one does.
 
+- **New:** the `--cb-brand-*` custom properties (2026-10-22) — set
+  `--cb-brand-primary` on `:root` and the accent, its hover and gradient, its
+  tints and the focus ring all follow. A chat with no brand looks as in 4.1.
+  A 4.1 host that redefined `--cb-accent-primary` with `!important` keeps
+  working, but its hover, gradient and tints stay blue: move it to
+  `--cb-brand-primary`. See [Your brand](#your-brand---cb-brand-).
 - **New:** `launcher?: React.ReactNode` on `ChatApp` and `ChatContainer`
   (2026-10-22) — `null` removes the floating button, for a host that opens
   the chat from its own header. See [No floating button](#no-floating-button).

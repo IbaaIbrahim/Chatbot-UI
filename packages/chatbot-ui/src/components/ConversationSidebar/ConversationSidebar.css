@@ -88,12 +88,12 @@
 }
 
 :root .cb-sidebar-nav-item.active {
-    background: #ede9fe;
+    background: var(--cb-accent-tint-12);
 }
 
 [data-theme='dark'] .cb-sidebar-nav-item.active,
 .cb-chat-container:not([data-theme='light']) .cb-sidebar-nav-item.active {
-    background: rgba(99, 102, 241, 0.22);
+    background: var(--cb-accent-tint-24);
 }
 
 .cb-sidebar-nav-primary {
@@ -291,5 +291,5 @@
     font: inherit;
     font-size: 13px;
     outline: none;
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+    box-shadow: 0 0 0 2px var(--cb-accent-tint-18);
 }

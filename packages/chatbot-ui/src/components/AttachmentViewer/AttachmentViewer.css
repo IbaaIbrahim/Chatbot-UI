@@ -225,10 +225,10 @@
 }
 
 .cb-attachment-viewer-action-btn.primary {
-    background: var(--cb-accent-gradient, linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%));
-    color: #ffffff;
+    background: var(--cb-accent-gradient, linear-gradient(135deg, var(--cb-brand-primary, #6366f1) 0%, var(--cb-brand-primary, #8b5cf6) 100%));
+    color: var(--cb-on-accent, var(--cb-brand-on-primary, #ffffff));
     border: none;
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 4px 12px var(--cb-accent-tint-30, rgba(99, 102, 241, 0.3));
 }
 
 .cb-attachment-viewer-action-btn.primary:hover {
