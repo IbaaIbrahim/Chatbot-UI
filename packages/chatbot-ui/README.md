@@ -950,6 +950,15 @@ artifacts](#conversation-files-and-artifacts)), then the host's `sidebar.items`,
 then **Starred** and **Recents**, with search over all of them. Selecting from an overlay closes it; the
 fullscreen column on a wide screen stays open.
 
+The column and the overlay share one open state, but not one meaning: a column
+is part of the page, an open overlay is a drawer over the transcript. So when
+the column gives way to an overlay — a fullscreen chat switched to `floating`
+or `sidebar`, or the viewport narrowed under it — the sidebar closes, and when
+a column comes back it reopens if it was open as the last one was left
+(2026-10-22). A sidebar opened in an overlay, or by `defaultSidebarOpen`, is
+left as it is. A host that controls it (`sidebarOpen`) is asked through
+`onSidebarOpenChange`, as for any other change.
+
 - **Starred** appears only when the Gateway reports `starred_at` on its
   conversations (revision 009, `PATCH /v1/user/conversations/{id}`). On an
   older Gateway, starring could not persist, so it is not offered. A star moves
@@ -1984,6 +1993,10 @@ An answer's flush side is read from the chat's direction, not its own: the
 bubble is `dir="auto"`, so in a left-to-right chat an Arabic answer keeps
 4.1's padding (flush left) as an English one does.
 
+- **Behaves differently:** leaving fullscreen with the conversation column
+  open no longer opens the next presentation with the sidebar drawn over its
+  transcript (2026-10-22): the sidebar closes, and the column reopens when
+  fullscreen comes back. See [The conversation sidebar](#the-conversation-sidebar).
 - **New:** the `--cb-brand-*` custom properties (2026-10-22) — set
   `--cb-brand-primary` on `:root` and the accent, its hover and gradient, its
   tints and the focus ring all follow. A chat with no brand looks as in 4.1.

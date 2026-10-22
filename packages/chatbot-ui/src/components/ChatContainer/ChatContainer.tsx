@@ -146,6 +146,28 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         return () => document.removeEventListener('keydown', onKeyDown);
     }, [isSidebarOpen, sidebarInline, actions]);
 
+    // The sidebar open as a column is part of the page; the same open state in
+    // an overlay is a drawer over the transcript, which nobody asked for. So
+    // when the column gives way to an overlay — fullscreen left for another
+    // mode, or the viewport narrowed — the sidebar closes, and when a column
+    // comes back it reopens if it was open as the last one was left
+    // (2026-10-22: a host's full-page chat left with its column open showed
+    // the drawer over the corner card on the next page). Before paint, so the
+    // drawer is never drawn over the new presentation. Transitions only: a
+    // sidebar opened, or `defaultSidebarOpen`, in an overlay stays open.
+    const wasInline = React.useRef(sidebarInline);
+    const columnWasOpen = React.useRef(false);
+    React.useLayoutEffect(() => {
+        if (wasInline.current === sidebarInline) return;
+        wasInline.current = sidebarInline;
+        if (!sidebarInline) {
+            columnWasOpen.current = isSidebarOpen;
+            if (isSidebarOpen) actions.closeSidebar();
+        } else if (columnWasOpen.current && !isSidebarOpen) {
+            actions.openSidebar();
+        }
+    }, [sidebarInline, isSidebarOpen, actions]);
+
     if (!mounted) return null;
 
     if (!isOpen && effectiveMode === 'floating' && !embedded) {

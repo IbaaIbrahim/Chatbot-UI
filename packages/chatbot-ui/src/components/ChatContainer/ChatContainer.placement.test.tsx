@@ -10,6 +10,7 @@ import { ChatContainer } from './ChatContainer';
 import { ChatPresentation, ChatSide, useChatPresentation } from './presentation';
 import type { ChatMode } from './presentation';
 import { readDirection } from '../../common/direction';
+import { useChatState } from '../../store/hooks';
 
 // The attachment viewer's PDF library needs DOMMatrix, which jsdom lacks.
 vi.mock('react-pdf', () => ({
@@ -319,6 +320,106 @@ describe('ChatContainer and ChatApp — the launcher', () => {
         expect(launcher(page)).toBeNull();
         expect(page.innerHTML).toBe('');
         expect(warn.mock.calls.filter(([message]) => String(message).includes('ignored'))).toEqual([]);
+    });
+});
+
+/**
+ * The conversation sidebar across presentations (2026-10-22): open as
+ * fullscreen's column it is part of the page; the same state in an overlay is
+ * a drawer over the transcript. Leaving the column closes it, and a column
+ * coming back reopens it if it was open as the last one was left.
+ */
+describe('ChatContainer — the sidebar when the column comes and goes', () => {
+    /** A viewport whose width the test sets, as `matchMedia` reports it. */
+    function viewport(wide: boolean) {
+        const listeners = new Set<() => void>();
+        const query = {
+            matches: wide,
+            addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+            removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+        };
+        vi.stubGlobal('matchMedia', vi.fn(() => query));
+        return {
+            resize(next: boolean) {
+                query.matches = next;
+                act(() => listeners.forEach(listener => listener()));
+            },
+        };
+    }
+
+    const sidebar = { open: false };
+    const SidebarProbe: React.FC = () => {
+        sidebar.open = useChatState(s => s.isSidebarOpen);
+        return null;
+    };
+
+    function chatIn(mode: ChatMode, defaultSidebarOpen = false) {
+        return (
+            <ChatbotProvider config={{}} open defaultSidebarOpen={defaultSidebarOpen}>
+                <ChatContainer mode={mode} header={null} sidebar={<div className="probe-sidebar" />}>
+                    <div className="transcript" />
+                </ChatContainer>
+                <SidebarProbe />
+            </ChatbotProvider>
+        );
+    }
+    const drawer = (page: HTMLElement) => page.querySelector('.cb-drawer-wrapper');
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('closes the sidebar when fullscreen, with its column open, is left for an overlay', () => {
+        viewport(true);
+        let page = render(chatIn('fullscreen', true));
+        expect(sidebar.open).toBe(true);
+
+        page = render(chatIn('floating', true));
+        expect(sidebar.open).toBe(false);
+        expect(drawer(page)!.classList.contains('open')).toBe(false);
+
+        // And a docked panel likewise: its drawer is an overlay too.
+        page = render(chatIn('fullscreen', true));
+        expect(sidebar.open).toBe(true);
+        page = render(chatIn('sidebar', true));
+        expect(sidebar.open).toBe(false);
+    });
+
+    it('reopens the column when fullscreen comes back, as it was left', () => {
+        viewport(true);
+        render(chatIn('fullscreen', true));
+        render(chatIn('floating', true));
+        expect(sidebar.open).toBe(false);
+
+        const page = render(chatIn('fullscreen', true));
+        expect(sidebar.open).toBe(true);
+        expect(drawer(page)!.classList.contains('open')).toBe(true);
+    });
+
+    it('keeps a column the user had shut, shut', () => {
+        viewport(true);
+        render(chatIn('fullscreen'));
+        render(chatIn('floating'));
+        render(chatIn('fullscreen'));
+        expect(sidebar.open).toBe(false);
+    });
+
+    it('closes it when the viewport narrows under a fullscreen chat, and reopens it as it widens', () => {
+        const screen = viewport(true);
+        render(chatIn('fullscreen', true));
+        screen.resize(false);
+        expect(sidebar.open).toBe(false);
+        screen.resize(true);
+        expect(sidebar.open).toBe(true);
+    });
+
+    it('leaves a sidebar opened in an overlay alone: only the column leaving closes it', () => {
+        viewport(true);
+        render(chatIn('floating', true));
+        expect(sidebar.open).toBe(true);
+        // Into fullscreen it becomes the column, still open.
+        render(chatIn('fullscreen', true));
+        expect(sidebar.open).toBe(true);
     });
 });
 
