@@ -414,6 +414,57 @@ export interface ChatLabels extends DeprecatedLabels {
     /** The notice's button that opens the "Credit usage" dialog. Since 4.3. */
     creditsViewUsage: string;
 
+    // "Memory & instructions" (since 4.4, ADR-021): the standing context every
+    // conversation of the user is told. `standingContext` is the dialog's
+    // title and the header menu's entry.
+    standingContext: string;
+    standingContextIntro: string;
+    standingInstructions: string;
+    standingInstructionsHint: string;
+    standingMemories: string;
+    standingMemoriesHint: string;
+    /** The organisation's entries, which the user sees and cannot change. */
+    standingOrganization: string;
+    standingOrganizationHint: string;
+    standingNoInstructions: string;
+    standingNoMemories: string;
+    standingAddInstruction: string;
+    standingAddMemory: string;
+    standingInstructionPlaceholder: string;
+    standingMemoryPlaceholder: string;
+    /** Under the text box: every entry is one line, as the Gateway stores it. */
+    standingOneLine: string;
+    /** The end-date field's label. */
+    standingUntilLabel: string;
+    /** An entry's end date: `{date}`, written for the chat's language. */
+    standingUntil: string;
+    standingExpired: string;
+    /** Removes an entry's end date. */
+    standingNoEndDate: string;
+    standingSavedByAssistant: string;
+    standingSave: string;
+    /** Characters written against the limit: `{count}`, `{limit}`. */
+    standingCharacters: string;
+    /** `{used}` of `{limit}` characters, all the user's instructions together. */
+    standingInstructionsUsed: string;
+    /** `{used}` of `{limit}` memories. */
+    standingMemoriesUsed: string;
+    standingDelete: string;
+    standingConfirmDelete: string;
+    standingErrorEmpty: string;
+    /** `{limit}`: characters in one memory. */
+    standingErrorMemoryTooLong: string;
+    /** `{limit}`: characters of all the user's instructions together. */
+    standingErrorInstructionsFull: string;
+    /** `{limit}`: how many memories the user may keep. */
+    standingErrorMemoriesFull: string;
+    standingErrorExpiry: string;
+    standingErrorGone: string;
+    standingErrorSave: string;
+    standingErrorDelete: string;
+    standingLoadFailed: string;
+    standingUnavailable: string;
+
     // --- Since 4.2 (2026-10-18): what the components and the hooks wrote in
     // English until then. Every user-visible text is a label now
     // (common/hardcodedText.test.ts keeps it so).
@@ -901,6 +952,43 @@ const ENGLISH_LABELS: ChatLabelTexts = {
     creditsUnavailable: "Credit usage isn't available on this server.",
     creditsWarning: "You've used {percent} of your credits — {credits} left.",
     creditsViewUsage: 'View usage',
+
+    standingContext: 'Memory & instructions',
+    standingContextIntro: 'The assistant is told these in every conversation.',
+    standingInstructions: 'Your instructions',
+    standingInstructionsHint: 'How the assistant should work for you.',
+    standingMemories: 'What the assistant remembers',
+    standingMemoriesHint: 'Facts about you it keeps in mind.',
+    standingOrganization: 'From your organization',
+    standingOrganizationHint: 'Set by your administrators, for everyone.',
+    standingNoInstructions: 'No instructions yet.',
+    standingNoMemories: 'Nothing remembered yet.',
+    standingAddInstruction: 'Add an instruction',
+    standingAddMemory: 'Add a memory',
+    standingInstructionPlaceholder: 'Answer in German, and keep it short.',
+    standingMemoryPlaceholder: 'I manage the Hamburg site.',
+    standingOneLine: 'Line breaks become spaces.',
+    standingUntilLabel: 'Applies until (optional)',
+    standingUntil: 'Until {date}',
+    standingExpired: 'Expired',
+    standingNoEndDate: 'No end date',
+    standingSavedByAssistant: 'Saved by the assistant',
+    standingSave: 'Save',
+    standingCharacters: '{count} / {limit}',
+    standingInstructionsUsed: '{used} of {limit} characters used',
+    standingMemoriesUsed: '{used} of {limit} memories',
+    standingDelete: 'Delete',
+    standingConfirmDelete: 'Click again to delete',
+    standingErrorEmpty: 'Write something first.',
+    standingErrorMemoryTooLong: 'A memory can be at most {limit} characters.',
+    standingErrorInstructionsFull: 'Your instructions can be at most {limit} characters in all. Shorten or remove one first.',
+    standingErrorMemoriesFull: 'You already have {limit} memories. Remove one first.',
+    standingErrorExpiry: 'Choose today or a later date.',
+    standingErrorGone: 'This was already removed.',
+    standingErrorSave: "Couldn't save. Try again.",
+    standingErrorDelete: "Couldn't delete. Try again.",
+    standingLoadFailed: "Couldn't load your memory and instructions.",
+    standingUnavailable: "Memory and instructions aren't available on this server.",
 
     actionOnItem: '{action}: {item}',
     actionOnItemUnavailable: '{action}: {item} — {reason}',

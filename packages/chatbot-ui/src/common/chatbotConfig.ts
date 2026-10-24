@@ -237,6 +237,12 @@ export interface HeaderConfig {
      */
     creditUsage?: boolean;
     /**
+     * The "Memory & instructions" entry (since 4.4, ADR-021): the user's own
+     * standing instructions and memories, and their organisation's to read.
+     * Shown only when the client can reach them (`GatewayStreamClient`).
+     */
+    standingContext?: boolean;
+    /**
      * "Delete thread" in the menu, for the open conversation. On by default
      * since the Gateway serves `DELETE /v1/user/conversations/{id}`; a client
      * without `deleteConversation` refuses, and nothing is removed on screen.
@@ -482,6 +488,7 @@ export const DEFAULT_CHATBOT_CONFIG: ResolvedChatbotConfig = {
         switchView: true,
         copyConversationId: true,
         creditUsage: true,
+        standingContext: true,
         deleteConversation: true,
         files: true,
         close: true,

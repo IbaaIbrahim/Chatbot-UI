@@ -37,6 +37,8 @@ export interface ChatIcons {
     /** Ticks the view in effect. */
     check: React.ReactNode;
     creditUsage: React.ReactNode;
+    /** "Memory & instructions". Since 4.4. */
+    standingContext: React.ReactNode;
     copy: React.ReactNode;
     /** "Copy conversation link", when the host builds links (`conversationLink`). */
     link: React.ReactNode;
@@ -232,6 +234,15 @@ export const DEFAULT_ICONS: ChatIcons = {
             <path d="M12 3a9 9 0 1 0 9 9" />
             <path d="M12 3v9h9" />
             <path d="M15 3.5A9 9 0 0 1 20.5 9" />
+        </svg>
+    ),
+    standingContext: (
+        <svg width="16" height="16" viewBox="0 0 24 24" {...stroke}>
+            <path d="M6 3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6z" />
+            <path d="M6 3v18" />
+            <path d="M10 8h5" />
+            <path d="M10 12h5" />
+            <path d="M3 7h3M3 12h3M3 17h3" />
         </svg>
     ),
     copy: (

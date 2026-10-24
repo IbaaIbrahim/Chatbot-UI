@@ -1,6 +1,15 @@
 import { StreamChatClient, StreamEvent, StreamOutcome } from './StreamClient';
 import { ConversationClient } from './ConversationClient';
-import { ConversationDetail, ConversationListFilters, ConversationListResponse, ConversationSummary, UserCredits } from './types';
+import {
+    ConversationDetail,
+    ConversationListFilters,
+    ConversationListResponse,
+    ConversationSummary,
+    StandingEntry,
+    StandingEntryChanges,
+    StandingEntryDraft,
+    UserCredits,
+} from './types';
 import { parseToolOutput } from './toolOutput';
 import { createUuid } from '../common/uuid';
 import { netFetch } from '../common/localNetwork';
@@ -1089,6 +1098,26 @@ export class GatewayStreamClient implements StreamChatClient {
     /** The signed-in user's own allowance — what the "Credit usage" view shows. */
     async getCredits(): Promise<UserCredits> {
         return this.conversationClient.getCredits();
+    }
+
+    // --- Standing context (ADR-021) ---
+    // Their presence is what offers "Memory & instructions": the provider
+    // checks for `listStandingContext`, as it does for `getCredits`.
+
+    async listStandingContext(): Promise<StandingEntry[]> {
+        return this.conversationClient.listStandingContext();
+    }
+
+    async createStandingEntry(draft: StandingEntryDraft): Promise<StandingEntry> {
+        return this.conversationClient.createStandingEntry(draft);
+    }
+
+    async updateStandingEntry(uuid: string, changes: StandingEntryChanges): Promise<StandingEntry> {
+        return this.conversationClient.updateStandingEntry(uuid, changes);
+    }
+
+    async deleteStandingEntry(uuid: string): Promise<void> {
+        return this.conversationClient.deleteStandingEntry(uuid);
     }
 
     async sendMessage(

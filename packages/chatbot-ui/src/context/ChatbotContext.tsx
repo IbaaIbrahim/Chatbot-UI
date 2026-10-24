@@ -14,6 +14,7 @@ import { isClientTool } from '../common/toolConfig';
 import type { ClientSkillDefinition, ToolConfig } from '../common/toolConfig';
 import { isHostRequestSlug } from '../common/hostCatalogue';
 import type { AttachedFile, ConversationDetail, UserCredits } from '../api/types';
+import type { StandingContextService } from '../store/types';
 import { summarizeUsage } from '../common/usageSummary';
 import { creditAlertFor, creditAlertKey } from '../common/creditAlert';
 import { resolveChatbotConfig } from '../common/chatbotConfig';
@@ -573,6 +574,20 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         });
     }, [activeClient]);
 
+    // --- Memory & instructions: the user's standing context (since 4.4, ADR-021) ---
+    const [isStandingContextOpen, setStandingContextOpen] = useState(false);
+    const canManageStandingContext = Boolean(activeClient && 'listStandingContext' in activeClient);
+    const standingContext = useMemo((): StandingContextService => {
+        const gateway = canManageStandingContext ? (activeClient as GatewayStreamClient) : null;
+        const unavailable = () => Promise.reject(new Error('This client cannot read standing context.'));
+        return {
+            list: () => (gateway ? gateway.listStandingContext() : unavailable()),
+            create: draft => (gateway ? gateway.createStandingEntry(draft) : unavailable()),
+            update: (uuid, changes) => (gateway ? gateway.updateStandingEntry(uuid, changes) : unavailable()),
+            remove: uuid => (gateway ? gateway.deleteStandingEntry(uuid) : unavailable()),
+        };
+    }, [activeClient, canManageStandingContext]);
+
     // A failed read leaves the last figures in place: a notice that vanished
     // because the network blinked would let a user who is out try to send.
     const refreshCredits = useCallback(
@@ -794,6 +809,8 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         isCreditUsageOpen: canShowCredits && isCreditUsageOpen,
         credits,
         creditAlert,
+        canManageStandingContext,
+        isStandingContextOpen: canManageStandingContext && isStandingContextOpen,
 
         storageClient,
         isFilesPanelOpen: Boolean(storageClient) && isFilesPanelOpen,
@@ -886,6 +903,8 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         dismissCreditAlert: () => {
             if (creditAlert?.kind === 'warning') setDismissedCreditAlert(creditAlertKey(creditAlert));
         },
+        openStandingContext: () => setStandingContextOpen(true),
+        closeStandingContext: () => setStandingContextOpen(false),
         // One at a time: the files panel covers the chat, the Artifacts view
         // takes its place, and the view can open a conversation the files
         // panel would then describe.
@@ -986,7 +1005,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
             }
         },
     };
-    const servicesNow: ChatServices = { fetchAuthenticatedUrl, getFileDownloadUrl, fetchCredits };
+    const servicesNow: ChatServices = { fetchAuthenticatedUrl, getFileDownloadUrl, fetchCredits, standingContext };
 
     // Read through refs by the stable runtime below, so a caller holding an
     // action from an earlier render still acts on the current state.
@@ -1005,6 +1024,12 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
             fetchAuthenticatedUrl: url => latestServices.current.fetchAuthenticatedUrl(url),
             getFileDownloadUrl: fileIdOrUrl => latestServices.current.getFileDownloadUrl(fileIdOrUrl),
             fetchCredits: () => latestServices.current.fetchCredits(),
+            standingContext: {
+                list: () => latestServices.current.standingContext.list(),
+                create: draft => latestServices.current.standingContext.create(draft),
+                update: (uuid, changes) => latestServices.current.standingContext.update(uuid, changes),
+                remove: uuid => latestServices.current.standingContext.remove(uuid),
+            },
         },
         overrides: {
             register: (owner, layer) =>
@@ -1068,6 +1093,8 @@ function delegateActions(latest: React.MutableRefObject<ChatActions>): ChatActio
         closeCreditUsage: () => latest.current.closeCreditUsage(),
         refreshCredits: () => latest.current.refreshCredits(),
         dismissCreditAlert: () => latest.current.dismissCreditAlert(),
+        openStandingContext: () => latest.current.openStandingContext(),
+        closeStandingContext: () => latest.current.closeStandingContext(),
         openFiles: () => latest.current.openFiles(),
         closeFiles: () => latest.current.closeFiles(),
         openArtifacts: () => latest.current.openArtifacts(),

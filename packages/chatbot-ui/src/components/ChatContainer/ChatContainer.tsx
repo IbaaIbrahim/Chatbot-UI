@@ -3,6 +3,7 @@ import './ChatContainer.css';
 import { ChatHeader } from '../ChatHeader/ChatHeader';
 import { ConversationSidebar } from '../ConversationSidebar/ConversationSidebar';
 import { CreditUsageDialog } from '../CreditUsage/CreditUsageDialog';
+import { StandingContextDialog } from '../StandingContext/StandingContextDialog';
 import { ArtifactsPanel } from '../Files/ArtifactsPanel';
 import { ConversationFilesPanel } from '../Files/ConversationFilesPanel';
 import { MainChat } from '../MainChat/MainChat';
@@ -236,6 +237,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                     </div>
                 </div>
                 <CreditUsageDialog />
+                <StandingContextDialog />
             </div>
         </ChatPresentationContext.Provider>
     );

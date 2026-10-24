@@ -1,6 +1,15 @@
 import type { StreamChatClient } from '../api/StreamClient';
 import type { EnablableTool, GatewayStreamClient } from '../api/GatewayStreamClient';
-import type { AttachedFile, ConversationFile, ConversationSummary, SaveFileOptions, UserCredits } from '../api/types';
+import type {
+    AttachedFile,
+    ConversationFile,
+    ConversationSummary,
+    SaveFileOptions,
+    StandingEntry,
+    StandingEntryChanges,
+    StandingEntryDraft,
+    UserCredits,
+} from '../api/types';
 import type { StorageClient } from '../api/StorageClient';
 import type { ChatbotConfig, ResolvedChatbotConfig } from '../common/chatbotConfig';
 import type { CreditAlert } from '../common/creditAlert';
@@ -66,6 +75,12 @@ export interface ChatSnapshot {
      * chat opened. Being out of credits cannot be closed. Since 4.3.
      */
     creditAlert: CreditAlert | null;
+    /**
+     * The client can read and write the user's standing context, so "Memory &
+     * instructions" has something to show (`listStandingContext`). Since 4.4.
+     */
+    canManageStandingContext: boolean;
+    isStandingContextOpen: boolean;
 
     // --- Files: the conversation's files and the user's artifacts ---
     /**
@@ -154,6 +169,9 @@ export interface ChatActions {
     refreshCredits: () => Promise<UserCredits | null>;
     /** Closes the composer's credit warning until the chat is next opened. Since 4.3. */
     dismissCreditAlert: () => void;
+    /** Opens "Memory & instructions", which reads the entries afresh each time. Since 4.4. */
+    openStandingContext: () => void;
+    closeStandingContext: () => void;
     /** The "Conversation files" panel, for the open conversation. */
     openFiles: () => void;
     closeFiles: () => void;
@@ -281,6 +299,20 @@ export interface ChatServices {
      * successful read is also what `credits` shows from then on.
      */
     fetchCredits: () => Promise<UserCredits>;
+    /**
+     * The user's standing context (ADR-021), through the client; each rejects
+     * when the client cannot (`canManageStandingContext`), and with the
+     * Gateway's `status` and `reason` when it refuses. Since 4.4.
+     */
+    standingContext: StandingContextService;
+}
+
+/** Reads and writes "Memory & instructions": the user's own entries, and their organisation's to read. */
+export interface StandingContextService {
+    list: () => Promise<StandingEntry[]>;
+    create: (draft: StandingEntryDraft) => Promise<StandingEntry>;
+    update: (uuid: string, changes: StandingEntryChanges) => Promise<StandingEntry>;
+    remove: (uuid: string) => Promise<void>;
 }
 
 /**

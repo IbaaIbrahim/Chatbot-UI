@@ -29,6 +29,7 @@ export type {
     ChatEventHandler,
     ConversationSearch,
     FilesChangedPayload,
+    StandingContextService,
 } from './store/types';
 
 // --- Configuration: words, icons, which controls exist, welcome content ----
@@ -83,6 +84,7 @@ export type { ChatRootProps } from './components/ChatRoot/ChatRoot';
 export * from './components/ChatHeader/ChatHeader';
 export * from './components/ConversationSidebar/ConversationSidebar';
 export { CreditUsageDialog } from './components/CreditUsage/CreditUsageDialog';
+export { StandingContextDialog } from './components/StandingContext/StandingContextDialog';
 export { CreditNotice } from './components/CreditNotice/CreditNotice';
 export type { CreditNoticeProps } from './components/CreditNotice/CreditNotice';
 export { creditAlertFor, creditAlertKey, normalizeCreditThresholds } from './common/creditAlert';
@@ -236,6 +238,10 @@ export type {
     PendingApproval,
     UserCredits,
     CreditGrant,
+    StandingEntry,
+    StandingEntryKind,
+    StandingEntryDraft,
+    StandingEntryChanges,
     CreditBlock,
     ConversationFile,
     ConversationFileSource,
@@ -252,6 +258,7 @@ export type {
     ConversationContents,
 } from './api/types';
 export { ConversationClient } from './api/ConversationClient';
+export type { GatewayError } from './api/ConversationClient';
 export {
     useConversations,
     hasPendingClientToolCall,

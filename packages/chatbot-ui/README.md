@@ -410,6 +410,7 @@ const config: ChatbotConfig = {
 | `switchView` | `true` | A view other than the one in effect — see [Views](#views-the-switch-view-entry). |
 | `views`, `allowedViews` | — | See [Views](#views-the-switch-view-entry). |
 | `creditUsage` | `true` | The client can read the allowance (`GatewayStreamClient`) — see [Credit usage](#credit-usage). |
+| `standingContext` | `true` | The client can reach the user's standing context (`GatewayStreamClient`) — see [Memory & instructions](#memory--instructions). Since 4.4. |
 | `copyConversationId` | `true` | A conversation is active. Copies the provider's `conversationLink` when it has one ("Copy conversation link"), the id otherwise. |
 | `deleteConversation` | `true` | A conversation is active. Takes two clicks: the first asks, in place. |
 | `files` | `true` | A conversation is active, the provider has `storageApiUrl` and `accessToken`, and the Artifacts view is not showing in its place. Opens "Conversation files" — see [Conversation files and artifacts](#conversation-files-and-artifacts). |
@@ -507,6 +508,45 @@ sending is never disabled. A host with a composer of its own renders
 ```tsx
 const config: ChatbotConfig = { composer: { creditWarningThresholds: [80, 95] } };
 ```
+
+### Memory & instructions
+
+Since 4.4. A menu entry, `labels.standingContext` with `icons.standingContext`,
+opens a dialog over the chat with the user's **standing context** — the short
+instructions and memories the assistant is told in every conversation (the
+platform's ADR-021), read afresh from `GET /v1/user/standing-context` each time
+it opens:
+
+- **Your instructions** and **What the assistant remembers** — the user's own:
+  they add one (a text, and optionally the last day it applies), change its text
+  or end date, and delete it with a second click. A memory the assistant saved
+  (`source: 'agent'`, on a turn the user approved) says so; one past its end date
+  is struck through and marked expired — no conversation is told it any more.
+- **From your organization** — the organisation's entries in force, read-only:
+  set by its administrators, for everyone.
+- **Limits are counted as the user types**, the platform's: one memory at most
+  300 characters, 50 memories, 4,000 characters of instructions in all; only
+  what is in force counts. The Gateway is authoritative, and when it refuses,
+  the dialog says why in words (`standingError*`) — the refusal's `reason`
+  (`STANDING_CONTEXT_FULL`, `STANDING_ENTRY_TOO_LONG`, …) arrives on the
+  rejected error with its `status` (`GatewayError`).
+- Every entry is one line — the Gateway flattens line breaks and removes `<` /
+  `>` — and the text box says so. An end date is the last day, inclusive, in
+  UTC; one before today is refused.
+
+Shown when `header.standingContext` is on (the default) and the client can
+reach it (`canManageStandingContext`: `GatewayStreamClient`'s
+`listStandingContext()`). A Gateway without the route answers 404, and the
+dialog says the feature is not available there rather than offering a retry.
+Open it with `useChatActions().openStandingContext()`; `closeStandingContext()`,
+Escape, the close button or a click outside close it. `ChatContainer` renders
+it; a host with its own layout renders `<StandingContextDialog />` once, inside a
+positioned element it should cover. Read and write without the dialog through
+`useChatRuntime().services.standingContext` (`list`, `create`, `update`,
+`remove`) or `ConversationClient`'s `listStandingContext()`,
+`createStandingEntry()`, `updateStandingEntry()` and `deleteStandingEntry()`.
+Its text is the `standing*` labels, plus `edit`, `cancel`, `retry`, `close` and
+`loading`.
 
 ### `composer`
 
@@ -1388,6 +1428,7 @@ token:
 | `GET conversations/{id}` | Opening a conversation. |
 | `PATCH conversations/{id}` `{ starred }` or `{ title }` | Starring and renaming. |
 | `GET credits` | The "Credit usage" dialog: the user's own allowance, this month's charges, and whether a job can start now. |
+| `GET`, `POST standing-context`; `PATCH`, `DELETE standing-context/{id}` | "Memory & instructions" (since 4.4): the user's own entries and their organisation's in force; `PATCH` takes `{ body?, expires_on?, status? }`, `expires_on: null` clearing the end date. |
 | `DELETE conversations/{id}` | Deleting (204). |
 
 ## Your own layout
@@ -1412,6 +1453,7 @@ which supplies the design tokens and theme without the frame:
 | `WelcomeScreen` | `composer` |
 | `Composer` | `disabled`, `placeholder`, `toolMenuPlacement` (`'above'` / `'center'`), `className` |
 | `CreditUsageDialog` | none — draws itself while `isCreditUsageOpen`, covering its nearest positioned ancestor |
+| `StandingContextDialog` | none — draws itself while `isStandingContextOpen`, covering its nearest positioned ancestor (since 4.4) |
 | `CreditNotice` | `id`, `className` — the composer's credit notice, drawn while `creditAlert` is set; `Composer` already has it (since 4.3) |
 | `ConversationFilesPanel` | none — draws itself while the panel is open, covering its nearest positioned ancestor (`ChatContainer` puts it over the chat column) |
 | `ArtifactsPanel` | none — the Artifacts view, drawn while `isArtifactsPanelOpen`, filling the element it is rendered in (see below) |
