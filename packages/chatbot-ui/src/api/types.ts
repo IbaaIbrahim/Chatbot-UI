@@ -78,6 +78,50 @@ export interface UserCredits {
     blocked_by: CreditBlock | null;
 }
 
+/** An entry of standing context: a directive the assistant follows, or a fact it is told. */
+export type StandingEntryKind = 'instruction' | 'memory';
+
+/**
+ * One entry of the user's standing context (`GET /v1/user/standing-context`,
+ * ADR-021): an instruction or memory every conversation of theirs is told —
+ * their own (`scope: 'user'`, `editable`) or their organisation's
+ * (`scope: 'tenant'`, read-only, listed only while in force).
+ */
+export interface StandingEntry {
+    uuid: string;
+    scope: 'tenant' | 'user';
+    kind: StandingEntryKind;
+    /** One line: the Gateway flattens whitespace and removes `<` / `>`. */
+    body: string;
+    status: 'active' | 'retired';
+    /** The last day it applies (UTC), `YYYY-MM-DD`; `null` for no end. */
+    expires_on: string | null;
+    /** `expires_on` has passed: no conversation is told it any more. */
+    expired: boolean;
+    /** `agent`: the assistant saved it, on a turn the user approved. */
+    source: 'api' | 'agent';
+    source_job_uuid: string | null;
+    created_at: string;
+    updated_at: string;
+    /** The user's own, so theirs to change; the organisation's are not. */
+    editable: boolean;
+}
+
+/** A new entry of the user's own. */
+export interface StandingEntryDraft {
+    kind: StandingEntryKind;
+    body: string;
+    /** `YYYY-MM-DD`, the last day it applies; omit or `null` for no end. */
+    expires_on?: string | null;
+}
+
+/** A change to one of the user's entries. `expires_on: null` removes the end date; leaving it out keeps it. */
+export interface StandingEntryChanges {
+    body?: string;
+    expires_on?: string | null;
+    status?: 'active' | 'retired';
+}
+
 /**
  * What a saved artifact is. The platform stores it as `artifact_kind`; the
  * library knows only these five, for the filter and the icon, and shows any

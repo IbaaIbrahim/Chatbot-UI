@@ -14,8 +14,11 @@ import { isClientTool } from '../common/toolConfig';
 import type { ClientSkillDefinition, ToolConfig } from '../common/toolConfig';
 import { isHostRequestSlug } from '../common/hostCatalogue';
 import type { AttachedFile, ConversationDetail, UserCredits } from '../api/types';
+import type { StandingContextService } from '../store/types';
 import { summarizeUsage } from '../common/usageSummary';
+import { creditAlertFor, creditAlertKey } from '../common/creditAlert';
 import { resolveChatbotConfig } from '../common/chatbotConfig';
+import { formattingLocale, labelledError } from '../common/i18n';
 import { blockLanguagesOf } from '../common/markdownBlocks';
 import type { ChatbotConfig } from '../common/chatbotConfig';
 import type { QuestionSpec } from '../components/Questionnaire/QuestionnaireForm';
@@ -90,16 +93,50 @@ function writeStoredToolIds(next: string[], listedIds: ReadonlySet<string>): voi
     }
 }
 
-const CONFIG_GROUPS = ['labels', 'icons', 'header', 'composer', 'sidebar', 'greeting', 'markdown'] as const;
+const CONFIG_GROUPS = ['icons', 'header', 'composer', 'sidebar', 'greeting', 'markdown'] as const;
 const CONFIG_LISTS = ['suggestions', 'quickActions', 'featureCards'] as const;
+
+/**
+ * Two label maps that say the same: key by key, a counting label's plural
+ * forms compared form by form — so `{ credits: { one, other } }` written
+ * inline is equal to itself on the next render.
+ */
+function labelMapsEqual(left: object | undefined, right: object | undefined): boolean {
+    if (Object.is(left, right)) return true;
+    if (!left || !right) return false;
+    const leftEntries = Object.entries(left);
+    if (leftEntries.length !== Object.keys(right).length) return false;
+    return leftEntries.every(([key, value]) => {
+        if (!Object.prototype.hasOwnProperty.call(right, key)) return false;
+        const other = (right as Record<string, unknown>)[key];
+        return Object.is(value, other)
+            || (typeof value === 'object' && typeof other === 'object' && shallowEqual(value, other));
+    });
+}
+
+/** Two translation maps that say the same: language by language, each map as {@link labelMapsEqual}. */
+function translationsEqual(left: ChatbotConfig['translations'], right: ChatbotConfig['translations']): boolean {
+    if (Object.is(left, right)) return true;
+    if (!left || !right) return false;
+    const languages = Object.keys(left);
+    if (languages.length !== Object.keys(right).length) return false;
+    return languages.every(language =>
+        Object.prototype.hasOwnProperty.call(right, language) && labelMapsEqual(left[language], right[language])
+    );
+}
 
 /**
  * Whether two override layers say the same thing, so re-registering an equal
  * layer — a literal rebuilt on every render — changes nothing downstream.
+ * Groups compare key by key; `labels` and `translations` one level further,
+ * so plural forms and a language's map written inline count as equal.
  */
 function layersEqual(left: ChatbotConfig, right: ChatbotConfig): boolean {
     return CONFIG_GROUPS.every(group => shallowEqual(left[group], right[group]))
-        && CONFIG_LISTS.every(list => Object.is(left[list], right[list]));
+        && labelMapsEqual(left.labels, right.labels)
+        && translationsEqual(left.translations, right.translations)
+        && CONFIG_LISTS.every(list => Object.is(left[list], right[list]))
+        && Object.is(left.language, right.language);
 }
 
 interface OverrideLayer {
@@ -115,6 +152,7 @@ export interface ChatbotProviderProps {
     streamHeaders?: Record<string, string>;
     storageApiUrl?: string;
     accessToken?: string | null;
+    /** Fills `{name}` in the greeting. Defaults to `labels.defaultUserName` ("User"). */
     userName?: string;
     onEvent?: UseStreamChatOptions['onEvent'];
     allowLocalNetworkAccess?: boolean;
@@ -184,7 +222,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     streamHeaders,
     storageApiUrl = '',
     accessToken = null,
-    userName = 'User',
+    userName: userNameProp,
     onEvent,
     allowLocalNetworkAccess = false,
     tools,
@@ -219,6 +257,16 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         () => resolveChatbotConfig([config, ...overrideLayers.map(entry => entry.layer)]),
         [config, overrideLayers]
     );
+    // What the turn's hooks write into a message — a notice, an error, a
+    // check-in — is written in the language in force when it happens: read
+    // through a ref, so the hooks' callbacks need not change with it.
+    const labelsRef = useRef(resolvedConfig.labels);
+    labelsRef.current = resolvedConfig.labels;
+    const languageRef = useRef(resolvedConfig.language);
+    languageRef.current = resolvedConfig.language;
+    const getLabels = useCallback(() => labelsRef.current, []);
+    const getLanguage = useCallback(() => formattingLocale(languageRef.current), []);
+    const userName = userNameProp ?? resolvedConfig.labels.defaultUserName;
 
     // --- Authenticated storage access ---
     // Object URLs of fetched files, by URL, least recently used first — see
@@ -241,7 +289,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
             if (pending) return pending;
 
             if (!accessToken) {
-                throw new Error('No access token available for authenticated fetch');
+                throw labelledError('attachmentNoAuth', 'No access token available for authenticated fetch');
             }
 
             const load = (async () => {
@@ -252,7 +300,11 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Failed to fetch authenticated URL: ${response.status}`);
+                    throw labelledError(
+                        'attachmentLoadFailedStatus',
+                        `Failed to fetch authenticated URL: ${response.status}`,
+                        { status: response.status },
+                    );
                 }
 
                 const blob = await response.blob();
@@ -450,6 +502,8 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         onEvent,
         storageApiUrl,
         tools: registeredTools,
+        getLabels,
+        getLanguage,
     });
 
     const usageSummary = useMemo(
@@ -476,7 +530,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         setStarred,
         renameConversation,
         searchConversations,
-    } = useConversations(gateway, storageApiUrl);
+    } = useConversations(gateway, storageApiUrl, { getLabels, getLanguage });
 
     const [staleClientCall, setStaleClientCall] = useState(false);
 
@@ -501,13 +555,70 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     // --- Credit usage: the user's own allowance, read when the dialog opens ---
     const [isCreditUsageOpen, setCreditUsageOpen] = useState(false);
     const canShowCredits = Boolean(activeClient && 'getCredits' in activeClient);
+    // The figures as last read, by whoever read them — the composer's notice
+    // shows what the dialog just read too.
+    const [credits, setCredits] = useState<UserCredits | null>(null);
+
+    // Another client is another user, perhaps: their figures are not these.
+    useEffect(() => {
+        setCredits(null);
+    }, [activeClient]);
 
     const fetchCredits = useCallback((): Promise<UserCredits> => {
         if (!activeClient || !('getCredits' in activeClient)) {
             return Promise.reject(new Error('This client cannot read credit usage.'));
         }
-        return (activeClient as GatewayStreamClient).getCredits();
+        return (activeClient as GatewayStreamClient).getCredits().then(read => {
+            setCredits(read);
+            return read;
+        });
     }, [activeClient]);
+
+    // --- Memory & instructions: the user's standing context (since 4.4, ADR-021) ---
+    const [isStandingContextOpen, setStandingContextOpen] = useState(false);
+    const canManageStandingContext = Boolean(activeClient && 'listStandingContext' in activeClient);
+    const standingContext = useMemo((): StandingContextService => {
+        const gateway = canManageStandingContext ? (activeClient as GatewayStreamClient) : null;
+        const unavailable = () => Promise.reject(new Error('This client cannot read standing context.'));
+        return {
+            list: () => (gateway ? gateway.listStandingContext() : unavailable()),
+            create: draft => (gateway ? gateway.createStandingEntry(draft) : unavailable()),
+            update: (uuid, changes) => (gateway ? gateway.updateStandingEntry(uuid, changes) : unavailable()),
+            remove: uuid => (gateway ? gateway.deleteStandingEntry(uuid) : unavailable()),
+        };
+    }, [activeClient, canManageStandingContext]);
+
+    // A failed read leaves the last figures in place: a notice that vanished
+    // because the network blinked would let a user who is out try to send.
+    const refreshCredits = useCallback(
+        (): Promise<UserCredits | null> => fetchCredits().catch(() => null),
+        [fetchCredits]
+    );
+
+    // --- The composer's credit notice (since 4.3) ---
+    const creditAlertsOn = resolvedConfig.composer.creditAlerts && canShowCredits;
+    const creditWarningThresholds = resolvedConfig.composer.creditWarningThresholds;
+    const pendingCreditAlert = useMemo(
+        () => creditAlertFor(credits, creditWarningThresholds),
+        [credits, creditWarningThresholds]
+    );
+    // The warning the user closed, by `creditAlertKey`: a higher threshold
+    // passed later is another warning, and shows.
+    const [dismissedCreditAlert, setDismissedCreditAlert] = useState<string | null>(null);
+    const creditAlert = creditAlertsOn
+        && pendingCreditAlert
+        && (pendingCreditAlert.kind === 'blocked' || creditAlertKey(pendingCreditAlert) !== dismissedCreditAlert)
+        ? pendingCreditAlert
+        : null;
+
+    // Each opening shows a closed warning again, from figures read afresh.
+    useEffect(() => {
+        if (isOpen) setDismissedCreditAlert(null);
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (isOpen && creditAlertsOn) void refreshCredits();
+    }, [isOpen, creditAlertsOn, refreshCredits]);
 
     // --- The composer, which registers itself when it mounts ---
     const composerRef = useRef<ComposerControl | null>(null);
@@ -522,12 +633,17 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         }, 0);
     }, []);
 
+    // When a turn ends: back to the composer, and the allowance read again — a
+    // turn is what spends it, and the next one may not be admitted.
     const wasBusyRef = useRef(false);
     useEffect(() => {
         const busy = isThinking || isResuming;
-        if (wasBusyRef.current && !busy) focusComposer();
+        if (wasBusyRef.current && !busy) {
+            focusComposer();
+            if (creditAlertsOn) void refreshCredits();
+        }
         wasBusyRef.current = busy;
-    }, [isThinking, isResuming, focusComposer]);
+    }, [isThinking, isResuming, focusComposer, creditAlertsOn, refreshCredits]);
 
     const titleRefreshTimers = useRef<number[]>([]);
     useEffect(() => () => titleRefreshTimers.current.forEach(timer => window.clearTimeout(timer)), []);
@@ -691,6 +807,10 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         canStop: Boolean(activeClient && 'cancelTurn' in activeClient),
         canShowCredits,
         isCreditUsageOpen: canShowCredits && isCreditUsageOpen,
+        credits,
+        creditAlert,
+        canManageStandingContext,
+        isStandingContextOpen: canManageStandingContext && isStandingContextOpen,
 
         storageClient,
         isFilesPanelOpen: Boolean(storageClient) && isFilesPanelOpen,
@@ -728,7 +848,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     const saveFile: ChatActions['saveFile'] = async (jobUuid, file, options) => {
         if (!storageClient) {
             throw new StorageRequestError(
-                'Saving a file needs the provider\'s storageApiUrl and accessToken.', 0
+                'Saving a file needs the provider\'s storageApiUrl and accessToken.', 0, null, 'storageNotConfigured'
             );
         }
         const stored = await storageClient.saveFile(jobUuid, file, options);
@@ -751,7 +871,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     const saveGeneratedFile: ChatActions['saveGeneratedFile'] = async attachmentUuid => {
         if (!storageClient) {
             throw new StorageRequestError(
-                'Saving a file needs the provider\'s storageApiUrl and accessToken.', 0
+                'Saving a file needs the provider\'s storageApiUrl and accessToken.', 0, null, 'storageNotConfigured'
             );
         }
         const stored = await storageClient.saveGeneratedFile(attachmentUuid);
@@ -779,6 +899,12 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         share: () => onShare?.(),
         openCreditUsage: () => setCreditUsageOpen(true),
         closeCreditUsage: () => setCreditUsageOpen(false),
+        refreshCredits,
+        dismissCreditAlert: () => {
+            if (creditAlert?.kind === 'warning') setDismissedCreditAlert(creditAlertKey(creditAlert));
+        },
+        openStandingContext: () => setStandingContextOpen(true),
+        closeStandingContext: () => setStandingContextOpen(false),
         // One at a time: the files panel covers the chat, the Artifacts view
         // takes its place, and the view can open a conversation the files
         // panel would then describe.
@@ -802,7 +928,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         deleteArtifact: async (attachmentUuid) => {
             if (!storageClient) {
                 throw new StorageRequestError(
-                    'Deleting an artifact needs the provider\'s storageApiUrl and accessToken.', 0
+                    'Deleting an artifact needs the provider\'s storageApiUrl and accessToken.', 0, null, 'storageNotConfigured'
                 );
             }
             await storageClient.deleteArtifact(attachmentUuid);
@@ -879,7 +1005,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
             }
         },
     };
-    const servicesNow: ChatServices = { fetchAuthenticatedUrl, getFileDownloadUrl, fetchCredits };
+    const servicesNow: ChatServices = { fetchAuthenticatedUrl, getFileDownloadUrl, fetchCredits, standingContext };
 
     // Read through refs by the stable runtime below, so a caller holding an
     // action from an earlier render still acts on the current state.
@@ -898,6 +1024,12 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
             fetchAuthenticatedUrl: url => latestServices.current.fetchAuthenticatedUrl(url),
             getFileDownloadUrl: fileIdOrUrl => latestServices.current.getFileDownloadUrl(fileIdOrUrl),
             fetchCredits: () => latestServices.current.fetchCredits(),
+            standingContext: {
+                list: () => latestServices.current.standingContext.list(),
+                create: draft => latestServices.current.standingContext.create(draft),
+                update: (uuid, changes) => latestServices.current.standingContext.update(uuid, changes),
+                remove: uuid => latestServices.current.standingContext.remove(uuid),
+            },
         },
         overrides: {
             register: (owner, layer) =>
@@ -959,6 +1091,10 @@ function delegateActions(latest: React.MutableRefObject<ChatActions>): ChatActio
         share: () => latest.current.share(),
         openCreditUsage: () => latest.current.openCreditUsage(),
         closeCreditUsage: () => latest.current.closeCreditUsage(),
+        refreshCredits: () => latest.current.refreshCredits(),
+        dismissCreditAlert: () => latest.current.dismissCreditAlert(),
+        openStandingContext: () => latest.current.openStandingContext(),
+        closeStandingContext: () => latest.current.closeStandingContext(),
         openFiles: () => latest.current.openFiles(),
         closeFiles: () => latest.current.closeFiles(),
         openArtifacts: () => latest.current.openArtifacts(),

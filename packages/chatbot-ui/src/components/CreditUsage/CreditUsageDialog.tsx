@@ -1,19 +1,14 @@
 import React from 'react';
 import './CreditUsageDialog.css';
-import type { CreditBlock, CreditGrant, UserCredits } from '../../api/types';
-import { ChatLabels, formatCount, formatLabel } from '../../common/labels';
-import { useChatActions, useChatRuntime, useChatState, useIcons, useLabels } from '../../store/hooks';
+import type { CreditGrant, UserCredits } from '../../api/types';
+import { formatLabel } from '../../common/labels';
+import type { ChatFormat } from '../../common/i18n';
+import { CREDIT_BLOCK_LABEL } from '../../common/creditAlert';
+import { useChatActions, useChatFormat, useChatRuntime, useChatState, useIcons, useLabels } from '../../store/hooks';
 
 const { useEffect, useRef, useState } = React;
 
 const HTTP_NOT_FOUND = 404;
-
-const BLOCK_LABEL = {
-    user_allowance: 'creditsBlockedUser',
-    organization_allowance: 'creditsBlockedOrganization',
-    provider_account: 'creditsBlockedProvider',
-    no_plan: 'creditsBlockedNoPlan',
-} as const satisfies Record<CreditBlock, keyof ChatLabels>;
 
 type LoadState =
     | { status: 'loading' }
@@ -21,22 +16,9 @@ type LoadState =
     // `unavailable`: the Gateway has no such route, which no retry will change.
     | { status: 'failed'; unavailable: boolean };
 
-/** The page's language when it states one, so dates and numbers read like the rest of it. */
-function pageLocale(): string | undefined {
-    return typeof document !== 'undefined' && document.documentElement.lang ? document.documentElement.lang : undefined;
-}
-
-function formatNumber(value: number): string {
-    return value.toLocaleString(pageLocale());
-}
-
-/** `formatCount` with the number written for the page's language: "1,250 credits". */
-function formatCredits(count: number, labels: ChatLabels): string {
-    return formatLabel(count === 1 ? labels.creditsOne : labels.creditsOther, { count: formatNumber(count) });
-}
-
-function formatDate(iso: string): string {
-    return new Date(iso).toLocaleDateString(pageLocale(), { year: 'numeric', month: 'short', day: 'numeric' });
+/** Credits counted, the number written for the chat's language: "1,250 credits". */
+function formatCredits(count: number, format: ChatFormat): string {
+    return format.plural(format.labels.credits, count);
 }
 
 /**
@@ -144,10 +126,11 @@ const CreditSkeleton: React.FC = () => {
 };
 
 const CreditSummary: React.FC<{ credits: UserCredits }> = ({ credits }) => {
-    const labels = useLabels();
+    const format = useChatFormat();
+    const { labels } = format;
     const { allowance } = credits;
     const usedThisMonth = formatLabel(labels.creditsUsedThisMonth, {
-        credits: formatCredits(credits.used_this_month, labels),
+        credits: formatCredits(credits.used_this_month, format),
     });
 
     return (
@@ -164,7 +147,7 @@ const CreditSummary: React.FC<{ credits: UserCredits }> = ({ credits }) => {
 
             {!credits.can_run && credits.blocked_by && (
                 <div className="cb-credit-blocked" role="status">
-                    {labels[BLOCK_LABEL[credits.blocked_by]]}
+                    {labels[CREDIT_BLOCK_LABEL[credits.blocked_by]]}
                 </div>
             )}
         </>
@@ -172,7 +155,8 @@ const CreditSummary: React.FC<{ credits: UserCredits }> = ({ credits }) => {
 };
 
 const LimitedAllowance: React.FC<{ allowance: UserCredits['allowance'] }> = ({ allowance }) => {
-    const labels = useLabels();
+    const format = useChatFormat();
+    const { labels } = format;
     const exhausted = allowance.remaining === 0;
     const usedShare = allowance.credit_cap > 0 ? Math.min(1, allowance.consumed / allowance.credit_cap) : 1;
     const onlyGrant = allowance.grants.length === 1 ? allowance.grants[0] : null;
@@ -181,10 +165,10 @@ const LimitedAllowance: React.FC<{ allowance: UserCredits['allowance'] }> = ({ a
         <>
             <div className="cb-credit-hero">
                 <span className={`cb-credit-number${exhausted ? ' is-exhausted' : ''}`}>
-                    {formatNumber(allowance.remaining)}
+                    {format.number(allowance.remaining)}
                 </span>
                 <span className="cb-credit-caption">
-                    {formatCount(allowance.remaining, labels.creditsLeftOne, labels.creditsLeftOther)}
+                    {format.plural(labels.creditsLeft, allowance.remaining)}
                 </span>
             </div>
 
@@ -201,12 +185,12 @@ const LimitedAllowance: React.FC<{ allowance: UserCredits['allowance'] }> = ({ a
             <div className="cb-credit-meter-legend">
                 <span>
                     {formatLabel(labels.creditsUsedOfCap, {
-                        used: formatNumber(allowance.consumed),
-                        cap: formatNumber(allowance.credit_cap),
+                        used: format.number(allowance.consumed),
+                        cap: format.number(allowance.credit_cap),
                     })}
                 </span>
                 {onlyGrant?.valid_until && (
-                    <span>{formatLabel(labels.creditsValidUntil, { date: formatDate(onlyGrant.valid_until) })}</span>
+                    <span>{formatLabel(labels.creditsValidUntil, { date: format.date(onlyGrant.valid_until) })}</span>
                 )}
             </div>
 
@@ -222,7 +206,8 @@ const LimitedAllowance: React.FC<{ allowance: UserCredits['allowance'] }> = ({ a
 };
 
 const GrantRow: React.FC<{ grant: CreditGrant }> = ({ grant }) => {
-    const labels = useLabels();
+    const format = useChatFormat();
+    const { labels } = format;
     return (
         <li className="cb-credit-grant">
             <span className="cb-credit-grant-name">
@@ -230,13 +215,13 @@ const GrantRow: React.FC<{ grant: CreditGrant }> = ({ grant }) => {
             </span>
             <span className="cb-credit-grant-left">
                 {formatLabel(labels.creditGrantLeft, {
-                    remaining: formatNumber(grant.remaining),
-                    cap: formatNumber(grant.credit_cap),
+                    remaining: format.number(grant.remaining),
+                    cap: format.number(grant.credit_cap),
                 })}
             </span>
             {grant.valid_until && (
                 <span className="cb-credit-grant-until">
-                    {formatLabel(labels.creditsValidUntil, { date: formatDate(grant.valid_until) })}
+                    {formatLabel(labels.creditsValidUntil, { date: format.date(grant.valid_until) })}
                 </span>
             )}
         </li>

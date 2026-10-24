@@ -1,0 +1,434 @@
+/* "Memory & instructions" (since 4.4). Shaped like the "Credit usage" dialog —
+   it covers the chat it belongs to, not the page — but wider, because it holds
+   lists and a form. Tokens only (styles.css), so both themes hold. */
+.cb-standing-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--cb-space-4);
+    background-color: var(--cb-scrim);
+    animation: cb-standing-fade 0.15s ease-out;
+}
+
+.cb-standing-dialog {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    width: min(460px, 100%);
+    max-height: 100%;
+    padding: var(--cb-space-4) 18px 18px;
+    background-color: var(--cb-bg-elevated);
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-lg);
+    box-shadow: var(--cb-shadow-lg);
+    color: var(--cb-text-primary);
+    animation: cb-standing-rise 0.18s ease-out;
+}
+
+@keyframes cb-standing-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes cb-standing-rise {
+    from { opacity: 0; transform: translateY(6px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+}
+
+.cb-standing-header {
+    display: flex;
+    align-items: center;
+    gap: var(--cb-space-2);
+}
+
+.cb-standing-header-icon {
+    display: inline-flex;
+    color: var(--cb-accent-primary);
+}
+
+.cb-standing-title {
+    flex: 1;
+    margin: 0;
+    font-size: var(--cb-text-sm);
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.cb-standing-intro {
+    margin: var(--cb-space-1) 0 var(--cb-space-3);
+    color: var(--cb-text-secondary);
+    font-size: var(--cb-text-xs);
+    line-height: 1.45;
+}
+
+/* The lists scroll; the header stays. */
+.cb-standing-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cb-space-4);
+    min-height: 0;
+    overflow-y: auto;
+    /* Keeps the counters clear of the scrollbar once the lists scroll. */
+    padding-inline-end: var(--cb-space-1);
+}
+
+.cb-standing-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cb-space-2);
+}
+
+.cb-standing-section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--cb-space-2);
+}
+
+.cb-standing-section-title {
+    margin: 0;
+    font-size: var(--cb-text-sm);
+    font-weight: 600;
+}
+
+.cb-standing-usage,
+.cb-standing-hint,
+.cb-standing-empty {
+    margin: 0;
+    color: var(--cb-text-tertiary);
+    font-size: var(--cb-text-xs);
+    line-height: 1.4;
+}
+
+.cb-standing-hint {
+    margin-top: calc(-1 * var(--cb-space-1));
+}
+
+.cb-standing-empty {
+    font-style: italic;
+}
+
+.cb-standing-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cb-space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.cb-standing-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cb-space-2);
+    padding: var(--cb-space-2) var(--cb-space-3);
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-md);
+    background-color: var(--cb-surface-raised);
+}
+
+.cb-standing-item.is-readonly {
+    background-color: var(--cb-surface-sunken);
+}
+
+.cb-standing-item.is-editing {
+    display: block;
+    padding: 0;
+    border: none;
+    background: transparent;
+}
+
+.cb-standing-item.is-expired .cb-standing-text {
+    color: var(--cb-text-tertiary);
+    text-decoration: line-through;
+}
+
+.cb-standing-item-main {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--cb-space-1);
+    min-width: 0;
+}
+
+.cb-standing-text {
+    font-size: var(--cb-text-sm);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.cb-standing-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cb-space-1);
+}
+
+.cb-standing-badge {
+    padding: 1px var(--cb-space-2);
+    border-radius: var(--cb-radius-full);
+    background-color: var(--cb-bg-tertiary);
+    color: var(--cb-text-secondary);
+    font-size: var(--cb-text-xs);
+    line-height: 1.5;
+}
+
+.cb-standing-badge.is-expired {
+    color: var(--cb-status-warning);
+}
+
+.cb-standing-badge.is-assistant {
+    background-color: var(--cb-accent-tint-12);
+    color: var(--cb-accent-strong);
+}
+
+.cb-standing-item-actions {
+    display: flex;
+    flex-shrink: 0;
+    gap: 2px;
+}
+
+:root .cb-standing-icon-button,
+:root .cb-standing-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--cb-control-sm);
+    height: var(--cb-control-sm);
+    padding: 0;
+    border: none;
+    border-radius: var(--cb-radius-full);
+    background: transparent;
+    color: var(--cb-text-secondary);
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+.cb-standing-icon-button:hover:not(:disabled),
+.cb-standing-close:hover {
+    background-color: var(--cb-surface-hover);
+    color: var(--cb-text-primary);
+}
+
+.cb-standing-icon-button.is-danger:hover:not(:disabled),
+.cb-standing-icon-button.is-confirming {
+    color: var(--cb-status-failed);
+}
+
+:root .cb-standing-icon-button.is-confirming {
+    padding: 0 var(--cb-space-2);
+}
+
+.cb-standing-icon-button:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.cb-standing-icon-button svg,
+.cb-standing-close svg {
+    width: 15px;
+    height: 15px;
+}
+
+.cb-standing-confirm-text {
+    font-size: var(--cb-text-xs);
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+:root .cb-standing-add,
+:root .cb-standing-link {
+    align-self: flex-start;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--cb-accent-primary);
+    font: inherit;
+    font-size: var(--cb-text-xs);
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.cb-standing-add:hover,
+.cb-standing-link:hover {
+    color: var(--cb-accent-hover);
+    text-decoration: underline;
+}
+
+.cb-standing-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cb-space-2);
+    padding: var(--cb-space-3);
+    border: 1px solid var(--cb-border-medium);
+    border-radius: var(--cb-radius-md);
+    background-color: var(--cb-bg-secondary);
+}
+
+:root .cb-standing-textarea {
+    box-sizing: border-box;
+    width: 100%;
+    padding: var(--cb-space-2);
+    border: 1px solid var(--cb-border-medium);
+    border-radius: var(--cb-radius-sm);
+    background-color: var(--cb-bg-primary);
+    color: var(--cb-text-primary);
+    font: inherit;
+    font-size: var(--cb-text-sm);
+    line-height: 1.45;
+    resize: vertical;
+}
+
+:root .cb-standing-date {
+    padding: 3px var(--cb-space-2);
+    border: 1px solid var(--cb-border-medium);
+    border-radius: var(--cb-radius-sm);
+    background-color: var(--cb-bg-primary);
+    color: var(--cb-text-primary);
+    font: inherit;
+    font-size: var(--cb-text-xs);
+    color-scheme: inherit;
+}
+
+.cb-standing-form-hint {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--cb-space-2);
+    color: var(--cb-text-tertiary);
+    font-size: var(--cb-text-xs);
+}
+
+.cb-standing-form-hint .is-over {
+    color: var(--cb-status-failed);
+    font-weight: 600;
+}
+
+.cb-standing-date-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cb-space-2);
+}
+
+.cb-standing-date-label {
+    color: var(--cb-text-secondary);
+    font-size: var(--cb-text-xs);
+}
+
+.cb-standing-error {
+    margin: 0;
+    padding: 6px var(--cb-space-2);
+    border-inline-start: 3px solid var(--cb-status-failed);
+    border-radius: var(--cb-radius-sm);
+    background-color: var(--cb-surface-raised);
+    color: var(--cb-text-primary);
+    font-size: var(--cb-text-xs);
+    line-height: 1.45;
+}
+
+.cb-standing-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--cb-space-2);
+}
+
+:root .cb-standing-button {
+    padding: 5px 14px;
+    border: 1px solid var(--cb-border-strong);
+    border-radius: var(--cb-radius-full);
+    background: transparent;
+    color: var(--cb-text-primary);
+    font: inherit;
+    font-size: var(--cb-text-xs);
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+.cb-standing-button:hover:not(:disabled) {
+    background-color: var(--cb-surface-hover);
+}
+
+:root .cb-standing-button.is-primary {
+    border-color: transparent;
+    background: var(--cb-accent-primary);
+    color: var(--cb-on-accent);
+}
+
+.cb-standing-button.is-primary:hover:not(:disabled) {
+    background: var(--cb-accent-hover);
+}
+
+.cb-standing-button:disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+
+.cb-standing-message {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--cb-space-2);
+    color: var(--cb-text-secondary);
+    font-size: var(--cb-text-sm);
+}
+
+.cb-standing-message p {
+    margin: 0;
+}
+
+.cb-standing-close:focus-visible,
+.cb-standing-icon-button:focus-visible,
+.cb-standing-add:focus-visible,
+.cb-standing-link:focus-visible,
+.cb-standing-button:focus-visible,
+.cb-standing-textarea:focus-visible,
+.cb-standing-date:focus-visible {
+    outline: 2px solid var(--cb-focus-ring);
+    outline-offset: 2px;
+}
+
+.cb-standing-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+/* Shaped like the lists it stands in for. */
+.cb-standing-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cb-space-2);
+}
+
+.cb-standing-skeleton-line {
+    display: block;
+    width: 100%;
+    height: 34px;
+    border-radius: var(--cb-radius-md);
+    background-color: var(--cb-bg-tertiary);
+    animation: cb-standing-pulse 1.2s ease-in-out infinite;
+}
+
+.cb-standing-skeleton-line.is-wide {
+    width: 40%;
+    height: 14px;
+}
+
+@keyframes cb-standing-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cb-standing-overlay,
+    .cb-standing-dialog,
+    .cb-standing-skeleton-line {
+        animation: none;
+    }
+}

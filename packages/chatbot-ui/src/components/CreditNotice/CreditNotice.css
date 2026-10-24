@@ -1,0 +1,118 @@
+/* The line above the composer about the user's credits (since 4.3): amber
+   for a warning, red once nothing can be sent. The width of the composer's
+   box, directly above it. */
+.cb-credit-notice {
+    --cb-credit-notice-tone: var(--cb-status-warning);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cb-space-2);
+    margin-bottom: var(--cb-space-2);
+    padding-block: var(--cb-space-2);
+    padding-inline: var(--cb-space-3) var(--cb-space-2);
+    /* Flat where `color-mix()` is missing; tinted with the tone where it is. */
+    border: 1px solid var(--cb-border-subtle);
+    border-color: color-mix(in srgb, var(--cb-credit-notice-tone) 40%, transparent);
+    border-inline-start: 3px solid var(--cb-credit-notice-tone);
+    border-radius: var(--cb-radius-md);
+    background-color: var(--cb-surface-raised);
+    background-color: color-mix(in srgb, var(--cb-credit-notice-tone) 10%, var(--cb-bg-primary));
+    color: var(--cb-text-primary);
+    font-size: var(--cb-text-xs);
+    line-height: 1.45;
+    /* The welcome screen centres its text; a sentence beside an icon reads from the start. */
+    text-align: start;
+    animation: cb-credit-notice-in var(--cb-transition-normal);
+}
+
+.cb-credit-notice.is-blocked {
+    --cb-credit-notice-tone: var(--cb-status-failed);
+}
+
+@keyframes cb-credit-notice-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.cb-credit-notice-icon {
+    display: inline-flex;
+    flex: none;
+    /* Centred on the first line of text, which is 1.45 × 12px. */
+    margin-top: 1px;
+    color: var(--cb-credit-notice-tone);
+}
+
+.cb-credit-notice-icon svg {
+    width: 15px;
+    height: 15px;
+}
+
+.cb-credit-notice-text {
+    flex: 1;
+    min-width: 0;
+    padding-block: 1px;
+    overflow-wrap: anywhere;
+}
+
+:root .cb-credit-notice-link {
+    flex: none;
+    margin: 0;
+    padding: 1px 2px;
+    border: none;
+    border-radius: var(--cb-radius-sm);
+    background: transparent;
+    color: var(--cb-accent-strong);
+    font: inherit;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.cb-credit-notice-link:hover {
+    text-decoration: underline;
+}
+
+:root .cb-credit-notice-close {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: var(--cb-radius-full);
+    background: transparent;
+    color: var(--cb-text-secondary);
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+.cb-credit-notice-close:hover {
+    background-color: var(--cb-surface-hover);
+    color: var(--cb-text-primary);
+}
+
+.cb-credit-notice-close svg {
+    width: 14px;
+    height: 14px;
+}
+
+.cb-credit-notice-link:focus-visible,
+.cb-credit-notice-close:focus-visible {
+    outline: 2px solid var(--cb-focus-ring);
+    outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cb-credit-notice {
+        animation: none;
+    }
+}

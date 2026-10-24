@@ -13,9 +13,11 @@ import {
     RunUsage,
     TreeFigures,
 } from '../api/types';
-import { MessageProps, MessageStep } from '../components/MessageBubble/MessageBubble';
+import { MessageProps, MessageStep, type LocalizedText } from '../components/MessageBubble/MessageBubble';
 import { describeApprovalRequest } from './useStreamChat';
 import { resolveToolDisplayName } from '../common/toolConfig';
+import { DEFAULT_LABELS, type ChatLabels } from '../common/labels';
+import { createChatFormat } from '../common/i18n';
 import { isHostRequestSlug } from '../common/hostCatalogue';
 import { settledToolStatus } from '../api/toolOutput';
 import type { ConversationSearch } from '../store/types';
@@ -82,7 +84,8 @@ function mapSteps(steps: ConversationStep[], subAgentJobs: ConversationJob[] = [
             messageSteps.push({
                 id: step.uuid,
                 type: 'sub-agent',
-                agentName: child?.agent?.name || 'Sub-agent',
+                // Unnamed: the block shows the label `subAgentName`.
+                agentName: child?.agent?.name || undefined,
                 // Recursive: a sub-agent may itself have delegated. Bounded by
                 // MAX_SUB_AGENT_DEPTH server-side, so this cannot run away.
                 subSteps: child ? mapSteps(child.steps, child.sub_agent_jobs ?? []) : [],
@@ -104,7 +107,11 @@ function mapSteps(steps: ConversationStep[], subAgentJobs: ConversationJob[] = [
             messageSteps.push({
                 id: step.uuid,
                 type: 'tool-call',
-                toolName: (step as any).tool_name || (step.tool_slug ? resolveToolDisplayName(step.tool_slug) : 'Tool'),
+                // The platform's name, as recorded: the name shown is worked
+                // out from the slug when the row is drawn — the host's `tools`
+                // first, in the chat's language (`resolveToolDisplayName`).
+                // Neither a slug nor a name: the row shows the label `toolName`.
+                toolName: (step as any).tool_name || undefined,
                 toolSlug: step.tool_slug || undefined,
                 toolArgs: step.tool_input,
                 toolResult: step.tool_output,
@@ -167,32 +174,56 @@ function mapSteps(steps: ConversationStep[], subAgentJobs: ConversationJob[] = [
 /** The history record a paused run leaves for its "continue?" question (ADR-010). */
 const CHECK_IN_TOOL_SLUG = 'continue_working';
 
-function describeRecordedCheckIn(toolInput: any): string {
+function describeRecordedCheckIn(toolInput: any): LocalizedText {
     const elapsed = Number(toolInput?.elapsed_seconds ?? 0);
-    const minutes = Math.floor(elapsed / 60);
-    const seconds = elapsed % 60;
-    const worked = minutes > 0 ? `${minutes} min ${seconds} s` : `${seconds} s`;
-    return `The agent had been working for ${worked} and paused to ask whether to continue.`;
+    return ({ format }) => format.label(format.labels.checkInRecorded, { duration: format.duration(elapsed) });
 }
 
-function approvalSteps(approvals: PendingApproval[] | undefined): MessageStep[] {
+function approvalSteps(
+    approvals: PendingApproval[] | undefined,
+    labels: ChatLabels,
+    language?: string,
+): MessageStep[] {
+    // As written now, for whatever reads the step; drawn again in the
+    // language in force each render (`LocalizedText`).
+    const now = {
+        format: createChatFormat(labels, language),
+        toolName: (slug: string, rawName?: string) => resolveToolDisplayName(slug, undefined, { labels, rawName }),
+    };
     return (approvals ?? []).map(approval => {
         // A check-in is recorded where a held tool call is, and answered the
         // same way; only its wording differs — nobody is approving a tool.
         const isCheckIn = approval.tool_slug === CHECK_IN_TOOL_SLUG;
-        const displayName = (approval as any).tool_name || resolveToolDisplayName(approval.tool_slug);
+        const rawName: string | undefined = (approval as any).tool_name || undefined;
+        if (isCheckIn) {
+            const title: LocalizedText = ({ format }) => format.labels.checkInTitle;
+            const body = describeRecordedCheckIn(approval.tool_input);
+            return {
+                id: approval.approval_uuid,
+                type: 'confirm-request' as const,
+                toolCallId: approval.approval_uuid,
+                toolName: rawName,
+                toolSlug: approval.tool_slug,
+                confirmLabel: title(now),
+                confirmDescription: body(now),
+                localizedConfirmLabel: title,
+                localizedConfirmDescription: body,
+                confirmStatus: 'pending' as const,
+            };
+        }
+        // The card's title is the tool's name, worked out when drawn.
+        const describe: LocalizedText = ({ format, toolName }) => describeApprovalRequest(
+            approval.tool_slug, approval.tool_input, approval.dispatch_mode, format.labels,
+            toolName(approval.tool_slug, rawName),
+        );
         return {
             id: approval.approval_uuid,
             type: 'confirm-request' as const,
             toolCallId: approval.approval_uuid,
-            toolName: displayName,
+            toolName: rawName,
             toolSlug: approval.tool_slug,
-            confirmLabel: isCheckIn ? 'Continue working?' : displayName,
-            confirmDescription: isCheckIn
-                ? describeRecordedCheckIn(approval.tool_input)
-                : describeApprovalRequest(
-                    approval.tool_slug, approval.tool_input, approval.dispatch_mode
-                ),
+            confirmDescription: describe(now),
+            localizedConfirmDescription: describe,
             confirmStatus: 'pending' as const,
         };
     });
@@ -337,9 +368,16 @@ export function turnJobsOf(jobs: ConversationJob[]): Map<string, string> {
     return turns;
 }
 
+/**
+ * A thread's jobs as the transcript's messages. What the chat writes itself
+ * (a check-in's question, an approval's description) is in `labels`, the
+ * labels in force when the thread loads.
+ */
 export function jobsToMessageProps(
     jobs: ConversationJob[],
-    storageApiUrl?: string
+    storageApiUrl?: string,
+    labels: ChatLabels = DEFAULT_LABELS,
+    language?: string,
 ): MessageProps[] {
     const messages: MessageProps[] = [];
     const turnOf = turnJobsOf(jobs);
@@ -385,7 +423,7 @@ export function jobsToMessageProps(
         // Appended after the steps, not woven in by sequence: a held call has no
         // step row to sort against, and it is by definition the last thing the
         // run did — everything after it is waiting on the answer.
-        steps.push(...approvalSteps(job.pending_approvals));
+        steps.push(...approvalSteps(job.pending_approvals, labels, language));
         const finalText = extractFinalText(job.steps);
 
         // A handoff *parent* often has nothing to say — it decided to hand over
@@ -591,10 +629,21 @@ export interface UseConversationsResult {
     searchConversations: (query: string) => void;
 }
 
+/** What `useConversations` reads when it writes into a loaded thread. */
+export interface UseConversationsOptions {
+    /** The labels in force, read when a thread loads; the library's English without it. */
+    getLabels?: () => ChatLabels;
+    /** The locale numbers are written for. */
+    getLanguage?: () => string | undefined;
+}
+
 export function useConversations(
     client: GatewayStreamClient | null,
-    storageApiUrl?: string
+    storageApiUrl?: string,
+    options: UseConversationsOptions = {},
 ): UseConversationsResult {
+    const latestOptions = useRef(options);
+    latestOptions.current = options;
     const [conversations, setConversations] = useState<ConversationSummary[]>([]);
     const [starredConversations, setStarredConversations] = useState<ConversationSummary[]>([]);
     const [starringDetected, setStarringDetected] = useState<boolean | null>(null);
@@ -666,8 +715,11 @@ export function useConversations(
             if (seq !== requestSeq.current) return null;
             setActiveConversationId(id);
             listClient.setConversationId(id);
+            const { getLabels, getLanguage } = latestOptions.current;
             return {
-                messages: jobsToMessageProps(detail.jobs, storageApiUrl),
+                messages: jobsToMessageProps(
+                    detail.jobs, storageApiUrl, getLabels?.() ?? DEFAULT_LABELS, getLanguage?.()
+                ),
                 detail,
             };
         } catch (e) {

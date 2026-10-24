@@ -15,7 +15,8 @@
        by side in fullscreen and their bottom borders have to meet. */
     height: var(--cb-header-height);
     flex-shrink: 0;
-    padding: 0 var(--cb-space-2) 0 var(--cb-space-4);
+    padding-block: 0;
+    padding-inline: var(--cb-space-4) var(--cb-space-2);
     border-bottom: 1px solid var(--cb-border-subtle);
 }
 
@@ -88,7 +89,8 @@
 
 .cb-drawer-search-icon {
     position: absolute;
-    left: 10px;
+    /* At the start of the field, which pads that side for it. */
+    inset-inline-start: 10px;
     top: 50%;
     transform: translateY(-50%);
     color: var(--cb-text-tertiary);
@@ -104,7 +106,8 @@
 .cb-drawer-search-input {
     width: 100%;
     height: 34px;
-    padding: 0 10px 0 32px;
+    padding-block: 0;
+    padding-inline: 32px 10px;
     border-radius: var(--cb-radius-md, 8px);
     border: 1px solid var(--cb-border-subtle);
     background: var(--cb-bg-primary);
@@ -117,7 +120,7 @@
 
 .cb-drawer-search-input:focus {
     border-color: var(--cb-focus-ring);
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+    box-shadow: 0 0 0 2px var(--cb-accent-tint-18);
 }
 
 .cb-conversation-list {
@@ -157,12 +160,12 @@
 }
 
 .cb-conversation-item.active {
-    background: #ede9fe;
+    background: var(--cb-accent-tint-12);
 }
 
 [data-theme='dark'] .cb-conversation-item.active,
 .cb-chat-container:not([data-theme='light']) .cb-conversation-item.active {
-    background: rgba(99, 102, 241, 0.22);
+    background: var(--cb-accent-tint-24);
 }
 
 .cb-conversation-title {
@@ -254,7 +257,7 @@
 }
 
 :root .cb-empty-new-chat-btn:hover {
-    background: rgba(99, 102, 241, 0.08);
+    background: var(--cb-accent-tint-8);
 }
 
 /* Loading Spinner */

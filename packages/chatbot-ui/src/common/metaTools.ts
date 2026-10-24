@@ -39,8 +39,9 @@
  */
 
 import { parseToolOutput } from '../api/toolOutput';
-import { formatLabel } from './labels';
-import type { ChatLabels } from './labels';
+import { DEFAULT_LABELS, formatLabel, formatPlural } from './labels';
+import type { ChatLabels, LabelValue } from './labels';
+import { formatList } from './i18n';
 
 export const META_TOOL_SLUGS = ['search_tools', 'load_tool', 'search_skills', 'load_skill'] as const;
 
@@ -60,8 +61,14 @@ export type MetaToolLabels = Pick<
     | 'metaSearchedSkills'
     | 'metaLoadingSkill'
     | 'metaLoadedSkill'
-    | 'metaRefused'
->;
+> & {
+    /** A plain text (every form) or plural forms. */
+    metaRefused: LabelValue;
+    /** Since 4.2; the library's English when left out. */
+    quotedText?: string;
+    /** Since 4.2; the library's English when left out. */
+    parenthetical?: string;
+};
 
 export interface MetaToolDescription {
     /** The row's text, in place of the verb and tool name: "Loaded tools · a, b". */
@@ -114,6 +121,7 @@ export function describeMetaTool(
     result: unknown,
     labels: MetaToolLabels,
     toolName: (name: string) => string = name => name,
+    language?: string,
 ): MetaToolDescription | null {
     if (!isMetaTool(slug) || status === 'failed') return null;
     const running = status === 'running';
@@ -127,14 +135,16 @@ export function describeMetaTool(
                 ? (tools ? labels.metaSearchingTools : labels.metaSearchingSkills)
                 : (tools ? labels.metaSearchedTools : labels.metaSearchedSkills);
             const query = nonEmptyString(input?.query);
-            return query ? { text, detail: `“${query}”` } : { text };
+            return query
+                ? { text, detail: formatLabel(labels.quotedText ?? DEFAULT_LABELS.quotedText, { text: query }) }
+                : { text };
         }
 
         case 'load_tool': {
             const requested = stringList(input?.names).map(toolName);
             if (running) {
                 return requested.length > 0
-                    ? { text: labels.metaLoadingTools, detail: requested.join(', ') }
+                    ? { text: labels.metaLoadingTools, detail: formatList(requested, language) }
                     : { text: labels.metaLoadingTools };
             }
             const output = asRecord(parseToolOutput(result));
@@ -147,10 +157,13 @@ export function describeMetaTool(
                 : requested;
             if (loaded.length === 0) return null;
             const refusedCount = Array.isArray(output?.refused) ? output!.refused.length : 0;
-            const text = formatLabel(labels.metaLoadedTools, { names: loaded.join(', ') });
+            const text = formatLabel(labels.metaLoadedTools, { names: formatList(loaded, language) });
             return {
                 text: refusedCount > 0
-                    ? `${text} (${formatLabel(labels.metaRefused, { count: refusedCount })})`
+                    ? formatLabel(labels.parenthetical ?? DEFAULT_LABELS.parenthetical, {
+                        text,
+                        detail: formatPlural(labels.metaRefused, refusedCount, {}, language),
+                    })
                     : text,
             };
         }

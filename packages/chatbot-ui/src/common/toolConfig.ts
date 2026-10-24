@@ -1,4 +1,5 @@
 import type * as React from 'react';
+import { DEFAULT_LABELS, type ChatLabels, type LabelKey } from './labels';
 
 /**
  * One tool's whole frontend contract, keyed by slug in ``ChatApp``'s ``tools``
@@ -120,7 +121,10 @@ export interface ServerToolConfig extends ToolPresentation {
 export interface ToolPresentation {
     /**
      * Human-readable display name for this tool. Shown in step badges,
-     * sub-agent summaries, and group headers in place of the tool slug key.
+     * sub-agent summaries, and group headers in place of the tool slug key —
+     * live and in a reloaded conversation, since the name is worked out when a
+     * row is drawn. The library does not translate it: pass it in the user's
+     * language (and a new `tools` map when the language changes).
      */
     name?: string;
     /** Alias for {@link name}. */
@@ -334,57 +338,71 @@ export const isServerTool = (config: ToolConfig): config is ServerToolConfig =>
     typeof (config as ServerToolConfig).preview === 'function';
 
 /**
- * Known tool names across the platform, matching the ``quota.tools.name``
- * seeds in the backend services. Used as the default when a tool config or
- * event does not provide an explicit ``name`` or ``displayName``.
+ * The platform's tools, by slug, and the label that names each — matching the
+ * ``quota.tools`` seeds in the backend services. Labels, so a host translates
+ * them like every other text (`config.translations`); the library's English
+ * for each is {@link DEFAULT_TOOL_NAMES}. A host names its own tools — and
+ * may rename one of these — with its `tools` entry's `displayName`, which
+ * wins over these.
  */
-export const DEFAULT_TOOL_NAMES: Record<string, string> = {
-    context_retrieve: 'Retrieve saved context',
-    context_upsert: 'Save context',
-    context_upsert_user: 'Save private context',
-    context_upsert_tenant: 'Save organisation context',
-    context_upsert_partner: 'Save platform-wide context',
-    web_search: 'Web search',
-    search_web: 'Web search',
-    fetch_web_page: 'Fetch web page',
-    generate_checklist: 'Checklist Generator',
-    read_page_context: 'Read page context',
-    capture_page_screenshot: 'Capture page screenshot',
-    navigate_app_route: 'Navigate app route',
-    generate_image: 'Generate image',
-    get_file_description: 'Get file description',
-    analyze_file: 'Analyze file',
-    file_analyzer: 'Analyze file',
-    ask_user_questions: 'Ask user questions',
-    generate_structured_output: 'Generate structured output',
-    structured_output: 'Structured output',
-    enhance_texts: 'Enhance texts',
-    text_enhancer: 'Text enhancer',
-    translate_texts: 'Translate texts',
-    translator: 'Translator',
-    preview_property_agent_result: 'Preview investment recommendation',
-    properties_get_persona: 'Get user persona',
-    find_on_page: 'Find on page',
-    read_page_diagnostics: 'Read page diagnostics',
-    validate_checklist: 'Validate checklist',
+export const TOOL_NAME_LABELS: Readonly<Record<string, LabelKey>> = Object.freeze({
+    context_retrieve: 'toolNameContextRetrieve',
+    context_upsert: 'toolNameContextUpsert',
+    context_upsert_user: 'toolNameContextUpsertUser',
+    context_upsert_tenant: 'toolNameContextUpsertTenant',
+    context_upsert_partner: 'toolNameContextUpsertPartner',
+    web_search: 'toolNameWebSearch',
+    search_web: 'toolNameWebSearch',
+    fetch_web_page: 'toolNameFetchWebPage',
+    generate_checklist: 'toolNameGenerateChecklist',
+    read_page_context: 'toolNameReadPageContext',
+    capture_page_screenshot: 'toolNameCapturePageScreenshot',
+    navigate_app_route: 'toolNameNavigateAppRoute',
+    generate_image: 'toolNameGenerateImage',
+    get_file_description: 'toolNameGetFileDescription',
+    analyze_file: 'toolNameAnalyzeFile',
+    file_analyzer: 'toolNameAnalyzeFile',
+    ask_user_questions: 'toolNameAskUserQuestions',
+    generate_structured_output: 'toolNameGenerateStructuredOutput',
+    structured_output: 'toolNameStructuredOutput',
+    enhance_texts: 'toolNameEnhanceTexts',
+    text_enhancer: 'toolNameTextEnhancer',
+    translate_texts: 'toolNameTranslateTexts',
+    translator: 'toolNameTranslator',
+    preview_property_agent_result: 'toolNamePreviewPropertyAgentResult',
+    properties_get_persona: 'toolNamePropertiesGetPersona',
+    find_on_page: 'toolNameFindOnPage',
+    read_page_diagnostics: 'toolNameReadPageDiagnostics',
+    validate_checklist: 'toolNameValidateChecklist',
     // Kept for transcripts from before 4.0, when the host offered this client
     // tool; nothing calls it any more.
-    switch_agent: 'Switch agent',
-    checklist_read: 'Read checklist',
-    checklist_apply_suggestions: 'Apply checklist suggestions',
-    read_translation_context: 'Read translation context',
-    propose_translations: 'Propose translations',
-    show_step_output: 'Action Execution',
-    find_conversation_artifacts: 'Search Conversation Artifacts',
-    get_step_details: 'Step Details',
+    switch_agent: 'toolNameSwitchAgent',
+    checklist_read: 'toolNameChecklistRead',
+    checklist_apply_suggestions: 'toolNameChecklistApplySuggestions',
+    read_translation_context: 'toolNameReadTranslationContext',
+    propose_translations: 'toolNameProposeTranslations',
+    show_step_output: 'toolNameShowStepOutput',
+    find_conversation_artifacts: 'toolNameFindConversationArtifacts',
+    get_step_details: 'toolNameGetStepDetails',
     // The platform's meta-tools (central mode). A step of one renders as what
     // it did — "Loaded skill · …" — unless the host names the tool itself; see
     // common/metaTools.ts. These names are what the generic row falls back to.
-    search_tools: 'Search tools',
-    load_tool: 'Load tools',
-    search_skills: 'Search skills',
-    load_skill: 'Load skill',
-};
+    search_tools: 'toolNameSearchTools',
+    load_tool: 'toolNameLoadTool',
+    search_skills: 'toolNameSearchSkills',
+    load_skill: 'toolNameLoadSkill',
+} satisfies Record<string, LabelKey>);
+
+/**
+ * The platform's tool names in the library's English, by slug: the English of
+ * {@link TOOL_NAME_LABELS}. Kept for hosts that read it; the chat itself
+ * names a tool through the labels, in the chat's language, and no longer
+ * reads this map — name a tool with its `tools` entry's `displayName`, or
+ * translate its label.
+ */
+export const DEFAULT_TOOL_NAMES: Record<string, string> = Object.fromEntries(
+    Object.entries(TOOL_NAME_LABELS).map(([slug, key]) => [slug, DEFAULT_LABELS[key] as string]),
+);
 
 /**
  * Convert a snake_case or kebab-case tool slug into Title Case words.
@@ -412,28 +430,51 @@ export const hasHostDisplayName = (slug: string, tools?: Record<string, ToolConf
     );
 };
 
+/** How {@link resolveToolDisplayName} names what the host has not. */
+export interface ToolNameOptions {
+    /** The labels in force (`useLabels()`): the platform's tools are named in them. Default: the library's English. */
+    labels?: Pick<ChatLabels, 'toolName'> & Partial<Record<LabelKey, unknown>>;
+    /** The platform's own name for the tool (an event's `tool_name`): used for a slug no label names. */
+    rawName?: string | null;
+    /** What a call with neither a name nor a slug is called. Default: `labels.toolName`. */
+    fallback?: string;
+}
+
 /**
- * Resolves a human-readable tool display name instead of the raw tool slug key.
+ * The name a tool is shown by, worked out when it is drawn — so it follows
+ * the host's `tools` and the chat's language, live and in a reloaded
+ * conversation alike.
  *
  * Precedence:
- * 1. Explicit ``name`` or ``displayName`` on the registered tool config or definition.
- * 2. Platform default name from ``DEFAULT_TOOL_NAMES`` (e.g. ``context_retrieve`` -> ``Retrieve saved context``).
- * 3. Title-cased fallback formatted from the slug (e.g. ``my_custom_tool`` -> ``My Custom Tool``).
+ * 1. The host's ``name`` or ``displayName`` on the tool's entry, or on its definition.
+ * 2. The platform tool's label ({@link TOOL_NAME_LABELS}) in `labels` — `web_search` → "Web search", or its translation.
+ * 3. `rawName`, the platform's own name for it.
+ * 4. A name already in words (spaces, no underscores) as it is.
+ * 5. The slug in Title Case words (``my_custom_tool`` → ``My Custom Tool``).
+ *
+ * The third argument may still be a plain fallback text, as before 4.2.
  */
 export const resolveToolDisplayName = (
     slugOrName: string,
-    tools?: Record<string, ToolConfig>
+    tools?: Record<string, ToolConfig>,
+    options: string | ToolNameOptions = {},
 ): string => {
-    if (!slugOrName) return 'Tool';
-    const config = tools?.[slugOrName];
+    const { labels = DEFAULT_LABELS, rawName, fallback } = typeof options === 'string' ? { fallback: options } : options;
+    const raw = typeof rawName === 'string' && rawName.trim() ? rawName.trim() : undefined;
+    const key = slugOrName || raw;
+    if (!key) return fallback ?? labels.toolName ?? DEFAULT_LABELS.toolName;
+    const config = tools?.[key] ?? (raw ? tools?.[raw] : undefined);
     if (config?.name) return config.name;
     if (config?.displayName) return config.displayName;
     if (config?.definition?.name) return config.definition.name;
     if (config?.definition?.displayName) return config.definition.displayName;
-    if (DEFAULT_TOOL_NAMES[slugOrName]) return DEFAULT_TOOL_NAMES[slugOrName];
-    // If the input already contains spaces and has no underscores, treat as already formatted
-    if (slugOrName.includes(' ') && !slugOrName.includes('_')) {
-        return slugOrName;
+    const labelKey = Object.prototype.hasOwnProperty.call(TOOL_NAME_LABELS, key) ? TOOL_NAME_LABELS[key] : undefined;
+    if (labelKey) {
+        const named = (labels as Record<string, unknown>)[labelKey];
+        return typeof named === 'string' && named.trim() ? named : DEFAULT_LABELS[labelKey] as string;
     }
-    return formatToolSlug(slugOrName);
+    if (raw && raw !== key) return raw;
+    // A name already in words, not a slug: as it is.
+    if (key.includes(' ') && !key.includes('_')) return key;
+    return formatToolSlug(key);
 };

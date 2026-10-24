@@ -44,6 +44,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
     const canCopyLink = useChatState(s => s.canCopyConversationLink);
     const canSwitchMode = useChatState(s => s.canSwitchMode);
     const canShowCredits = useChatState(s => s.canShowCredits);
+    const canManageStandingContext = useChatState(s => s.canManageStandingContext);
     const canUseFiles = useChatState(s => s.storageClient !== null);
     const isArtifactsOpen = useChatState(s => s.isArtifactsPanelOpen);
     const hostHandlesOpenChange = useChatState(s => s.hostHandlesOpenChange);
@@ -125,6 +126,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
         : [];
     const showSwitchView = views.some(view => !view.active);
     const showCreditUsage = header.creditUsage && canShowCredits;
+    const showStandingContext = header.standingContext && canManageStandingContext;
     // A conversation's files exist only once it does, and the storage API
     // needs the user's token to list them. Not while the Artifacts view
     // stands in the conversation's place: the conversation the panel would
@@ -133,7 +135,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
     const showFiles = header.files && canUseFiles && Boolean(activeConversationId) && !isArtifactsOpen;
     const showCopyId = header.copyConversationId && Boolean(activeConversationId);
     const showDeleteThread = header.deleteConversation && Boolean(activeConversationId);
-    const hasOtherMenuItems = showCreditUsage || showCopyId || showDeleteThread || header.menuItems.length > 0;
+    const hasOtherMenuItems =
+        showCreditUsage || showStandingContext || showCopyId || showDeleteThread || header.menuItems.length > 0;
     const hasMenuItems = showSwitchView || hasOtherMenuItems;
     const canClose = hostHandlesOpenChange || (mode === 'floating' && !embedded);
 
@@ -276,6 +279,18 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
                                     >
                                         {icons.creditUsage}
                                         <span>{labels.creditUsage}</span>
+                                    </button>
+                                )}
+
+                                {showStandingContext && (
+                                    <button
+                                        type="button"
+                                        className="cb-header-menu-item"
+                                        onClick={runMenuItem(actions.openStandingContext)}
+                                        role="menuitem"
+                                    >
+                                        {icons.standingContext}
+                                        <span>{labels.standingContext}</span>
                                     </button>
                                 )}
 

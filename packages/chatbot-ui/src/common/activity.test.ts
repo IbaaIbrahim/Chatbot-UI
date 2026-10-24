@@ -85,8 +85,9 @@ describe('summarizeActivity', () => {
     });
 
     it('names one tool called several times, and counts several tools', () => {
+        // Without a namer of the host's, a platform tool is named by its label.
         expect(summarizeActivity([call('web_search'), call('web_search'), thought()], DEFAULT_LABELS))
-            .toBe('Thought once · ran web_search 2 times');
+            .toBe('Thought once · ran Web search 2 times');
         expect(summarizeActivity([call('web_search'), call('fetch_web_page')], DEFAULT_LABELS))
             .toBe('Ran 2 tools');
     });
@@ -96,7 +97,7 @@ describe('summarizeActivity', () => {
         const steps = [agent, call('generate_checklist', { toolStatus: 'failed' }), call('load_tool')];
 
         expect(summarizeActivity(steps, DEFAULT_LABELS))
-            .toBe('Loaded tools · ran generate_checklist · used Checklist Builder · 1 failed');
+            .toBe('Loaded tools · ran Checklist Generator · used Checklist Builder · 1 failed');
     });
 });
 
@@ -124,12 +125,13 @@ describe('describeLatestActivity', () => {
     it('prefers the step still running over a later finished one', () => {
         const steps = [call('slow', { toolStatus: 'running' }), call('fast')];
 
-        expect(describeLatestActivity(steps, DEFAULT_LABELS)).toEqual({ text: 'Running', detail: 'slow' });
+        // A slug no label names, and no name from the platform: the slug in words.
+        expect(describeLatestActivity(steps, DEFAULT_LABELS)).toEqual({ text: 'Running', detail: 'Slow' });
     });
 
     it('shows the last step done while the next is awaited', () => {
         expect(describeLatestActivity([thought(), call('list_inspections')], DEFAULT_LABELS))
-            .toEqual({ text: 'Ran', detail: 'list_inspections' });
+            .toEqual({ text: 'Ran', detail: 'List Inspections' });
     });
 
     it('says a sub-agent is working', () => {

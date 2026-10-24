@@ -24,6 +24,8 @@ export interface ConversationSidebarProps {
 }
 
 interface ConversationGroup {
+    /** Stable whatever the language: the group's React key. Two translations may word two groups alike. */
+    id: 'today' | 'yesterday' | 'week' | 'older';
     label: string;
     items: ConversationSummary[];
 }
@@ -31,13 +33,13 @@ interface ConversationGroup {
 function groupByDate(items: ConversationSummary[], labels: ChatLabels): ConversationGroup[] {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const boundaries = [
-        { label: labels.today, from: startOfToday },
-        { label: labels.yesterday, from: startOfToday - DAY_MS },
-        { label: labels.previous7Days, from: startOfToday - 6 * DAY_MS },
-        { label: labels.older, from: Number.NEGATIVE_INFINITY },
+    const boundaries: Array<{ id: ConversationGroup['id']; label: string; from: number }> = [
+        { id: 'today', label: labels.today, from: startOfToday },
+        { id: 'yesterday', label: labels.yesterday, from: startOfToday - DAY_MS },
+        { id: 'week', label: labels.previous7Days, from: startOfToday - 6 * DAY_MS },
+        { id: 'older', label: labels.older, from: Number.NEGATIVE_INFINITY },
     ];
-    const groups = boundaries.map(({ label }) => ({ label, items: [] as ConversationSummary[] }));
+    const groups: ConversationGroup[] = boundaries.map(({ id, label }) => ({ id, label, items: [] }));
     for (const conversation of items) {
         const time = new Date(conversation.updated_at).getTime();
         const index = boundaries.findIndex(boundary => time >= boundary.from);
@@ -183,6 +185,7 @@ const ConversationRow: React.FC<ConversationRowProps> = ({
                 <input
                     ref={inputRef}
                     className="cb-conversation-rename-input"
+                    dir="auto"
                     value={draft}
                     aria-label={labels.conversationTitle}
                     maxLength={200}
@@ -201,7 +204,10 @@ const ConversationRow: React.FC<ConversationRowProps> = ({
                     }}
                 />
             ) : (
-                <div className="cb-conversation-title">{title}</div>
+                // Its own direction (2026-10-18): a title in another script
+                // than the page keeps its punctuation where it belongs, and is
+                // cut short at its own end.
+                <div className="cb-conversation-title cb-bidi" dir="auto">{title}</div>
             )}
 
             {hasActions && !isRenaming && (
@@ -457,7 +463,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                     {showStarred && <div className="cb-sidebar-section-title">{labels.recents}</div>}
                     {!hasAnyConversation && renderEmptyHistory()}
                     {recentGroups.map(group => (
-                        <div key={group.label} className="cb-drawer-group">
+                        <div key={group.id} className="cb-drawer-group">
                             <div className="cb-drawer-group-title">{group.label}</div>
                             {group.items.map(renderRow)}
                         </div>
@@ -530,7 +536,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                         }}
                     >
                         {item.icon && <span className="cb-sidebar-nav-icon">{item.icon}</span>}
-                        <span className="cb-sidebar-nav-label">{item.label}</span>
+                        <span className="cb-sidebar-nav-label cb-bidi" dir="auto">{item.label}</span>
                         {item.badge !== undefined && <span className="cb-sidebar-nav-badge">{item.badge}</span>}
                     </button>
                 ))}
@@ -543,6 +549,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                         <input
                             type="search"
                             className="cb-drawer-search-input"
+                            dir="auto"
                             placeholder={labels.searchPlaceholder}
                             aria-label={labels.searchPlaceholder}
                             value={query}

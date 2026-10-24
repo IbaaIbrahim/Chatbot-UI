@@ -44,6 +44,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
                 className="cb-action-btn"
                 onClick={handleCopy}
                 title={copied ? labels.copied : labels.copy}
+                aria-label={copied ? labels.copied : labels.copy}
             >
                 {copied ? (
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -62,6 +63,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
                     className="cb-action-btn"
                     onClick={(e) => { e.stopPropagation(); onReply(); }}
                     title={labels.reply}
+                    aria-label={labels.reply}
                 >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <polyline points="9 17 4 12 9 7" />
@@ -75,6 +77,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
                     className="cb-action-btn"
                     onClick={(e) => { e.stopPropagation(); onEdit(); }}
                     title={labels.edit}
+                    aria-label={labels.edit}
                 >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />

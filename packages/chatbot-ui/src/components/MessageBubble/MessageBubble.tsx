@@ -12,13 +12,13 @@ import { AuthenticatedImage } from '../AuthenticatedImage/AuthenticatedImage';
 import { BlinkingIndicator } from '../BlinkingIndicator/BlinkingIndicator';
 import { MessageActions } from '../MessageActions/MessageActions';
 import { BranchNavigator } from '../BranchNavigator/BranchNavigator';
-import { useLabels, useMarkdownConfig } from '../../store/hooks';
-import type { ChatLabels } from '../../common/labels';
+import { useChatFormat, useChatLanguage, useLabels, useMarkdownConfig } from '../../store/hooks';
+import { formatLabel, type ChatLabels } from '../../common/labels';
+import type { ChatFormat } from '../../common/i18n';
 import { toPlainText } from '../../common/markdownBlocks';
 import { MarkdownContent } from '../MarkdownContent/MarkdownContent';
 import {
     AttachmentViewerModal,
-    formatFileSize,
     getFileIcon,
     inferContentType,
     type Attachment,
@@ -31,10 +31,39 @@ export type { Attachment } from '../AttachmentViewer/AttachmentViewer';
 
 export type MessageStepType = 'text' | 'thinking' | 'tool-call' | 'confirm-request' | 'sub-agent' | 'error' | 'notice';
 
+/**
+ * What a {@link LocalizedText} is written with: the chat's labels and locale
+ * as they are now, and how the chat names a tool (the host's `tools`, then
+ * the platform tool's label, then the platform's own name).
+ */
+export interface LocalizeContext {
+    format: ChatFormat;
+    toolName: (slugOrName: string, rawName?: string) => string;
+}
+
+/**
+ * Text the chat wrote into a step itself — an error, a "waiting for
+ * capacity" notice, a check-in's or an approval's words — written again each
+ * time the step is drawn, so it follows a language switched after it was
+ * written (since 4.2). The step's plain field (`content`, `confirmLabel`,
+ * `confirmDescription`) keeps the text as first written, for whatever reads
+ * the step rather than draws it.
+ */
+export type LocalizedText = (context: LocalizeContext) => string;
+
 export interface MessageStep {
     id: string;
     type: MessageStepType;
     content?: string;
+    /** `content` in the language in force when drawn; see {@link LocalizedText}. */
+    localizedContent?: LocalizedText;
+    /**
+     * The platform's own name for the tool (an event's `tool_name`), when it
+     * sent one — not the name shown. Since 4.2 the name shown is worked out
+     * when the step is drawn, from `toolSlug` (`resolveToolDisplayName`), so
+     * it follows the host's `tools` and the chat's language, live and after a
+     * reload alike; this is its last resort for a slug nothing else names.
+     */
     toolName?: string;
     toolSlug?: string;
     toolArgs?: any;
@@ -44,8 +73,13 @@ export interface MessageStep {
     thoughts?: string[];
     // Confirm request fields
     toolCallId?: string;
+    /** The card's title. An approval's is its tool's name, worked out when drawn; a check-in's is a label. */
     confirmLabel?: string;
     confirmDescription?: string;
+    /** `confirmLabel` in the language in force when drawn. */
+    localizedConfirmLabel?: LocalizedText;
+    /** `confirmDescription` in the language in force when drawn. */
+    localizedConfirmDescription?: LocalizedText;
     confirmStatus?: ConfirmStatus;
     /**
      * Sub-agent fields. A ``sub-agent`` step is one agent's whole run rendered
@@ -179,6 +213,7 @@ export interface MessageProps {
 // --- Attachment Chip (Claude-style compact chip above message) ---
 const AttachmentChip: React.FC<{ att: Attachment }> = ({ att }) => {
     const [modalOpen, setModalOpen] = useState(false);
+    const format = useChatFormat();
 
     const handleClick = () => {
         setModalOpen(true);
@@ -209,9 +244,9 @@ const AttachmentChip: React.FC<{ att: Attachment }> = ({ att }) => {
                     </div>
                 )}
                 <div className="cb-att-chip-info">
-                    <span className="cb-att-chip-name">{att.name || 'File'}</span>
+                    <span className="cb-att-chip-name cb-bidi" dir="auto">{att.name || format.labels.fileName}</span>
                     {att.size != null && (
-                        <span className="cb-att-chip-size">{formatFileSize(att.size)}</span>
+                        <span className="cb-att-chip-size">{format.fileSize(att.size)}</span>
                     )}
                 </div>
                 <div className="cb-att-chip-action">
@@ -262,6 +297,8 @@ function isTurnInFlight(props: MessageBubbleViewProps): boolean {
 const MessageBubbleView: React.FC<MessageBubbleViewProps> = (props) => {
     const { role, steps, shouldAnimate = true } = props;
     const labels = useLabels();
+    const localize = useLocalizeContext(props.tools);
+    const nameTool = localize.toolName;
     const { blockRenderers } = useMarkdownConfig();
     // Rich blocks are how the assistant presents an answer. A user's message
     // stays as they wrote it — a fence they pasted is code, and "Copy" gives
@@ -415,7 +452,7 @@ const MessageBubbleView: React.FC<MessageBubbleViewProps> = (props) => {
                 )}
 
                 <div className="cb-message-content-wrapper" style={{ width: '100%', position: 'relative' }}>
-                    {role === 'user' || props.embedded ? null : <div className="cb-sender-name">{props.senderName || labels.assistantName}</div>}
+                    {role === 'user' || props.embedded ? null : <div className="cb-sender-name cb-bidi" dir="auto">{props.senderName || labels.assistantName}</div>}
 
                     {props.branchPoint && props.branchCount && props.branchCount > 1 && (
                         <BranchNavigator
@@ -432,7 +469,7 @@ const MessageBubbleView: React.FC<MessageBubbleViewProps> = (props) => {
                                 <polyline points="9 17 4 12 9 7" />
                                 <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
                             </svg>
-                            <span className="cb-reply-indicator-text">
+                            <span className="cb-reply-indicator-text cb-bidi" dir="auto">
                                 {props.replyToContent.length > 80
                                     ? props.replyToContent.slice(0, 80) + '...'
                                     : props.replyToContent}
@@ -448,6 +485,7 @@ const MessageBubbleView: React.FC<MessageBubbleViewProps> = (props) => {
                         <div className="cb-edit-container">
                             <textarea
                                 className="cb-edit-textarea"
+                                dir="auto"
                                 value={editText}
                                 onChange={(e) => setEditText(e.target.value)}
                                 onKeyDown={handleEditKeyDown}
@@ -457,11 +495,11 @@ const MessageBubbleView: React.FC<MessageBubbleViewProps> = (props) => {
                             <div className="cb-edit-actions">
                                 <button className="cb-edit-cancel" onClick={handleCancelEdit}>
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                    Cancel
+                                    {labels.cancel}
                                 </button>
                                 <button className="cb-edit-save" onClick={handleSaveEdit} disabled={!editText.trim()}>
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-                                    Send
+                                    {labels.editSend}
                                 </button>
                             </div>
                         </div>
@@ -521,14 +559,18 @@ const MessageBubbleView: React.FC<MessageBubbleViewProps> = (props) => {
                                     return (
                                         <div key={step.id} className="cb-step-confirm">
                                             {(() => {
-                                                const toolSlug = step.toolSlug || step.toolName || 'Tool';
-                                                const displayName = resolveToolDisplayName(step.toolName || toolSlug, props.tools);
+                                                const toolSlug = step.toolSlug || step.toolName;
+                                                const displayName = toolSlug
+                                                    ? nameTool(toolSlug, step.toolName)
+                                                    : labels.toolName;
                                                 return (
                                                     <ConfirmButtons
                                                         toolCallId={step.toolCallId || step.id}
                                                         toolName={displayName}
-                                                        label={step.confirmLabel || displayName || 'Confirm Action'}
-                                                        description={step.confirmDescription}
+                                                        label={step.localizedConfirmLabel?.(localize)
+                                                            || step.confirmLabel
+                                                            || (toolSlug ? displayName : labels.confirmAction)}
+                                                        description={step.localizedConfirmDescription?.(localize) ?? step.confirmDescription}
                                                         status={step.confirmStatus || 'pending'}
                                                         onConfirm={props.onConfirm || (() => { })}
                                                         onReject={props.onReject || (() => { })}
@@ -544,6 +586,7 @@ const MessageBubbleView: React.FC<MessageBubbleViewProps> = (props) => {
                                         <ErrorBlock
                                             key={step.id}
                                             step={step}
+                                            text={step.localizedContent?.(localize) ?? step.content}
                                             onRetry={props.onRetry}
                                             onContinue={props.onContinue}
                                         />
@@ -554,7 +597,7 @@ const MessageBubbleView: React.FC<MessageBubbleViewProps> = (props) => {
                                     return (
                                         <div key={step.id} className="cb-step-notice" role="status">
                                             <span className="cb-notice-spinner" />
-                                            <span>{step.content}</span>
+                                            <span className="cb-step-notice-text cb-bidi" dir="auto">{step.localizedContent?.(localize) ?? step.content}</span>
                                         </div>
                                     );
                                 }
@@ -596,7 +639,9 @@ const MessageBubbleView: React.FC<MessageBubbleViewProps> = (props) => {
                                     onAction={action.onAction}
                                     payload={action.payload}
                                     result={action.result}
-                                    toolName={resolveToolDisplayName(action.step.toolName || action.step.toolSlug || 'Tool', props.tools)}
+                                    toolName={action.step.toolSlug || action.step.toolName
+                                        ? nameTool(action.step.toolSlug || action.step.toolName || '', action.step.toolName)
+                                        : labels.toolName}
                                     label={action.label}
                                     render={action.render}
                                 />
@@ -636,7 +681,7 @@ const MessageBubbleView: React.FC<MessageBubbleViewProps> = (props) => {
                             <polyline points="9 17 4 12 9 7" />
                             <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
                         </svg>
-                        Reply
+                        {labels.reply}
                     </div>
                 )}
             </div>
@@ -798,7 +843,8 @@ const SubAgentBlock = ({
      */
     turnInFlight?: boolean;
 }) => {
-    const labels = useLabels();
+    const format = useChatFormat();
+    const { labels } = format;
     const [isOpen, setIsOpen] = useState(false);
     const isRunning = step.toolStatus === 'running';
     const failed = step.toolStatus === 'failed';
@@ -814,6 +860,7 @@ const SubAgentBlock = ({
     // transcript and read as the reply. Naming the tools it ran says what
     // happened without pretending to be the answer, and its own words stay
     // inside the disclosure for anyone who wants them.
+    const nameTool = useToolNamer(handlers.tools);
     const toolsUsed = React.useMemo(() => {
         const names = new Set<string>();
         const walk = (list: MessageStep[]) => {
@@ -821,7 +868,7 @@ const SubAgentBlock = ({
                 if (child.type === 'tool-call') {
                     const slug = child.toolSlug || child.toolName;
                     if (slug) {
-                        names.add(resolveToolDisplayName(child.toolName || slug, handlers.tools));
+                        names.add(nameTool(slug, child.toolName));
                     }
                 }
                 if (child.subSteps) walk(child.subSteps);
@@ -829,11 +876,12 @@ const SubAgentBlock = ({
         };
         walk(step.subSteps ?? []);
         return [...names];
-    }, [step.subSteps, handlers.tools]);
+    }, [step.subSteps, nameTool]);
 
     const summary = toolsUsed.length > 0
-        ? toolsUsed.join(', ')
-        : `${subStepCount} step${subStepCount === 1 ? '' : 's'}`;
+        ? format.list(toolsUsed)
+        : format.plural(labels.steps, subStepCount);
+    const agentName = step.agentName || labels.subAgentName;
     // Anything to reveal at all — steps, or the agent's own account of its work.
     const hasDetail = subStepCount > 0 || Boolean(step.content);
 
@@ -854,9 +902,8 @@ const SubAgentBlock = ({
                     </svg>
                 )}
 
-                <span className="cb-sub-agent-name">
-                    {step.agentName || 'Sub-agent'}
-                    {failed ? ' — failed' : ''}
+                <span className="cb-sub-agent-name cb-bidi" dir="auto">
+                    {failed ? formatLabel(labels.subAgentFailed, { name: agentName }) : agentName}
                     {!isRunning && !failed && (
                         <span className="cb-sub-agent-summary"> · {summary}</span>
                     )}
@@ -911,6 +958,29 @@ const SubAgentBlock = ({
 };
 
 /**
+ * How this chat names a tool when drawing it: the host's `tools` entry by
+ * slug, then the platform tool's label in the chat's language, then the
+ * platform's own name, then the slug in words (`resolveToolDisplayName`).
+ * Worked out at render, never stored, so a reloaded conversation and a
+ * language switched later name tools the same way as a live turn.
+ */
+function useToolNamer(tools: Record<string, ToolConfig> | undefined): (slugOrName: string, rawName?: string) => string {
+    const labels = useLabels();
+    return useCallback(
+        (slugOrName: string, rawName?: string) =>
+            resolveToolDisplayName(slugOrName, tools, { labels, rawName, fallback: labels.toolName }),
+        [labels, tools]
+    );
+}
+
+/** What a step's {@link LocalizedText} is written with, as of this render. */
+function useLocalizeContext(tools: Record<string, ToolConfig> | undefined): LocalizeContext {
+    const format = useChatFormat();
+    const toolName = useToolNamer(tools);
+    return React.useMemo(() => ({ format, toolName }), [format, toolName]);
+}
+
+/**
  * A failure the user can do something about.
  *
  * Deliberately a block with a button rather than a sentence appended to the
@@ -920,10 +990,13 @@ const SubAgentBlock = ({
  */
 const ErrorBlock = ({
     step,
+    text,
     onRetry,
     onContinue,
 }: {
     step: MessageStep;
+    /** What it says, in the language in force: the step's `localizedContent`, else its `content`. */
+    text: string | undefined;
     onRetry?: () => void;
     onContinue?: () => void;
 }) => {
@@ -947,7 +1020,7 @@ const ErrorBlock = ({
                     <line x1="12" y1="8" x2="12" y2="12" />
                     <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
-                <span className="cb-error-text">{step.content}</span>
+                <span className="cb-error-text cb-bidi" dir="auto">{text}</span>
             </div>
             {action?.handler && (
                 <button
@@ -970,13 +1043,15 @@ interface ModernToolCallRowProps {
 
 const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defaultExpanded = false }) => {
     const labels = useLabels();
+    const language = useChatLanguage();
     const [expanded, setExpanded] = useState(defaultExpanded);
     const resolved = resolveStepAction(step, props, labels);
     const onStep = resolved?.placement === 'step' ? resolved : undefined;
     const isRunning = step.toolStatus === 'running';
     const isFailed = step.toolStatus === 'failed';
-    const toolSlug = step.toolSlug || step.toolName || 'command';
-    const toolName = resolveToolDisplayName(step.toolName || toolSlug, props.tools);
+    const nameTool = useToolNamer(props.tools);
+    const toolSlug = step.toolSlug || step.toolName || '';
+    const toolName = toolSlug ? nameTool(toolSlug, step.toolName) : labels.toolName;
     // A meta-tool step reads as what it did ("Loaded skill · …") rather than
     // "Ran Load skill" — see common/metaTools.ts. Not when the host named the
     // tool itself, and not when the summary has nothing true to say (a failed
@@ -988,7 +1063,8 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
             step.toolArgs,
             step.toolResult,
             labels,
-            name => resolveToolDisplayName(name, props.tools)
+            name => nameTool(name),
+            language
         )
         : null;
 
@@ -1025,14 +1101,14 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
                     {meta ? (
                         <span className="cb-modern-tool-label" title={toolSlug}>
                             <span className="cb-modern-tool-meta-text">{meta.text}</span>
-                            {meta.detail && <span className="cb-modern-tool-meta-detail">{meta.detail}</span>}
+                            {meta.detail && <span className="cb-modern-tool-meta-detail" dir="auto">{meta.detail}</span>}
                         </span>
                     ) : (
                         <span className="cb-modern-tool-label">
                             <span className="cb-modern-tool-verb">
                                 {isRunning ? labels.toolRunning : isFailed ? labels.toolFailed : labels.toolRan}
                             </span>
-                            <code className="cb-modern-tool-code" title={toolSlug}>{toolName}</code>
+                            <code className="cb-modern-tool-code" title={toolSlug || undefined}>{toolName}</code>
                         </span>
                     )}
                     <svg
@@ -1102,12 +1178,13 @@ const ModernToolCallRow: React.FC<ModernToolCallRowProps> = ({ step, props, defa
  */
 const ActivityGroup: React.FC<{ steps: MessageStep[]; props: MessageBubbleViewProps; live: boolean }> = ({ steps, props, live }) => {
     const labels = useLabels();
+    const language = useChatLanguage();
     const [open, setOpen] = useState(false);
-    const toolName = (name: string) => resolveToolDisplayName(name, props.tools);
+    const toolName = useToolNamer(props.tools);
     const failed = steps.some(step => step.toolStatus === 'failed');
     const header: ActivityLine = live
-        ? describeLatestActivity(steps, labels, toolName)
-        : { text: summarizeActivity(steps, labels, toolName) };
+        ? describeLatestActivity(steps, labels, toolName, language)
+        : { text: summarizeActivity(steps, labels, toolName, language) };
 
     return (
         <div className={`cb-activity ${live ? 'is-running' : 'is-finished'}${failed && !live ? ' has-failed' : ''}`}>
@@ -1133,8 +1210,9 @@ const ActivityGroup: React.FC<{ steps: MessageStep[]; props: MessageBubbleViewPr
                     )}
                 </span>
                 <span className="cb-activity-label" aria-live={live ? 'polite' : undefined}>
-                    <span className="cb-activity-text">{header.text}</span>
-                    {header.detail && <span className="cb-activity-detail">{header.detail}</span>}
+                    {/* Its own direction: a live header is the model's latest thought, in whatever language it thinks. */}
+                    <span className="cb-activity-text cb-bidi" dir="auto">{header.text}</span>
+                    {header.detail && <span className="cb-activity-detail" dir="auto">{header.detail}</span>}
                 </span>
                 <svg
                     width="14"
@@ -1518,7 +1596,7 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
             )}
 
             <div className="cb-message-content-wrapper" style={{ position: 'relative' }}>
-                {role === 'user' ? null : <div className="cb-sender-name">{props.senderName || labels.assistantName}</div>}
+                {role === 'user' ? null : <div className="cb-sender-name cb-bidi" dir="auto">{props.senderName || labels.assistantName}</div>}
 
                 {props.branchPoint && props.branchCount && props.branchCount > 1 && (
                     <BranchNavigator
@@ -1535,7 +1613,7 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                             <polyline points="9 17 4 12 9 7" />
                             <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
                         </svg>
-                        <span className="cb-reply-indicator-text">
+                        <span className="cb-reply-indicator-text cb-bidi" dir="auto">
                             {props.replyToContent.length > 80
                                 ? props.replyToContent.slice(0, 80) + '...'
                                 : props.replyToContent}
@@ -1551,6 +1629,7 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                     <div className="cb-edit-container">
                         <textarea
                             className="cb-edit-textarea"
+                            dir="auto"
                             value={editText}
                             onChange={(e) => setEditText(e.target.value)}
                             onKeyDown={handleEditKeyDown}
@@ -1560,11 +1639,11 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                         <div className="cb-edit-actions">
                             <button className="cb-edit-cancel" onClick={handleCancelEdit}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                Cancel
+                                {labels.cancel}
                             </button>
                             <button className="cb-edit-save" onClick={handleSaveEdit} disabled={!editText.trim()}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-                                Send
+                                {labels.editSend}
                             </button>
                         </div>
                     </div>
@@ -1623,7 +1702,7 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                         <polyline points="9 17 4 12 9 7" />
                         <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
                     </svg>
-                    Reply
+                    {labels.reply}
                 </div>
             )}
         </div>

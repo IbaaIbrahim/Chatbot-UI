@@ -1,6 +1,15 @@
 import { StreamChatClient, StreamEvent, StreamOutcome } from './StreamClient';
 import { ConversationClient } from './ConversationClient';
-import { ConversationDetail, ConversationListFilters, ConversationListResponse, ConversationSummary, UserCredits } from './types';
+import {
+    ConversationDetail,
+    ConversationListFilters,
+    ConversationListResponse,
+    ConversationSummary,
+    StandingEntry,
+    StandingEntryChanges,
+    StandingEntryDraft,
+    UserCredits,
+} from './types';
 import { parseToolOutput } from './toolOutput';
 import { createUuid } from '../common/uuid';
 import { netFetch } from '../common/localNetwork';
@@ -9,6 +18,7 @@ import type { ClientSkillDefinition, ClientToolConfig, ToolConfig } from '../com
 import { answerHostRequest, isHostRequestSlug } from '../common/hostCatalogue';
 import type { HostRequestAnswer } from '../common/hostCatalogue';
 import { blockLanguagesOf } from '../common/markdownBlocks';
+import { labelledError } from '../common/i18n';
 
 // The tool contract moved to ../common/toolConfig so that one module owns it
 // end to end; these two are re-exported here because they were part of this
@@ -254,17 +264,19 @@ function parseRetryAfter(header: string | null): number {
  * entitlement refusal names the model and the plans, a funding refusal says
  * which side is dry. Showing the raw status and JSON instead threw that away.
  */
-function describeHttpFailure(status: number, body: string): string {
+function describeHttpFailure(status: number, body: string): Error {
     try {
         const parsed = JSON.parse(body);
         const message = parsed?.message || parsed?.error?.message;
-        if (typeof message === 'string' && message.trim()) return message;
+        if (typeof message === 'string' && message.trim()) return new Error(message);
     } catch {
         /* Not JSON — fall through to the status line. */
     }
-    if (status === 429) return 'Too many requests just now. Please try again shortly.';
-    if (status >= 500) return 'The service is unavailable right now.';
-    return `The request was refused (${status}).`;
+    // The library's own words, so labels: the transcript shows them in the
+    // chat's language (`labelledError`, common/i18n.ts).
+    if (status === 429) return labelledError('errorRateLimited', 'Too many requests just now. Please try again shortly.');
+    if (status >= 500) return labelledError('errorServiceUnavailable', 'The service is unavailable right now.');
+    return labelledError('errorRequestRefused', `The request was refused (${status}).`, { status });
 }
 
 /**
@@ -1088,6 +1100,26 @@ export class GatewayStreamClient implements StreamChatClient {
         return this.conversationClient.getCredits();
     }
 
+    // --- Standing context (ADR-021) ---
+    // Their presence is what offers "Memory & instructions": the provider
+    // checks for `listStandingContext`, as it does for `getCredits`.
+
+    async listStandingContext(): Promise<StandingEntry[]> {
+        return this.conversationClient.listStandingContext();
+    }
+
+    async createStandingEntry(draft: StandingEntryDraft): Promise<StandingEntry> {
+        return this.conversationClient.createStandingEntry(draft);
+    }
+
+    async updateStandingEntry(uuid: string, changes: StandingEntryChanges): Promise<StandingEntry> {
+        return this.conversationClient.updateStandingEntry(uuid, changes);
+    }
+
+    async deleteStandingEntry(uuid: string): Promise<void> {
+        return this.conversationClient.deleteStandingEntry(uuid);
+    }
+
     async sendMessage(
         text: string,
         onEvent: (event: StreamEvent) => void,
@@ -1181,7 +1213,7 @@ export class GatewayStreamClient implements StreamChatClient {
                 body,
             });
         } catch (err) {
-            onError(new Error(`Gateway unreachable: ${err}`));
+            onError(labelledError('errorGatewayUnreachable', `Gateway unreachable: ${err}`));
             return;
         }
 
@@ -1209,14 +1241,14 @@ export class GatewayStreamClient implements StreamChatClient {
                 body,
             }).catch(() => null) as Response;
             if (!jobResponse) {
-                onError(new Error('Gateway unreachable'));
+                onError(labelledError('errorGatewayUnreachable', 'Gateway unreachable'));
                 return;
             }
         }
 
         if (!jobResponse.ok) {
             const text = await jobResponse.text().catch(() => '');
-            onError(new Error(describeHttpFailure(jobResponse.status, text)));
+            onError(describeHttpFailure(jobResponse.status, text));
             return;
         }
 
@@ -1225,7 +1257,7 @@ export class GatewayStreamClient implements StreamChatClient {
         const jobId: string | undefined = jobData?.data?.job?.uuid ?? jobData?.data?.job?.job_uuid;
 
         if (!streamUrl) {
-            onError(new Error('Gateway response missing stream_url'));
+            onError(labelledError('errorNoStream', 'Gateway response missing stream_url'));
             return;
         }
 
@@ -1249,7 +1281,7 @@ export class GatewayStreamClient implements StreamChatClient {
 
         if (outcome === 'completed') { onComplete(); return; }
         if (outcome === 'expired' || outcome === 'stalled') {
-            onError(new Error('Stream connection lost'));
+            onError(labelledError('errorStreamLost', 'Stream connection lost'));
             return;
         }
         // 'errored' has already called onError; 'aborted' is deliberate and the
@@ -1332,7 +1364,7 @@ export class GatewayStreamClient implements StreamChatClient {
             } catch (err) {
                 if (abort.signal.aborted || !stillOurs()) return 'aborted';
                 if (retries++ >= MAX_CONSECUTIVE_RETRIES) {
-                    onError(new Error(`Stream-edge unreachable: ${err}`));
+                    onError(labelledError('errorStreamLost', `Stream-edge unreachable: ${err}`));
                     return 'errored';
                 }
                 await this._delay(RECONNECT_DELAY_MS);
@@ -1365,7 +1397,9 @@ export class GatewayStreamClient implements StreamChatClient {
             }
 
             if (!streamResponse.ok) {
-                onError(new Error(`Stream-edge ${streamResponse.status}`));
+                onError(streamResponse.status >= 500
+                    ? labelledError('errorServiceUnavailable', `Stream-edge ${streamResponse.status}`)
+                    : labelledError('errorRequestRefused', `Stream-edge ${streamResponse.status}`, { status: streamResponse.status }));
                 return 'errored';
             }
 
@@ -1391,7 +1425,7 @@ export class GatewayStreamClient implements StreamChatClient {
                 remintedSinceProgress = false;
             }
             if (retries++ >= MAX_CONSECUTIVE_RETRIES) {
-                onError(new Error('Stream connection lost'));
+                onError(labelledError('errorStreamLost', 'Stream connection lost'));
                 return 'errored';
             }
             await this._delay(RECONNECT_DELAY_MS);
@@ -1418,7 +1452,7 @@ export class GatewayStreamClient implements StreamChatClient {
     ): Promise<'completed' | 'errored' | 'dropped' | 'stalled' | 'aborted'> {
         const reader = streamResponse.body?.getReader();
         if (!reader) {
-            onError(new Error('No stream body'));
+            onError(labelledError('errorNoStreamBody', 'No stream body'));
             return 'errored';
         }
 
@@ -1570,7 +1604,10 @@ export class GatewayStreamClient implements StreamChatClient {
                         // replay when the user comes back.
                         if (opts.parked) return 'errored';
                         this._closeSession(session);
-                        onError(new Error(payload.error_message ?? 'Stream error'));
+                        // The platform's reason as it gave it; without one, the label.
+                        onError(payload.error_message
+                            ? new Error(payload.error_message)
+                            : labelledError('errorStreamFailed', 'Stream error'));
                         return 'errored';
                     }
 

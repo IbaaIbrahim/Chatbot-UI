@@ -22,6 +22,45 @@
     pointer-events: auto;
 }
 
+/* ============================================================
+   Side and direction (4.2, 2026-10-18)
+   ============================================================
+
+   The library's CSS is injected from JavaScript, so a host's RTL tooling
+   (postcss-rtl and the like) never mirrors it: every placement here has to be
+   right in both directions by itself. Positions, borders and margins are
+   logical properties — `inset-inline-end` is the right in a left-to-right page
+   and the left in a right-to-left one — so one declaration serves both, and a
+   left-to-right page gets exactly the pixels the physical ones gave it.
+
+   `side` (`cb-side-end`, the default, or `cb-side-start`) is the edge the chat
+   attaches to, read in the chat's direction. The direction is the one the
+   chat inherits; ChatContainer reads it from the browser and stamps
+   `cb-dir-ltr` / `cb-dir-rtl`, because a transform has no logical form.
+   These two signs are what the slides read:
+
+   - `--cb-dir-sign`: +1 when the inline end is the right (LTR), -1 when it is
+     the left (RTL). The conversation drawer opens from the inline start.
+   - `--cb-edge-sign`: +1 when the chat's edge is the right, -1 when it is the
+     left — the side a docked panel slides in from and out to. */
+.cb-chat-container,
+.cb-root {
+    --cb-dir-sign: 1;
+    --cb-edge-sign: 1;
+}
+
+.cb-chat-container.cb-dir-rtl,
+.cb-root.cb-dir-rtl {
+    --cb-dir-sign: -1;
+}
+
+.cb-chat-container.cb-dir-ltr.cb-side-start,
+.cb-chat-container.cb-dir-rtl.cb-side-end,
+.cb-root.cb-dir-ltr.cb-side-start,
+.cb-root.cb-dir-rtl.cb-side-end {
+    --cb-edge-sign: -1;
+}
+
 /* Seamless no-background mode for native embedding */
 .cb-chat-container.cb-no-background {
     background-color: transparent !important;
@@ -39,11 +78,11 @@
     background-color: transparent;
 }
 
-/* Floating Mode */
+/* Floating Mode — the card in the corner at the chat's side. */
 .cb-mode-floating {
     position: fixed;
     bottom: 24px;
-    right: 24px;
+    inset-inline-end: 24px;
     width: 400px;
     max-width: calc(100vw - 48px);
     /* Safety margin */
@@ -58,10 +97,17 @@
     transform: translateY(0) scale(1);
 }
 
+.cb-mode-floating.cb-side-start {
+    inset-inline-start: 24px;
+    inset-inline-end: auto;
+}
+
+/* Full width on a phone, whichever side it would sit on. */
 @media (max-width: 640px) {
-    .cb-mode-floating {
+    .cb-mode-floating,
+    .cb-mode-floating.cb-side-start {
         bottom: 0;
-        right: 0;
+        inset-inline: 0;
         width: 100%;
         max-width: 100%;
         height: 100%;
@@ -77,25 +123,51 @@
     }
 }
 
-/* Sidebar Mode (Drawer) */
+/* Sidebar Mode (Drawer) — the panel at the chat's edge of the viewport, its
+   border on the inner edge, sliding in from (and out past) that edge. */
 .cb-mode-sidebar {
     position: fixed;
     top: 0;
-    right: 0;
+    inset-inline-end: 0;
     width: 450px;
     height: 100vh;
-    border-left: 1px solid var(--cb-border-subtle);
+    border-inline-start: 1px solid var(--cb-border-subtle);
     border-radius: 0;
     box-shadow: var(--cb-shadow-lg);
-    transform: translateX(100%);
+    transform: translateX(calc(100% * var(--cb-edge-sign, 1)));
     opacity: 1;
+}
+
+.cb-mode-sidebar.cb-side-start {
+    inset-inline-start: 0;
+    inset-inline-end: auto;
+    border-inline-end: 1px solid var(--cb-border-subtle);
 }
 
 .cb-mode-sidebar.cb-open {
     transform: translateX(0);
 }
 
-/* Fullscreen Mode */
+/* A shut overlay panel is hidden once it has slid out. Its edge is a logical
+   inset, which moves to the other side at once when `side` or the direction
+   changes, while the transform that keeps it off-screen is animated — so a
+   panel left visible would sweep across the page for the length of the slide.
+   Hidden, the move is never seen, and the off-screen panel leaves the Tab
+   order. `visibility` waits for the slide-out (`0s 0.3s`), so closing still
+   slides; opening shows it at once, the open state naming no `visibility`
+   transition. An open conversation drawer's own `visibility: visible` would
+   outlive the panel's, so it follows the panel here. */
+.cb-mode-sidebar.cb-closed:not(.cb-embedded) {
+    visibility: hidden;
+    transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s 0.3s;
+}
+
+.cb-mode-sidebar.cb-closed:not(.cb-embedded) .cb-drawer-wrapper.open .cb-drawer-content {
+    visibility: inherit;
+}
+
+/* Fullscreen Mode — the whole viewport, so it has no side: physical
+   `left: 0` and `width: 100vw` are the same rectangle in either direction. */
 .cb-mode-fullscreen {
     position: fixed;
     top: 0;
@@ -210,6 +282,14 @@
     border-color: var(--cb-border-subtle);
 }
 
+/* The sidebar's open and close icons draw the drawer at the left, a chevron
+   pointing the way it will move. In a right-to-left chat the drawer opens from
+   the right, so the drawing is mirrored with it. */
+.cb-dir-rtl .cb-drawer-toggle-btn svg,
+.cb-dir-rtl .cb-drawer-close-btn svg {
+    transform: scaleX(-1);
+}
+
 .cb-brand-wrapper {
     display: flex;
     align-items: center;
@@ -238,7 +318,7 @@
     display: inline-flex;
 }
 
-/* New chat button at top right */
+/* New chat button, among the actions at the header's end */
 :root .cb-header-new-chat-btn {
     display: inline-flex;
     align-items: center;
@@ -246,13 +326,13 @@
     height: 30px;
     padding: 0 11px;
     border-radius: var(--cb-radius-md, 8px);
-    border: 1px solid rgba(99, 102, 241, 0.3);
+    border: 1px solid var(--cb-accent-tint-30);
     background: transparent;
     color: var(--cb-accent-primary, #6366f1);
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    margin-right: 6px;
+    margin-inline-end: 6px;
     transition: background-color 0.15s, border-color 0.15s, color 0.15s;
     user-select: none;
     box-sizing: border-box;
@@ -264,31 +344,32 @@
 }
 
 .cb-header-new-chat-btn:hover {
-    background: rgba(99, 102, 241, 0.08);
+    background: var(--cb-accent-tint-8);
     border-color: var(--cb-accent-primary, #6366f1);
 }
 
 [data-theme='dark'] .cb-header-new-chat-btn,
 .cb-chat-container:not([data-theme='light']) .cb-header-new-chat-btn {
-    color: #818cf8;
-    border-color: rgba(99, 102, 241, 0.4);
+    color: var(--cb-accent-primary);
+    border-color: var(--cb-accent-tint-45);
 }
 
 [data-theme='dark'] .cb-header-new-chat-btn svg,
 .cb-chat-container:not([data-theme='light']) .cb-header-new-chat-btn svg {
-    color: #818cf8;
+    color: var(--cb-accent-primary);
 }
 
 [data-theme='dark'] .cb-header-new-chat-btn:hover,
 .cb-chat-container:not([data-theme='light']) .cb-header-new-chat-btn:hover {
-    background: rgba(99, 102, 241, 0.18);
-    border-color: #818cf8;
+    background: var(--cb-accent-tint-18);
+    border-color: var(--cb-accent-primary);
 }
 
 .cb-header-dropdown-menu {
     position: absolute;
     top: calc(100% + var(--cb-space-2));
-    right: 0;
+    /* Under the "More options" button, opening toward the inline start. */
+    inset-inline-end: 0;
     min-width: 205px;
     background-color: var(--cb-bg-elevated, #ffffff);
     border: 1px solid var(--cb-border-subtle);
@@ -353,7 +434,8 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    margin: 2px 0 2px 14px;
+    margin-block: 2px;
+    margin-inline: 14px 0;
     padding-inline-start: 8px;
     border-inline-start: 1px solid var(--cb-border-subtle);
     animation: cb-fade-in 0.12s ease-out;
@@ -434,10 +516,13 @@
     display: flex;
 }
 
+/* The conversation drawer inside the chat: it opens from the inline start —
+   the left in a left-to-right chat, the right in a right-to-left one —
+   whichever side the chat itself sits on. */
 .cb-drawer-wrapper {
     position: absolute;
     top: 0;
-    left: 0;
+    inset-inline-start: 0;
     width: 100%;
     height: 100%;
     pointer-events: none;
@@ -451,12 +536,12 @@
 .cb-drawer-content {
     position: absolute;
     top: 0;
-    left: 0;
+    inset-inline-start: 0;
     width: 260px;
     height: 100%;
     background-color: var(--cb-bg-secondary);
-    border-right: 1px solid var(--cb-border-subtle);
-    transform: translateX(-110%);
+    border-inline-end: 1px solid var(--cb-border-subtle);
+    transform: translateX(calc(-110% * var(--cb-dir-sign, 1)));
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s 0.3s;
     z-index: 62;
     box-shadow: none;
@@ -465,7 +550,7 @@
 
 .cb-drawer-wrapper.open .cb-drawer-content {
     transform: translateX(0);
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.1);
+    box-shadow: calc(4px * var(--cb-dir-sign, 1)) 0 24px rgba(0, 0, 0, 0.1);
     visibility: visible;
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s 0s;
 }
@@ -473,7 +558,7 @@
 .cb-drawer-backdrop {
     position: absolute;
     top: 0;
-    left: 0;
+    inset-inline-start: 0;
     width: 100%;
     height: 100%;
     background-color: rgba(0, 0, 0, 0.5);
@@ -494,7 +579,7 @@
     .cb-mode-fullscreen .cb-drawer-wrapper {
         position: relative;
         top: auto;
-        left: auto;
+        inset-inline-start: auto;
         flex: 0 0 0;
         width: 0;
         min-width: 0;
@@ -514,10 +599,10 @@
     .cb-mode-fullscreen .cb-drawer-content {
         position: relative;
         top: auto;
-        left: auto;
+        inset-inline-start: auto;
         width: 280px;
         height: 100%;
-        transform: translateX(-100%);
+        transform: translateX(calc(-100% * var(--cb-dir-sign, 1)));
         visibility: hidden;
         box-shadow: none;
         transition: transform var(--cb-transition-normal), visibility 0s var(--cb-transition-normal);
@@ -632,7 +717,8 @@
     background-color: var(--cb-surface-raised);
     position: absolute;
     top: 0;
-    left: 0;
+    /* The bar fills from the inline start: from the right in a right-to-left chat. */
+    inset-inline-start: 0;
     z-index: 100;
 }
 
@@ -646,8 +732,7 @@
 .cb-scroll-shadow-top,
 .cb-scroll-shadow-bottom {
     position: absolute;
-    left: 0;
-    right: 0;
+    inset-inline: 0;
     height: 40px;
     z-index: 10;
     pointer-events: none;
@@ -673,6 +758,7 @@
 :root .cb-scroll-bottom-btn {
     position: absolute;
     bottom: 20px;
+    /* Centred: the same point in either direction. */
     left: 50%;
     transform: translateX(-50%);
     background-color: var(--cb-bg-secondary);
@@ -719,10 +805,7 @@
 
 .cb-embedded {
     position: relative !important;
-    top: auto !important;
-    right: auto !important;
-    bottom: auto !important;
-    left: auto !important;
+    inset: auto !important;
     z-index: auto;
     box-shadow: none;
     flex-shrink: 0;
@@ -733,20 +816,39 @@
         opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Sidebar — embedded */
+/* At the chat's side of the host's flex row. `'start'` takes `order: -1`, so
+   it leads the row whatever its place in the DOM; `'end'` leaves `order`
+   alone and keeps its DOM place, which is after the host's content when the
+   host appends it — as every embedded chat before 4.2 was placed, and so a
+   host that put it mid-row on purpose sees no change. Fullscreen fills the
+   row and has no side. */
+.cb-embedded.cb-side-start.cb-mode-sidebar,
+.cb-embedded.cb-side-start.cb-mode-floating {
+    order: -1;
+}
+
+/* Sidebar — embedded: its border on the inner edge, toward the host's content. */
 .cb-embedded.cb-mode-sidebar {
     width: 450px;
-    border-left: 1px solid var(--cb-border-subtle);
+    border-inline-start: 1px solid var(--cb-border-subtle);
     border-radius: 0;
     opacity: 1;
     pointer-events: auto;
+}
+
+.cb-embedded.cb-mode-sidebar.cb-side-start {
+    border-inline-end: 1px solid var(--cb-border-subtle);
 }
 
 .cb-embedded.cb-mode-sidebar.cb-closed {
     width: 0;
     opacity: 0;
     pointer-events: none;
-    border-left: none;
+    border-inline-start: none;
+}
+
+.cb-embedded.cb-mode-sidebar.cb-side-start.cb-closed {
+    border-inline-end: none;
 }
 
 /* Floating — embedded (inline card) */
@@ -781,22 +883,27 @@
     pointer-events: none;
 }
 
-/* Mobile: embedded sidebar falls back to fixed overlay */
+/* Mobile: embedded sidebar falls back to fixed overlay, at the chat's edge */
 @media (max-width: 768px) {
     .cb-embedded.cb-mode-sidebar {
         position: fixed !important;
         top: 0 !important;
-        right: 0 !important;
+        inset-inline-end: 0 !important;
         width: 100%;
         height: 100vh;
         z-index: 9998;
     }
 
+    .cb-embedded.cb-mode-sidebar.cb-side-start {
+        inset-inline-start: 0 !important;
+        inset-inline-end: auto !important;
+    }
+
     .cb-embedded.cb-mode-sidebar.cb-closed {
         width: 100%;
-        transform: translateX(100%) !important;
+        transform: translateX(calc(100% * var(--cb-edge-sign, 1))) !important;
         opacity: 1;
-        border-left: none;
+        border-inline-start: none;
     }
 
     .cb-embedded.cb-mode-sidebar.cb-open {
@@ -815,10 +922,12 @@
 
    Fixed to the same corner floating mode opens into, and to the same
    coordinates, so opening reads as the panel growing out of the button rather
-   than as one control being swapped for another. Physical `right`/`bottom`
-   rather than logical properties for exactly that reason — `.cb-mode-floating`
-   is pinned with `right`, and a launcher that flipped to the other side under
-   RTL would open a panel that jumped across the screen.
+   than as one control being swapped for another. Both are pinned with the same
+   logical property (4.2) — `inset-inline-end`, or `inset-inline-start` for
+   `side="start"` — so they flip together under RTL and the panel still opens
+   where the button was. (Before 4.2 both were pinned with physical `right`
+   for that reason: a launcher that flipped alone would have opened a panel
+   that jumped across the screen.)
 
    `!important` throughout, for the reason `styles.css` gives: a host's reset
    must not leak in. This button is the most exposed surface the widget has —
@@ -830,7 +939,7 @@
 .cb-launcher-btn {
     position: fixed !important;
     bottom: 24px !important;
-    right: 24px !important;
+    inset-inline-end: 24px !important;
     width: 56px !important;
     height: 56px !important;
     display: flex !important;
@@ -841,13 +950,18 @@
     border: none !important;
     border-radius: var(--cb-radius-full) !important;
     background: var(--cb-accent-gradient) !important;
-    color: #ffffff !important;
+    color: var(--cb-on-accent) !important;
     box-shadow: var(--cb-shadow-lg) !important;
     cursor: pointer !important;
     /* Below the open container (2000) but above ordinary host chrome, so the
        button cannot end up behind a sticky footer or a toast. */
     z-index: 1999 !important;
     transition: var(--cb-transition-state);
+}
+
+.cb-launcher-btn.cb-side-start {
+    inset-inline-start: 24px !important;
+    inset-inline-end: auto !important;
 }
 
 .cb-launcher-btn:hover {
@@ -895,7 +1009,12 @@
 @media (max-width: 640px) {
     .cb-launcher-btn {
         bottom: 16px !important;
-        right: 16px !important;
+        inset-inline-end: 16px !important;
+    }
+
+    .cb-launcher-btn.cb-side-start {
+        inset-inline-start: 16px !important;
+        inset-inline-end: auto !important;
     }
 }
 

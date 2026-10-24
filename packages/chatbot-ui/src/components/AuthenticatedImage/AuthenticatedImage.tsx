@@ -1,6 +1,6 @@
 import React from 'react';
 const { useState, useEffect } = React;
-import { useAuthenticatedFetch } from '../../store/hooks';
+import { useAuthenticatedFetch, useLabels } from '../../store/hooks';
 
 export interface AuthenticatedImageProps {
     /**
@@ -8,7 +8,7 @@ export interface AuthenticatedImageProps {
      */
     src: string;
     /**
-     * Alt text for the image
+     * Alt text for the image. Defaults to the label `imageAlt` ("Image").
      */
     alt?: string;
     /**
@@ -36,13 +36,14 @@ export interface AuthenticatedImageProps {
  */
 export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({
     src,
-    alt = 'Image',
+    alt,
     className,
     onClick,
     onError,
     style,
 }) => {
     const fetchAuthenticatedUrl = useAuthenticatedFetch();
+    const labels = useLabels();
     const [imageSrc, setImageSrc] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [hasError, setHasError] = useState(false);
@@ -103,7 +104,7 @@ export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({
                 }}
             >
                 <span style={{ fontSize: 11, color: 'var(--cb-text-tertiary)' }}>
-                    Loading...
+                    {labels.loading}
                 </span>
             </div>
         );
@@ -123,7 +124,7 @@ export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({
                 }}
             >
                 <span style={{ fontSize: 11, color: 'var(--cb-text-tertiary)' }}>
-                    Image unavailable
+                    {labels.imageUnavailable}
                 </span>
             </div>
         );
@@ -132,7 +133,7 @@ export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({
     return (
         <img
             src={imageSrc}
-            alt={alt}
+            alt={alt ?? labels.imageAlt}
             className={className}
             onClick={onClick}
             onError={handleError}

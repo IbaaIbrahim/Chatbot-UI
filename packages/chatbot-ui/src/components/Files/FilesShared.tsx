@@ -3,10 +3,16 @@ import './Files.css';
 import type { ArtifactKind, ConversationFile } from '../../api/types';
 import { isNothingFocused, trapTab } from '../../common/focusTrap';
 import type { ChatIcons } from '../../common/icons';
-import type { ChatLabels } from '../../common/labels';
+import { formatLabel, type ChatLabels } from '../../common/labels';
+import {
+    formatDateTime,
+    formatRelativeDate as formatRelative,
+    formattingLocale,
+    type ChatFormat,
+} from '../../common/i18n';
 import { useStableId } from '../../common/useStableId';
 import { useAuthenticatedFetch, useIcons, useLabels } from '../../store/hooks';
-import { AttachmentViewerModal, formatFileSize, inferContentType, type Attachment } from '../AttachmentViewer/AttachmentViewer';
+import { AttachmentViewerModal, inferContentType, type Attachment } from '../AttachmentViewer/AttachmentViewer';
 
 const { useEffect, useLayoutEffect, useRef, useState } = React;
 
@@ -75,62 +81,31 @@ export function rowKindOf(file: ConversationFile): RowKind {
     return 'file';
 }
 
-/** The page's language when it states one, so dates read like the rest of the page. */
-function pageLocale(): string | undefined {
-    return typeof document !== 'undefined' && document.documentElement.lang ? document.documentElement.lang : undefined;
+/**
+ * A file's date and time, in `language` — the chat's (`useChatFormat().dateTime`),
+ * else the page's `<html lang>`. `''` for no date.
+ */
+export function formatFileDate(iso: string, language?: string): string {
+    return formatDateTime(iso, formattingLocale(language));
 }
-
-export function formatFileDate(iso: string): string {
-    const time = Date.parse(iso);
-    if (Number.isNaN(time)) return '';
-    return new Date(time).toLocaleString(pageLocale(), {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
-}
-
-const MINUTE_MS = 60 * 1000;
-const HOUR_MS = 60 * MINUTE_MS;
-const DAY_MS = 24 * HOUR_MS;
 
 /**
  * When, as a row of the files panel says it (2026-10-14): relative within
- * the week ("now", "5 minutes ago", "yesterday") in the page's language, a
- * short date after ("Oct 13"; with the year when it is not this one). `''`
- * for no date. A date ahead of the clock (a skewed one) reads as now.
- * Whole units elapsed, rounded down: 59.6 minutes is "59 minutes ago", never
- * "60 minutes ago" where "1 hour ago" comes next, and 23.7 hours "23 hours
- * ago" before "yesterday" (rounded, until the review of 2026-10-14).
+ * the week ("now", "5 minutes ago", "yesterday") in `language` — the chat's,
+ * else the page's — a short date after ("Oct 13"; with the year when it is
+ * not this one). `''` for no date. A date ahead of the clock (a skewed one)
+ * reads as now. Whole units elapsed, rounded down: 59.6 minutes is "59
+ * minutes ago", never "60 minutes ago" where "1 hour ago" comes next, and
+ * 23.7 hours "23 hours ago" before "yesterday" (rounded, until the review of
+ * 2026-10-14). See `formatRelativeDate` in common/i18n.ts.
  */
-export function formatRelativeDate(iso: string, now: number = Date.now()): string {
-    const time = Date.parse(iso);
-    if (Number.isNaN(time)) return '';
-    const locale = pageLocale();
-    const elapsed = Math.max(0, now - time);
-    if (elapsed < 7 * DAY_MS && typeof Intl !== 'undefined' && typeof Intl.RelativeTimeFormat === 'function') {
-        try {
-            const relative = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
-            if (elapsed < MINUTE_MS) return relative.format(0, 'second');
-            if (elapsed < HOUR_MS) return relative.format(-Math.floor(elapsed / MINUTE_MS), 'minute');
-            if (elapsed < DAY_MS) return relative.format(-Math.floor(elapsed / HOUR_MS), 'hour');
-            return relative.format(-Math.floor(elapsed / DAY_MS), 'day');
-        } catch {
-            // A language the engine cannot format in: the short date below.
-        }
-    }
-    const date = new Date(time);
-    try {
-        return date.toLocaleDateString(locale, {
-            month: 'short',
-            day: 'numeric',
-            year: date.getFullYear() === new Date(now).getFullYear() ? undefined : 'numeric',
-        });
-    } catch {
-        return date.toLocaleDateString();
-    }
+export function formatRelativeDate(iso: string, now: number = Date.now(), language?: string): string {
+    return formatRelative(iso, now, formattingLocale(language));
+}
+
+/** A control's name with what it acts on — "Download: Q3 report" — as the label `actionOnItem` orders it. */
+export function actionOnItem(labels: Pick<ChatLabels, 'actionOnItem'>, action: string, item: string): string {
+    return formatLabel(labels.actionOnItem, { action, item });
 }
 
 /** What a file is called on screen: its title, else its name. */
@@ -621,7 +596,7 @@ export const ListRow: React.FC<{
                         type="button"
                         className="cb-file-main"
                         onClick={event => onOpen(event.currentTarget)}
-                        title={`${openLabel ?? labels.previewFile}: ${title}`}
+                        title={actionOnItem(labels, openLabel ?? labels.previewFile, title)}
                         aria-busy={busy || undefined}
                     >
                         {text}
@@ -680,6 +655,18 @@ export function savedStateOf(file: ConversationFile): SavedState {
 }
 
 /**
+ * Why a row's action failed, as the label that says it. Kept in state as the
+ * key, not the text: the text is written when drawn, in the language then in
+ * force (2026-10-18).
+ */
+export type RowErrorKey = 'saveFileFailed' | 'downloadFailed' | 'blockLoadFailed' | 'artifactDeleteFailed';
+
+/** A row's failure, written in `labels`; `null` for none. */
+export function rowErrorText(labels: Pick<ChatLabels, RowErrorKey>, key: RowErrorKey | null | undefined): string | null {
+    return key ? labels[key] : null;
+}
+
+/**
  * A not-saved generated file's Save: keeps it as an artifact
  * (`saveGeneratedFile`), saying beside the row when it failed. Its row then
  * shows "Saved".
@@ -687,7 +674,8 @@ export function savedStateOf(file: ConversationFile): SavedState {
 export const SaveFileButton: React.FC<{
     title: string;
     onSave: () => Promise<unknown>;
-    onError: (message: string | null) => void;
+    /** The failure as a label key — written at render, so it follows a language switched later. */
+    onError: (labelKey: RowErrorKey | null) => void;
 }> = ({ title, onSave, onError }) => {
     const labels = useLabels();
     const icons = useIcons();
@@ -701,13 +689,13 @@ export const SaveFileButton: React.FC<{
             type="button"
             className="cb-file-action cb-file-action-save"
             disabled={busy}
-            aria-label={`${labels.saveFile}: ${title}`}
+            aria-label={actionOnItem(labels, labels.saveFile, title)}
             title={labels.saveFile}
             onClick={() => {
                 setBusy(true);
                 onError(null);
                 onSave()
-                    .catch(() => onError(labels.saveFileFailed))
+                    .catch(() => onError('saveFileFailed'))
                     .finally(() => {
                         if (mounted.current) setBusy(false);
                     });
@@ -720,13 +708,14 @@ export const SaveFileButton: React.FC<{
 };
 
 /**
- * The details every row starts with: the size and when. The kind is not
- * repeated here — the row's picture is the chart itself, or the kind's icon.
+ * The details every row starts with: the size and when, in the chat's
+ * language. The kind is not repeated here — the row's picture is the chart
+ * itself, or the kind's icon.
  */
-export function baseDetails(file: ConversationFile): string[] {
+export function baseDetails(file: ConversationFile, format: ChatFormat): string[] {
     return [
-        file.size_bytes > 0 ? formatFileSize(file.size_bytes) : '',
-        formatFileDate(file.created_at),
+        file.size_bytes > 0 ? format.fileSize(file.size_bytes) : '',
+        format.dateTime(file.created_at),
     ];
 }
 
@@ -734,7 +723,8 @@ export function baseDetails(file: ConversationFile): string[] {
 export const DownloadButton: React.FC<{
     file: ConversationFile;
     onDownload: (file: ConversationFile) => Promise<void>;
-    onError: (message: string | null) => void;
+    /** The failure as a label key (see {@link SaveFileButton}). */
+    onError: (labelKey: RowErrorKey | null) => void;
 }> = ({ file, onDownload, onError }) => {
     const labels = useLabels();
     const icons = useIcons();
@@ -748,13 +738,13 @@ export const DownloadButton: React.FC<{
             type="button"
             className="cb-file-action"
             disabled={busy}
-            aria-label={`${labels.downloadFile}: ${fileTitle(file)}`}
+            aria-label={actionOnItem(labels, labels.downloadFile, fileTitle(file))}
             title={labels.downloadFile}
             onClick={() => {
                 setBusy(true);
                 onError(null);
                 onDownload(file)
-                    .catch(() => onError(labels.downloadFailed))
+                    .catch(() => onError('downloadFailed'))
                     .finally(() => {
                         if (mounted.current) setBusy(false);
                     });

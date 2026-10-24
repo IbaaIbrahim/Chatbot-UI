@@ -2,9 +2,10 @@ import React from 'react';
 import type { TurnUsageSummary } from '../../common/usageSummary';
 import type { UsageFigures } from '../../api/types';
 import { useStableId } from '../../common/useStableId';
-import { formatCount, formatLabel } from '../../common/labels';
+import { DEFAULT_LABELS, formatLabel } from '../../common/labels';
 import type { ChatLabels } from '../../common/labels';
-import { useLabels } from '../../store/hooks';
+import { formatTokenCount, type ChatFormat } from '../../common/i18n';
+import { useChatFormat } from '../../store/hooks';
 import './UsageIndicator.css';
 
 /** Where the orchestrator itself starts warning about the window. */
@@ -12,17 +13,17 @@ const NEAR_WINDOW_RATIO = 0.9;
 
 const { useEffect, useRef, useState } = React;
 
-export function formatTokens(count: number): string {
-    if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-    if (count >= 10_000) return `${Math.round(count / 1000)}k`;
-    if (count >= 1_000) return `${(count / 1000).toFixed(1)}k`;
-    return String(count);
-}
-
-function formatPercent(ratio: number): string {
-    const percent = ratio * 100;
-    if (percent >= 99.5) return '100%';
-    return percent < 10 ? `${percent.toFixed(1)}%` : `${Math.round(percent)}%`;
+/**
+ * A token count, short: "999", "1.2k", "12k", "1.5M". Since 4.2 the number is
+ * written for `language` and the "k" and "M" are labels (`tokensThousands`,
+ * `tokensMillions`); without them, English.
+ */
+export function formatTokens(
+    count: number,
+    language?: string,
+    labels: Pick<ChatLabels, 'tokensThousands' | 'tokensMillions'> = DEFAULT_LABELS,
+): string {
+    return formatTokenCount(count, labels, language);
 }
 
 export interface UsageIndicatorProps {
@@ -82,11 +83,11 @@ interface MeterRowProps {
     sub?: boolean;
 }
 
-function describeFigures(figures: UsageFigures, labels: ChatLabels): string {
-    return formatLabel(labels.usageTokens, {
-        input: formatTokens(figures.input_tokens),
-        output: formatTokens(figures.output_tokens),
-        steps: formatCount(figures.steps, labels.stepsOne, labels.stepsOther),
+function describeFigures(figures: UsageFigures, format: ChatFormat): string {
+    return formatLabel(format.labels.usageTokens, {
+        input: format.tokens(figures.input_tokens),
+        output: format.tokens(figures.output_tokens),
+        steps: format.plural(format.labels.steps, figures.steps),
     });
 }
 
@@ -130,7 +131,8 @@ const MeterRow: React.FC<MeterRowProps> = ({ label, value, ratio, warn, note, su
  * a replayed stream cannot double-count.
  */
 export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary, details = true }) => {
-    const labels = useLabels();
+    const format = useChatFormat();
+    const { labels } = format;
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const popoverId = useStableId('cb-usage');
@@ -169,14 +171,16 @@ export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary, details
     const showTree = tree !== null && (ceiling !== null || Boolean(tree.ceiling_reached));
     const treeRatio = ceiling ? Math.min(1, tree!.credits_spent / ceiling) : null;
 
-    const credits = (count: number) => formatCount(count, labels.creditsOne, labels.creditsOther);
-    const limitUnknown = (tokens: number) => formatLabel(labels.usageLimitUnknown, { tokens: formatTokens(tokens) });
+    const credits = (count: number) => format.plural(labels.credits, count);
+    const limitUnknown = (tokens: number) => formatLabel(labels.usageLimitUnknown, { tokens: format.tokens(tokens) });
+    const ofLimit = (used: string, limit: string, share: number) =>
+        formatLabel(labels.usageOfLimit, { used, limit, percent: format.percent(share) });
 
     const atRestLabel = credits(conversationCredits);
     const summaryForScreenReader = formatLabel(
         ratio !== null && window !== null ? labels.usageSummaryWithWindow : labels.usageSummary,
         {
-            percent: ratio !== null ? formatPercent(ratio) : '',
+            percent: ratio !== null ? format.percent(ratio) : '',
             turnCredits: credits(turn.credits_charged),
             conversationCredits: credits(conversationCredits),
         }
@@ -217,7 +221,7 @@ export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary, details
                 <MeterRow
                     label={labels.usageContextWindow}
                     value={window !== null && ratio !== null
-                        ? `${formatTokens(context!.input_tokens)} / ${formatTokens(window)} (${formatPercent(ratio)})`
+                        ? ofLimit(format.tokens(context!.input_tokens), format.tokens(window), ratio)
                         : limitUnknown(context?.input_tokens ?? ownRun.input_tokens)}
                     ratio={ratio}
                     warn={pressured}
@@ -226,9 +230,13 @@ export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary, details
                 {subAgentContext && (
                     <MeterRow
                         sub
-                        label={formatLabel(labels.usageSubAgentContext, { name: subAgentContext.agentName ?? labels.usageLargestPrompt })}
+                        label={formatLabel(labels.usageSubAgentContext, { name: subAgentContext.agentName || labels.usageLargestPrompt })}
                         value={subAgentContext.context.max_input_tokens !== null && subAgentRatio !== null
-                            ? `${formatTokens(subAgentContext.context.input_tokens)} / ${formatTokens(subAgentContext.context.max_input_tokens)} (${formatPercent(subAgentRatio)})`
+                            ? ofLimit(
+                                format.tokens(subAgentContext.context.input_tokens),
+                                format.tokens(subAgentContext.context.max_input_tokens),
+                                subAgentRatio,
+                            )
                             : limitUnknown(subAgentContext.context.input_tokens)}
                         ratio={null}
                         warn={subAgentRatio !== null && subAgentRatio >= NEAR_WINDOW_RATIO}
@@ -247,7 +255,7 @@ export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary, details
                     label={labels.usageThisTurn}
                     value={credits(turn.credits_charged)}
                     ratio={conversationCredits > 0 ? turn.credits_charged / conversationCredits : null}
-                    note={describeFigures(turn, labels)}
+                    note={describeFigures(turn, format)}
                 />
                 {subAgents && (
                     <>
@@ -256,14 +264,14 @@ export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary, details
                             label={labels.usageThisAgent}
                             value={credits(ownRun.credits_charged)}
                             ratio={null}
-                            note={describeFigures(ownRun, labels)}
+                            note={describeFigures(ownRun, format)}
                         />
                         <MeterRow
                             sub
-                            label={formatLabel(labels.usageSubAgents, { count: subAgents.count })}
+                            label={format.plural(labels.usageSubAgents, subAgents.count)}
                             value={credits(subAgents.figures.credits_charged)}
                             ratio={null}
-                            note={describeFigures(subAgents.figures, labels)}
+                            note={describeFigures(subAgents.figures, format)}
                         />
                     </>
                 )}
@@ -271,7 +279,7 @@ export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary, details
                     label={labels.usageWholeConversation}
                     value={credits(conversationCredits)}
                     ratio={null}
-                    note={formatCount(turns, labels.turnsOne, labels.turnsOther)}
+                    note={format.plural(labels.turns, turns)}
                 />
                 {turn.credits_waived > 0 && (
                     <MeterRow
@@ -284,7 +292,7 @@ export const UsageIndicator: React.FC<UsageIndicatorProps> = ({ summary, details
                     <MeterRow
                         label={labels.usageSubAgentTree}
                         value={ceiling !== null
-                            ? `${tree.credits_spent} / ${ceiling} (${formatPercent(tree.credits_spent / ceiling)})`
+                            ? ofLimit(format.number(tree.credits_spent), format.number(ceiling), tree.credits_spent / ceiling)
                             : credits(tree.credits_spent)}
                         ratio={treeRatio}
                         warn={Boolean(tree.ceiling_reached)}

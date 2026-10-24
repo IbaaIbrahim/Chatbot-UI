@@ -3,6 +3,9 @@ import {
     ConversationListFilters,
     ConversationListResponse,
     ConversationSummary,
+    StandingEntry,
+    StandingEntryChanges,
+    StandingEntryDraft,
     UserCredits,
 } from './types';
 import { netFetch } from '../common/localNetwork';
@@ -11,6 +14,27 @@ interface ApiResponse<T> {
     code: string;
     message: string;
     data: T;
+}
+
+/**
+ * A refused Gateway call: its HTTP `status`, and — when the body is the
+ * Gateway's error envelope — its `code` and the precise `reason` beside it
+ * (`STANDING_CONTEXT_FULL`, `STANDING_ENTRY_TOO_LONG`, …), so a caller can say
+ * what went wrong rather than that something did.
+ */
+export type GatewayError = Error & { status?: number; code?: string; reason?: string | null };
+
+/** The envelope's `code` and `error.reason`, when `text` is one; nothing otherwise. */
+function refusalOf(text: string): { code?: string; reason?: string | null } {
+    try {
+        const body = JSON.parse(text) as { code?: unknown; error?: { reason?: unknown } | null };
+        return {
+            code: typeof body.code === 'string' ? body.code : undefined,
+            reason: typeof body.error?.reason === 'string' ? body.error.reason : null,
+        };
+    } catch {
+        return {};
+    }
 }
 
 export class ConversationClient {
@@ -46,8 +70,9 @@ export class ConversationClient {
 
         if (!resp.ok) {
             const text = await resp.text().catch(() => '');
-            const error = new Error(`Gateway ${resp.status}: ${text}`) as Error & { status?: number };
+            const error = new Error(`Gateway ${resp.status}: ${text}`) as GatewayError;
             error.status = resp.status;
+            Object.assign(error, refusalOf(text));
             throw error;
         }
 
@@ -105,5 +130,35 @@ export class ConversationClient {
 
     async deleteConversation(id: string): Promise<void> {
         await this._request<unknown>(`/v1/user/conversations/${id}`, { method: 'DELETE' });
+    }
+
+    // --- Standing context (ADR-021): what every conversation of the user is told ---
+
+    /** The user's own entries (active and expired), then their organisation's in force now. */
+    async listStandingContext(): Promise<StandingEntry[]> {
+        const data = await this._request<{ entries: StandingEntry[] }>('/v1/user/standing-context');
+        return data.entries;
+    }
+
+    /** Rejects with the Gateway's `reason` — `STANDING_CONTEXT_FULL`, `STANDING_ENTRY_TOO_LONG`, … */
+    async createStandingEntry(draft: StandingEntryDraft): Promise<StandingEntry> {
+        const data = await this._request<{ entry: StandingEntry }>('/v1/user/standing-context', {
+            method: 'POST',
+            body: draft,
+        });
+        return data.entry;
+    }
+
+    async updateStandingEntry(uuid: string, changes: StandingEntryChanges): Promise<StandingEntry> {
+        const data = await this._request<{ entry: StandingEntry }>(`/v1/user/standing-context/${uuid}`, {
+            method: 'PATCH',
+            body: changes,
+        });
+        return data.entry;
+    }
+
+    /** Removes the entry for good: no later conversation is told it. */
+    async deleteStandingEntry(uuid: string): Promise<void> {
+        await this._request<unknown>(`/v1/user/standing-context/${uuid}`, { method: 'DELETE' });
     }
 }

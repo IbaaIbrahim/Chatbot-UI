@@ -1,4 +1,6 @@
 import { netFetch } from '../common/localNetwork';
+import type { LabelKey } from '../common/labels';
+import type { LabelledError } from '../common/i18n';
 import { resolveStorageAttachmentsBase } from '../common/attachmentUtils';
 import type {
     ArtifactEntry,
@@ -70,16 +72,35 @@ export interface StorageClientConfig {
     token?: string | null;
 }
 
-/** A refused or failed storage request. `status` is 0 when it never reached the server. */
-export class StorageRequestError extends Error {
+/**
+ * A refused or failed storage request. `status` is 0 when it never reached the
+ * server.
+ *
+ * `message` is for a developer — the storage API's own words, or "Storage API
+ * unreachable: TypeError: Failed to fetch". What a person should read is the
+ * label it names (`labelKey`, a `LabelledError` since 4.2): show it with
+ * `describeLabelledError(error, useLabels(), useChatLanguage())`, in the
+ * chat's language.
+ */
+export class StorageRequestError extends Error implements LabelledError {
     status: number;
     code: string | null;
+    labelKey: LabelKey;
+    labelValues?: Record<string, string | number>;
 
-    constructor(message: string, status: number, code: string | null = null) {
+    constructor(
+        message: string,
+        status: number,
+        code: string | null = null,
+        labelKey: LabelKey = 'storageRequestFailed',
+        labelValues: Record<string, string | number> = { status },
+    ) {
         super(message);
         this.name = 'StorageRequestError';
         this.status = status;
         this.code = code;
+        this.labelKey = labelKey;
+        this.labelValues = labelValues;
     }
 }
 
@@ -237,7 +258,7 @@ export class StorageClient {
         const block = normalizeBlockRecord(raw);
         const source = raw && typeof raw === 'object' ? (raw as Record<string, unknown>).source : undefined;
         if (!block || typeof source !== 'string') {
-            throw new StorageRequestError('The storage API did not describe the block.', 200);
+            throw new StorageRequestError('The storage API did not describe the block.', 200, null, 'storageBadResponse');
         }
         return { ...block, source: normalizeLineBreaks(source) };
     }
@@ -253,12 +274,12 @@ export class StorageClient {
      */
     async saveGeneratedFile(attachmentUuid: string): Promise<ConversationFile> {
         if (!attachmentUuid) {
-            throw new StorageRequestError('No file was named to save.', 0);
+            throw new StorageRequestError('No file was named to save.', 0, null, 'saveFileFailed');
         }
         const data = unwrap(await this.requestJson(`/files/${encodeURIComponent(attachmentUuid)}/save`, { method: 'POST' }));
         const stored = this.normalize(pickObject(data, ['file', 'artifact', 'attachment']) ?? data);
         if (!stored) {
-            throw new StorageRequestError('The storage API saved the file but did not describe it.', 200);
+            throw new StorageRequestError('The storage API saved the file but did not describe it.', 200, null, 'storageBadResponse');
         }
         return stored;
     }
@@ -287,7 +308,7 @@ export class StorageClient {
      */
     async saveFile(jobUuid: string, file: Blob, options: SaveFileOptions = {}): Promise<ConversationFile> {
         if (!jobUuid) {
-            throw new StorageRequestError('A file is saved against a turn of the conversation: no job uuid was given.', 0);
+            throw new StorageRequestError('A file is saved against a turn of the conversation: no job uuid was given.', 0, null, 'saveFileFailed');
         }
         const body = new FormData();
         body.append('file', file, fileNameFor(file, options));
@@ -306,7 +327,7 @@ export class StorageClient {
             pickObject(data, ['attachment', 'file', 'artifact']) ?? data
         );
         if (!stored) {
-            throw new StorageRequestError('The storage API stored the file but did not describe it.', 200);
+            throw new StorageRequestError('The storage API stored the file but did not describe it.', 200, null, 'storageBadResponse');
         }
         return stored;
     }
@@ -321,7 +342,7 @@ export class StorageClient {
         const raw = pickObject(data, ['artifact', 'file']) ?? data;
         const stored = this.normalize(raw);
         if (!stored) {
-            throw new StorageRequestError('The storage API did not describe the artifact.', 200);
+            throw new StorageRequestError('The storage API did not describe the artifact.', 200, null, 'storageBadResponse');
         }
         const spec = raw && typeof raw === 'object' ? (raw as Record<string, unknown>).spec : undefined;
         return { ...stored, spec: spec ?? null };
@@ -350,8 +371,8 @@ export class StorageClient {
 
     /** `path` is relative to the attachments root, or an absolute URL. */
     private async request(path: string, init: { method?: string; body?: BodyInit } = {}): Promise<Response> {
-        if (!this.base) throw new StorageRequestError('No storage API URL is configured.', 0);
-        if (!this.token) throw new StorageRequestError('No access token is configured.', 401);
+        if (!this.base) throw new StorageRequestError('No storage API URL is configured.', 0, null, 'storageNotConfigured');
+        if (!this.token) throw new StorageRequestError('No access token is configured.', 401, null, 'storageNotConfigured');
         const url = /^https?:\/\//i.test(path) ? path : `${this.base}${path}`;
         let response: Response;
         try {
@@ -361,7 +382,7 @@ export class StorageClient {
                 body: init.body,
             });
         } catch (error) {
-            throw new StorageRequestError(`Storage API unreachable: ${String(error)}`, 0);
+            throw new StorageRequestError(`Storage API unreachable: ${String(error)}`, 0, null, 'storageUnreachable');
         }
         if (!response.ok) {
             const { message, code } = await describeFailure(response);

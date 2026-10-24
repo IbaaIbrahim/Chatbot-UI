@@ -7,7 +7,7 @@ import { parseToolOutput } from '../../api/toolOutput';
 import { hasHostDisplayName, resolveToolDisplayName, type ToolActionRenderProps, type ToolConfig } from '../../common/toolConfig';
 import { describeMetaTool, isMetaTool } from '../../common/metaTools';
 import './ToolInvocation.css';
-import { useLabels } from '../../store/hooks';
+import { useChatLanguage, useLabels } from '../../store/hooks';
 
 export type ToolStatus = 'running' | 'completed' | 'failed';
 
@@ -92,13 +92,15 @@ export const ToolInvocation: React.FC<ToolInvocationProps> = ({
     tools,
 }) => {
     const labels = useLabels();
+    const language = useChatLanguage();
     const [expanded, setExpanded] = useState(false);
 
-    const displayName = resolveToolDisplayName(toolName, tools);
+    // Named in the chat's language: the host's name, else the platform tool's label.
+    const displayName = resolveToolDisplayName(toolName, tools, { labels, fallback: labels.toolName });
     // The same compact text the step renderer gives a meta-tool step; see
     // common/metaTools.ts and ModernToolCallRow in MessageBubble.
     const meta = isMetaTool(toolName) && !hasHostDisplayName(toolName, tools)
-        ? describeMetaTool(toolName, status, args, result, labels, name => resolveToolDisplayName(name, tools))
+        ? describeMetaTool(toolName, status, args, result, labels, name => resolveToolDisplayName(name, tools, { labels }), language)
         : null;
 
     // Resolved once and shared by the built-in button and any custom control,

@@ -10,7 +10,7 @@ import { isNothingFocused } from '../../common/focusTrap';
 import { formatLabel } from '../../common/labels';
 import { rendererFor } from '../../common/markdownBlocks';
 import { useStableId } from '../../common/useStableId';
-import { useChatActions, useChatEvent, useChatState, useIcons, useLabels, useMarkdownConfig } from '../../store/hooks';
+import { useChatActions, useChatEvent, useChatFormat, useChatState, useIcons, useLabels, useMarkdownConfig } from '../../store/hooks';
 import { AttachmentPreview, useAttachmentLoad } from '../AttachmentViewer/AttachmentViewer';
 import { useChatPresentation } from '../ChatContainer/presentation';
 import { ExpandedBlock } from '../MarkdownBlock/MarkdownBlock';
@@ -27,14 +27,16 @@ import {
     LiveAnnouncement,
     SaveFileButton,
     SavedMark,
+    actionOnItem,
     baseDetails,
     fileTitle,
     focusRow,
-    formatFileDate,
     placeOf,
     toAttachment,
+    rowErrorText,
     useReadAfterTurnEnds,
     type Place,
+    type RowErrorKey,
 } from './FilesShared';
 
 const { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } = React;
@@ -176,7 +178,8 @@ const ArtifactsView: React.FC = () => {
     const isThinking = useChatState(s => s.isThinking);
     const { sidebarInline } = useChatPresentation();
     const actions = useChatActions();
-    const labels = useLabels();
+    const format = useChatFormat();
+    const { labels } = format;
     const icons = useIcons();
     const { blockRenderers } = useMarkdownConfig();
     const titleId = useStableId('cb-artifacts-title');
@@ -201,7 +204,7 @@ const ArtifactsView: React.FC = () => {
     // and downloading the file a second time (review of 2026-10-14).
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
-    const [rowErrors, setRowErrors] = useState<Record<string, string | null>>({});
+    const [rowErrors, setRowErrors] = useState<Record<string, RowErrorKey | null>>({});
     // The row an entry was opened from and how far the list was scrolled:
     // what "Back" returns to. `focus: 'search'` when "Artifacts" was chosen
     // again in the sidebar: the list, from its top control.
@@ -396,7 +399,7 @@ const ArtifactsView: React.FC = () => {
     };
 
     const setRowError = useCallback(
-        (id: string) => (message: string | null) => setRowErrors(previous => ({ ...previous, [id]: message })),
+        (id: string) => (labelKey: RowErrorKey | null) => setRowErrors(previous => ({ ...previous, [id]: labelKey })),
         []
     );
 
@@ -409,7 +412,7 @@ const ArtifactsView: React.FC = () => {
         setRowError(entry.id)(null);
         actions.deleteArtifact(file.attachment_uuid).then(
             () => dropArtifact(file.attachment_uuid),
-            () => setRowError(entry.id)(labels.artifactDeleteFailed)
+            () => setRowError(entry.id)('artifactDeleteFailed')
         );
     };
 
@@ -629,7 +632,7 @@ const ArtifactsView: React.FC = () => {
                         type="button"
                         className="cb-file-action"
                         onClick={() => openConversation(entry)}
-                        aria-label={`${labels.openConversation}: ${entry.conversation_title || entry.conversation_uuid}`}
+                        aria-label={actionOnItem(labels, labels.openConversation, entry.conversation_title || entry.conversation_uuid)}
                         title={labels.openConversation}
                     >
                         {icons.openConversation}
@@ -640,7 +643,7 @@ const ArtifactsView: React.FC = () => {
                         type="button"
                         className={`cb-file-action cb-file-action-danger${confirming ? ' is-confirming' : ''}`}
                         onClick={() => remove(entry, file)}
-                        aria-label={confirming ? labels.confirmDeleteArtifact : `${labels.deleteArtifact}: ${title}`}
+                        aria-label={confirming ? labels.confirmDeleteArtifact : actionOnItem(labels, labels.deleteArtifact, title)}
                         title={confirming ? labels.confirmDeleteArtifact : labels.deleteArtifact}
                     >
                         {/* Armed: its question in words — and, in a narrow
@@ -680,9 +683,9 @@ const ArtifactsView: React.FC = () => {
                     thumbnail={entry.saved}
                     // Which conversation first: across conversations, it is
                     // what tells two charts of the same name apart.
-                    details={[entry.conversation_title ?? '', ...baseDetails(file).reverse()]}
+                    details={[entry.conversation_title ?? '', ...baseDetails(file, format).reverse()]}
                     onPreview={() => openEntry(entry)}
-                    error={rowErrors[entry.id]}
+                    error={rowErrorText(labels, rowErrors[entry.id])}
                     actions={entryActions(entry, fileTitle(file))}
                 />
             );
@@ -697,9 +700,9 @@ const ArtifactsView: React.FC = () => {
                 picture={<KindThumb kind={entry.kind ?? 'file'} />}
                 title={title}
                 mark={mark}
-                details={[entry.conversation_title ?? '', formatFileDate(entry.created_at)]}
+                details={[entry.conversation_title ?? '', format.dateTime(entry.created_at)]}
                 onOpen={() => openEntry(entry)}
-                error={rowErrors[entry.id]}
+                error={rowErrorText(labels, rowErrors[entry.id])}
                 actions={entryActions(entry, title)}
             />
         );
@@ -721,6 +724,7 @@ const ArtifactsView: React.FC = () => {
                             ref={searchRef}
                             type="search"
                             className="cb-files-search-input"
+                            dir="auto"
                             placeholder={labels.searchArtifacts}
                             aria-label={labels.searchArtifacts}
                             // The storage API's limit; StorageClient cuts a longer one too.
@@ -800,7 +804,7 @@ const ArtifactsView: React.FC = () => {
                     onBack={closeEntry}
                     onClose={leave}
                     actions={entryActions(selected, blockTitle(selected))}
-                    error={rowErrors[selected.id]}
+                    error={rowErrorText(labels, rowErrors[selected.id])}
                 />
             )}
             {selected && selected.type === 'file' && selected.file && (
@@ -811,7 +815,7 @@ const ArtifactsView: React.FC = () => {
                     onBack={closeEntry}
                     onClose={leave}
                     actions={entryActions(selected, fileTitle(selected.file))}
-                    error={rowErrors[selected.id]}
+                    error={rowErrorText(labels, rowErrors[selected.id])}
                 />
             )}
         </section>
@@ -903,11 +907,12 @@ const FileDetail: React.FC<{
     const [shownFile] = useState(file);
     const attachment = useMemo(() => toAttachment(shownFile), [shownFile]);
     const load = useAttachmentLoad(attachment, true);
+    const format = useChatFormat();
     return (
         <EntryDetail
             entry={entry}
             title={fileTitle(file)}
-            details={[entry.conversation_title ?? '', ...baseDetails(file).reverse()]}
+            details={[entry.conversation_title ?? '', ...baseDetails(file, format).reverse()]}
             onBack={onBack}
             onClose={onClose}
             actions={actions}
@@ -939,7 +944,8 @@ const BlockDetail: React.FC<{
     error?: string | null;
 }> = ({ entry, title, onBack, onClose, actions, error }) => {
     const storage = useChatState(s => s.storageClient);
-    const labels = useLabels();
+    const format = useChatFormat();
+    const { labels } = format;
     const { blockRenderers } = useMarkdownConfig();
     const record = entry.block!;
     const [load, setLoad] = useState<BlockLoad>({ status: 'loading' });
@@ -1007,7 +1013,7 @@ const BlockDetail: React.FC<{
         <EntryDetail
             entry={entry}
             title={title}
-            details={[entry.conversation_title ?? '', formatFileDate(entry.created_at)]}
+            details={[entry.conversation_title ?? '', format.dateTime(entry.created_at)]}
             onBack={onBack}
             onClose={onClose}
             actions={actions}

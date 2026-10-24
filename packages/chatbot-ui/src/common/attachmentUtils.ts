@@ -1,6 +1,7 @@
 /**
  * Utilities for attachment URL resolution and response parsing.
  */
+import { labelledError } from './i18n';
 
 /**
  * Resolves the upload URL for attachments.
@@ -72,7 +73,7 @@ export function parseUploadedFileResponse(responseJson: any, originalFile: File)
         responseJson?.id;
 
     if (!fileId) {
-        throw new Error('Upload succeeded but server response is missing a valid file_id');
+        throw labelledError('uploadMissingFileId', 'Upload succeeded but server response is missing a valid file_id');
     }
 
     return {

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { ChatContainer } from '../ChatContainer/ChatContainer';
-import type { ChatMode, ChatTheme } from '../ChatContainer/presentation';
+import type { ChatMode, ChatSide, ChatTheme } from '../ChatContainer/presentation';
 import { Composer } from '../Composer/Composer';
 import { MainChat } from '../MainChat/MainChat';
 import { ChatbotProvider } from '../../context/ChatbotContext';
@@ -13,6 +13,14 @@ export interface ChatAppPresentationProps {
     allowedModes?: ChatMode[];
     theme?: ChatTheme;
     embedded?: boolean;
+    /**
+     * The edge the chat attaches to, in the page's direction: `'end'` (the
+     * default — the right in a left-to-right page, the left in a right-to-left
+     * one) or `'start'`. Embedded, `'start'` leads the host's flex row and
+     * `'end'` keeps the DOM place the host gave it (no `order`). See
+     * `ChatContainerProps.side`.
+     */
+    side?: ChatSide;
     noBackground?: boolean;
     /**
      * The floating button's icon — any React node (an SVG, an icon component, a
@@ -20,6 +28,12 @@ export interface ChatAppPresentationProps {
      * `ChatContainerProps.launcherIcon`.
      */
     launcherIcon?: React.ReactNode;
+    /**
+     * Replaces the floating button; `null` removes it, for a host that opens
+     * the chat from a control of its own. Defaults to the round button drawn
+     * with `launcherIcon`. See `ChatContainerProps.launcher`.
+     */
+    launcher?: React.ReactNode;
 }
 
 /**
@@ -32,18 +46,21 @@ export interface ChatAppPresentationProps {
  */
 export type AppProps = ChatAppPresentationProps & Omit<ChatbotProviderProps, 'children'>;
 
-// Every placement prop decided by `App`'s defaults; the icon stays optional, so an
-// omitted one falls through to `config.icons.launcher`.
-type ChatAppLayoutProps = Required<Omit<ChatAppPresentationProps, 'launcherIcon'>>
-    & Pick<ChatAppPresentationProps, 'launcherIcon'>;
+// Every placement prop decided by `App`'s defaults; the icon and the launcher
+// stay optional, so an omitted icon falls through to `config.icons.launcher`
+// and an omitted launcher to the round button.
+type ChatAppLayoutProps = Required<Omit<ChatAppPresentationProps, 'launcherIcon' | 'launcher'>>
+    & Pick<ChatAppPresentationProps, 'launcherIcon' | 'launcher'>;
 
 const ChatAppLayout: React.FC<ChatAppLayoutProps> = ({
     mode,
     allowedModes,
     theme,
     embedded,
+    side,
     noBackground,
     launcherIcon,
+    launcher,
 }) => {
     const isEmpty = useChatState(s => s.messages.length === 0);
     const isEmptyFullscreen = mode === 'fullscreen' && isEmpty;
@@ -60,8 +77,10 @@ const ChatAppLayout: React.FC<ChatAppLayoutProps> = ({
             allowedModes={allowedModes}
             theme={theme}
             embedded={embedded}
+            side={side}
             noBackground={noBackground}
             launcherIcon={launcherIcon}
+            launcher={launcher}
             footer={isEmptyFullscreen ? null : composer}
         >
             <MainChat emptyComposer={isEmptyFullscreen ? composer : undefined} />
@@ -76,8 +95,10 @@ export const App: React.FC<AppProps> = ({
     allowedModes = NO_MODES,
     theme = 'system',
     embedded = false,
+    side = 'end',
     noBackground = false,
     launcherIcon,
+    launcher,
     ...providerProps
 }) => {
     const runtime = useOptionalChatRuntime();
@@ -100,8 +121,10 @@ export const App: React.FC<AppProps> = ({
             allowedModes={allowedModes}
             theme={theme}
             embedded={embedded}
+            side={side}
             noBackground={noBackground}
             launcherIcon={launcherIcon}
+            launcher={launcher}
         />
     );
 

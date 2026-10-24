@@ -1,19 +1,18 @@
 import React from 'react';
 import type { BlockRecord, ConversationFile } from '../../api/types';
 import type { BlockRenderer } from '../../common/chatbotConfig';
-import { formatCount, formatLabel } from '../../common/labels';
+import { formatLabel } from '../../common/labels';
 import { rendererFor } from '../../common/markdownBlocks';
 import { useStableId } from '../../common/useStableId';
 import {
     useChatActions,
     useChatEvent,
+    useChatFormat,
     useChatRuntime,
     useChatState,
     useIcons,
-    useLabels,
     useMarkdownConfig,
 } from '../../store/hooks';
-import { formatFileSize } from '../AttachmentViewer/AttachmentViewer';
 import { BlockDialog, ExpandedBlock } from '../MarkdownBlock/MarkdownBlock';
 import {
     CHAT_ROOT,
@@ -27,13 +26,14 @@ import {
     LiveAnnouncement,
     ROW_KIND_LABEL,
     SaveFileButton,
+    actionOnItem,
     fileTitle,
     focusRow,
-    formatFileDate,
-    formatRelativeDate,
     rowKindOf,
     savedStateOf,
+    rowErrorText,
     useReadAfterTurnEnds,
+    type RowErrorKey,
     type SavedState,
 } from './FilesShared';
 import {
@@ -184,7 +184,8 @@ const ConversationFilesBody: React.FC = () => {
     const messages = useChatState(s => s.messages);
     const isThinking = useChatState(s => s.isThinking);
     const actions = useChatActions();
-    const labels = useLabels();
+    const format = useChatFormat();
+    const { labels } = format;
     const icons = useIcons();
     const { languages, renderers } = useDrawnLanguages();
     const [loadState, setState] = useState<LoadState>({ status: 'loading' });
@@ -197,7 +198,7 @@ const ConversationFilesBody: React.FC = () => {
     const [filter, setFilter] = useState<Filter>('all');
     const [preview, setPreview] = useState<ConversationFile | null>(null);
     const [openBlock, setOpenBlock] = useState<OpenBlock | null>(null);
-    const [rowErrors, setRowErrors] = useState<Record<string, string | null>>({});
+    const [rowErrors, setRowErrors] = useState<Record<string, RowErrorKey | null>>({});
     const [busyRows, setBusyRows] = useState<Record<string, boolean>>({});
     // A row's Save that landed: said aloud, and focus on its row — the Save
     // button it was on is gone once the row shows Saved (review of 2026-10-14).
@@ -317,8 +318,8 @@ const ConversationFilesBody: React.FC = () => {
         focusRow(bodyRef.current, id);
     });
 
-    const setRowError = (id: string) => (message: string | null) =>
-        setRowErrors(previous => ({ ...previous, [id]: message }));
+    const setRowError = (id: string) => (labelKey: RowErrorKey | null) =>
+        setRowErrors(previous => ({ ...previous, [id]: labelKey }));
     const setRowBusy = (id: string, busy: boolean) =>
         setBusyRows(previous => ({ ...previous, [id]: busy }));
 
@@ -353,7 +354,7 @@ const ConversationFilesBody: React.FC = () => {
                 if (stillHere()) setOpenBlock({ block, source: record.source, renderer, conversationId: askedFor });
             },
             () => {
-                if (stillHere()) setRowError(item.id)(labels.blockLoadFailed);
+                if (stillHere()) setRowError(item.id)('blockLoadFailed');
             }
         ).finally(() => {
             if (mounted.current) setRowBusy(item.id, false);
@@ -378,8 +379,8 @@ const ConversationFilesBody: React.FC = () => {
         const details = [
             labels[ROW_KIND_LABEL[rowKindOf(file)]],
             file.source === 'generated' ? labels.fileGeneratedBadge : '',
-            formatRelativeDate(file.created_at),
-            file.size_bytes > 0 ? formatFileSize(file.size_bytes) : '',
+            format.relativeDate(file.created_at),
+            file.size_bytes > 0 ? format.fileSize(file.size_bytes) : '',
         ];
         return (
             <FileRow
@@ -388,9 +389,9 @@ const ConversationFilesBody: React.FC = () => {
                 file={file}
                 mark={mark}
                 details={details}
-                detailsTitle={formatFileDate(file.created_at)}
+                detailsTitle={format.dateTime(file.created_at)}
                 onPreview={setPreview}
-                error={rowErrors[item.id]}
+                error={rowErrorText(labels, rowErrors[item.id])}
                 actions={storage && (
                     <>
                         {file.source === 'generated' && mark === 'unsaved' && (
@@ -425,7 +426,7 @@ const ConversationFilesBody: React.FC = () => {
         const title = block.title ?? formatLabel(labels.blockUntitled, { label });
         const canOpen = Boolean(renderer && (block.source !== null || block.serverUuid));
         const inChat = block.messageId !== null;
-        const size = block.artifact && block.artifact.size_bytes > 0 ? formatFileSize(block.artifact.size_bytes) : '';
+        const size = block.artifact && block.artifact.size_bytes > 0 ? format.fileSize(block.artifact.size_bytes) : '';
         return (
             <ListRow
                 key={item.id}
@@ -436,11 +437,11 @@ const ConversationFilesBody: React.FC = () => {
                 title={title}
                 mark={block.saved ? 'saved' : 'unsaved'}
                 // The renderer's word for it first ("chart"), as its untitled name says it.
-                details={[label, formatRelativeDate(block.createdAt), size]}
-                detailsTitle={formatFileDate(block.createdAt)}
+                details={[label, format.relativeDate(block.createdAt), size]}
+                detailsTitle={format.dateTime(block.createdAt)}
                 onOpen={canOpen && renderer ? opener => openLive(item, renderer, opener) : undefined}
                 busy={Boolean(busyRows[item.id])}
-                error={rowErrors[item.id]}
+                error={rowErrorText(labels, rowErrors[item.id])}
                 actions={(
                     <>
                         <button
@@ -448,8 +449,12 @@ const ConversationFilesBody: React.FC = () => {
                             className="cb-file-action cb-file-action-locate"
                             aria-disabled={!inChat || undefined}
                             aria-label={inChat
-                                ? `${labels.showInChat}: ${title}`
-                                : `${labels.showInChat}: ${title} — ${labels.showInChatUnavailable}`}
+                                ? actionOnItem(labels, labels.showInChat, title)
+                                : formatLabel(labels.actionOnItemUnavailable, {
+                                    action: labels.showInChat,
+                                    item: title,
+                                    reason: labels.showInChatUnavailable,
+                                })}
                             title={inChat ? labels.showInChat : labels.showInChatUnavailable}
                             onClick={() => {
                                 if (inChat) showInChat(block);
@@ -483,8 +488,8 @@ const ConversationFilesBody: React.FC = () => {
     // Under the title: the conversation (cut short), then "6 items · 2 saved".
     const countText = groups && total > 0
         ? [
-            formatCount(total, labels.filesItemsOne, labels.filesItemsOther),
-            groups.saved > 0 ? formatLabel(labels.filesSavedCount, { count: groups.saved }) : '',
+            format.plural(labels.filesItems, total),
+            groups.saved > 0 ? format.plural(labels.filesSavedCount, groups.saved) : '',
         ].filter(Boolean).join(' · ')
         : '';
     const subtitle = conversationTitle || countText ? (
@@ -527,7 +532,7 @@ const ConversationFilesBody: React.FC = () => {
                             {/* The space is what a screen reader hears between them ("Visuals 3"); the gap draws it. */}
                             <span className="cb-files-segment-label">{option.label}</span>
                             {' '}
-                            <span className="cb-files-segment-count">{option.count}</span>
+                            <span className="cb-files-segment-count">{format.number(option.count)}</span>
                         </button>
                     ))}
                 </div>
@@ -559,7 +564,7 @@ const ConversationFilesBody: React.FC = () => {
                         <h3 className="cb-files-section-title" id={`${sectionId}-${section.id}`}>
                             <span className="cb-files-section-label">{section.label}</span>
                             {' '}
-                            <span className="cb-files-section-count">{section.items.length}</span>
+                            <span className="cb-files-section-count">{format.number(section.items.length)}</span>
                         </h3>
                         <ul className="cb-files-list" aria-labelledby={`${sectionId}-${section.id}`}>
                             {section.items.map(renderItem)}

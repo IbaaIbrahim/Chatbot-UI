@@ -1,7 +1,7 @@
 import React from 'react';
 import type { FeatureCardItem, QuickActionItem, QuickActionPrompt } from '../../common/chatbotConfig';
 import { useStableId } from '../../common/useStableId';
-import { useChatActions, useChatState, useIcons, useLabels } from '../../store/hooks';
+import { useChatActions, useChatFormat, useChatState, useIcons } from '../../store/hooks';
 import { useChatPresentation } from '../ChatContainer/presentation';
 import './WelcomeScreen.css';
 
@@ -25,7 +25,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ composer }) => {
     const featureCards = useChatState(s => s.config.featureCards);
     const userName = useChatState(s => s.userName);
     const actions = useChatActions();
-    const labels = useLabels();
+    const format = useChatFormat();
+    const { labels } = format;
     const icons = useIcons();
     const { mode } = useChatPresentation();
     const promptListId = useStableId('cb-quick-action-prompts');
@@ -270,14 +271,14 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ composer }) => {
                 <div className="cb-card-visual-surface">
                     {variant === 'settings' || variant === 'agents' ? (
                         <>
-                            <span className="cb-card-visual-chip cb-chip-primary">Daily Briefing Agent</span>
-                            <span className="cb-card-visual-chip cb-chip-secondary">Problem Site Identifier</span>
+                            <span className="cb-card-visual-chip cb-chip-primary">{labels.featureCardAgentPrimary}</span>
+                            <span className="cb-card-visual-chip cb-chip-secondary">{labels.featureCardAgentSecondary}</span>
                             <span className="cb-card-visual-dot dot-one" />
                             <span className="cb-card-visual-dot dot-two" />
                         </>
                     ) : variant === 'chart' || variant === 'charts' ? (
                         <>
-                            <span className="cb-card-visual-metric">92%</span>
+                            <span className="cb-card-visual-metric">{format.percent(0.92)}</span>
                             <span className="cb-card-visual-bar bar-one" />
                             <span className="cb-card-visual-bar bar-two" />
                             <span className="cb-card-visual-bar bar-three" />
@@ -291,8 +292,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ composer }) => {
                         </>
                     ) : (
                         <>
-                            <span className="cb-card-visual-chip cb-chip-primary">Does FSANZ 3.2.2A apply?</span>
-                            <span className="cb-card-visual-source">foodstandards.gov</span>
+                            <span className="cb-card-visual-chip cb-chip-primary">{labels.featureCardQuestion}</span>
+                            <span className="cb-card-visual-source">{labels.featureCardSource}</span>
                             <span className="cb-card-visual-panel" />
                         </>
                     )}
@@ -315,7 +316,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ composer }) => {
             </div>
 
             {/* Greeting Header */}
-            <h2 className="cb-welcome-title">{greetingTitle}</h2>
+            {/* Its own direction (2026-10-18): an English greeting in a
+                right-to-left page reads "What would you like to do?", its
+                question mark at the end, not before it. */}
+            <h2 className="cb-welcome-title cb-bidi" dir="auto">{greetingTitle}</h2>
 
             {/* Privacy / Context Badges */}
             {privacyBadges.length > 0 && (
@@ -323,7 +327,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ composer }) => {
                     {privacyBadges.map((badge, idx) => (
                         <div key={idx} className="cb-welcome-privacy-badge">
                             <span className="cb-privacy-icon">{renderBadgeIcon(badge.icon)}</span>
-                            <span className="cb-privacy-text">{badge.text}</span>
+                            <span className="cb-privacy-text cb-bidi" dir="auto">{badge.text}</span>
                         </div>
                     ))}
                 </div>
@@ -348,7 +352,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ composer }) => {
                             <div className={`cb-suggestion-icon-badge cb-icon-${typeof item.icon === 'string' ? item.icon : isCustomIcon(item.icon) ? 'custom' : 'pin'}`}>
                                 {renderSuggestionIcon(item.icon)}
                             </div>
-                            <span className="cb-suggestion-text">{item.text}</span>
+                            <span className="cb-suggestion-text cb-bidi" dir="auto">{item.text}</span>
                         </button>
                     ))}
                 </div>
@@ -371,7 +375,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ composer }) => {
                                         aria-controls={isOpen ? promptListId : undefined}
                                     >
                                         {renderQuickActionIcon(action.icon)}
-                                        <span>{action.label}</span>
+                                        <span className="cb-bidi" dir="auto">{action.label}</span>
                                     </button>
                                 );
                             })}
@@ -388,7 +392,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ composer }) => {
                                     className="cb-welcome-prompt-row"
                                     onClick={() => chooseCategoryPrompt(item)}
                                 >
-                                    <span className="cb-welcome-prompt-text">{item.label}</span>
+                                    <span className="cb-welcome-prompt-text cb-bidi" dir="auto">{item.label}</span>
                                     <span className="cb-welcome-prompt-chevron" aria-hidden="true">{icons.promptRow}</span>
                                 </button>
                             ))}
@@ -412,11 +416,11 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ composer }) => {
                                                 {renderFeatureCardIcon(card.icon)}
                                             </div>
                                             {card.badge && (
-                                                <span className="cb-feature-card-badge">{card.badge}</span>
+                                                <span className="cb-feature-card-badge cb-bidi" dir="auto">{card.badge}</span>
                                             )}
                                         </div>
-                                        <h3 className="cb-feature-card-title">{card.title}</h3>
-                                        <p className="cb-feature-card-desc">{card.description}</p>
+                                        <h3 className="cb-feature-card-title cb-bidi" dir="auto">{card.title}</h3>
+                                        <p className="cb-feature-card-desc cb-bidi" dir="auto">{card.description}</p>
                                     </div>
                                 </button>
                             ))}

@@ -3,21 +3,26 @@ import './ChatContainer.css';
 import { ChatHeader } from '../ChatHeader/ChatHeader';
 import { ConversationSidebar } from '../ConversationSidebar/ConversationSidebar';
 import { CreditUsageDialog } from '../CreditUsage/CreditUsageDialog';
+import { StandingContextDialog } from '../StandingContext/StandingContextDialog';
 import { ArtifactsPanel } from '../Files/ArtifactsPanel';
 import { ConversationFilesPanel } from '../Files/ConversationFilesPanel';
 import { MainChat } from '../MainChat/MainChat';
-import { useChatActions, useChatState, useIcons, useLabels } from '../../store/hooks';
+import { useChatActions, useChatState, useConfiguredLanguage, useIcons, useLabels } from '../../store/hooks';
+import { useInheritedDirection } from '../../common/direction';
 import {
     ALL_MODES,
     ChatMode,
     ChatPresentation,
     ChatPresentationContext,
+    ChatSide,
     ChatTheme,
+    placementClasses,
+    resolveSide,
     themeAttribute,
     useWideViewport,
 } from './presentation';
 
-export type { ChatMode, ChatTheme } from './presentation';
+export type { ChatMode, ChatSide, ChatTheme } from './presentation';
 
 const { useEffect, useMemo, useState } = React;
 
@@ -28,6 +33,20 @@ export interface ChatContainerProps {
     theme?: ChatTheme;
     /** A flex child of the host's layout rather than a fixed overlay. */
     embedded?: boolean;
+    /**
+     * The edge the chat attaches to, in the page's direction: `'end'` (the
+     * default) is the right in a left-to-right page and the left in a
+     * right-to-left one; `'start'` is the other. It places the floating card
+     * and its launcher, and the overlay sidebar (and the side it slides in
+     * from). An embedded chat gets its border on the inner edge, and
+     * `'start'` leads the host's flex row (`order: -1`) whatever its DOM
+     * place; `'end'` sets no `order` and keeps the place the host gave it —
+     * after the host's content only if the host renders it there (give it
+     * `order: 1` to force the end). Fullscreen has no side. The direction is
+     * the one the chat inherits (`dir` on `<html>` or any ancestor), read
+     * from the browser.
+     */
+    side?: ChatSide;
     noBackground?: boolean;
     /**
      * The floating button's icon, shown while a floating chat is closed. Any React
@@ -36,6 +55,14 @@ export interface ChatContainerProps {
      * for every instance needs nothing here.
      */
     launcherIcon?: React.ReactNode;
+    /**
+     * Replaces the floating button a closed floating chat shows; `null` removes
+     * it, for a host that opens the chat from a control of its own — a button
+     * in its header calling `useChatActions().open()`. Defaults to the round
+     * button drawn with `launcherIcon`. A replacement is drawn as it is, with
+     * none of the button's placement or theme.
+     */
+    launcher?: React.ReactNode;
     /** Replaces the header; `null` removes it. Defaults to `<ChatHeader />`. */
     header?: React.ReactNode;
     /** Replaces the conversation sidebar; `null` removes it. Defaults to `<ConversationSidebar />`. */
@@ -48,8 +75,9 @@ export interface ChatContainerProps {
 }
 
 /**
- * The chat's frame: placement (floating, docked or fullscreen), theme, the
- * sidebar, the header, the transcript and the footer.
+ * The chat's frame: placement (floating, docked or fullscreen, at the `side`
+ * the host names, in the page's direction), theme, the sidebar, the header,
+ * the transcript and the footer.
  *
  * Reads the open and sidebar state from the provider, so it can be rendered —
  * and moved — anywhere under `ChatbotProvider`; closing it from the host is
@@ -60,8 +88,10 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     allowedModes,
     theme = 'system',
     embedded = false,
+    side: sideProp,
     noBackground = false,
     launcherIcon,
+    launcher,
     header,
     sidebar,
     footer,
@@ -75,8 +105,19 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     const actions = useChatActions();
     const labels = useLabels();
     const icons = useIcons();
+    // `lang` from `config.language` (4.2): screen readers pronounce the chat
+    // in its language, and the browser hyphenates and picks fonts for it. The
+    // layout's direction stays the page's (`useInheritedDirection`) — a
+    // language is not a layout.
+    const language = useConfiguredLanguage();
     const isWideViewport = useWideViewport();
     const [mounted, setMounted] = useState(false);
+    // The element drawn — the launcher or the panel — whose inherited
+    // direction the placement is read in. State, not a ref, so the direction
+    // is read again from whichever of the two is mounted.
+    const [frame, setFrame] = useState<HTMLElement | null>(null);
+    const direction = useInheritedDirection(frame);
+    const side = resolveSide(sideProp);
 
     const effectiveAllowedModes = allowedModes && allowedModes.length > 0 ? allowedModes : ALL_MODES;
     const effectiveMode = effectiveAllowedModes.includes(mode) ? mode : effectiveAllowedModes[0];
@@ -87,8 +128,10 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         allowedModes: effectiveAllowedModes,
         theme,
         embedded,
+        side,
+        direction,
         sidebarInline,
-    }), [effectiveMode, effectiveAllowedModes, theme, embedded, sidebarInline]);
+    }), [effectiveMode, effectiveAllowedModes, theme, embedded, side, direction, sidebarInline]);
 
     useEffect(() => {
         setMounted(true);
@@ -104,14 +147,39 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         return () => document.removeEventListener('keydown', onKeyDown);
     }, [isSidebarOpen, sidebarInline, actions]);
 
+    // The sidebar open as a column is part of the page; the same open state in
+    // an overlay is a drawer over the transcript, which nobody asked for. So
+    // when the column gives way to an overlay — fullscreen left for another
+    // mode, or the viewport narrowed — the sidebar closes, and when a column
+    // comes back it reopens if it was open as the last one was left
+    // (2026-10-22: a host's full-page chat left with its column open showed
+    // the drawer over the corner card on the next page). Before paint, so the
+    // drawer is never drawn over the new presentation. Transitions only: a
+    // sidebar opened, or `defaultSidebarOpen`, in an overlay stays open.
+    const wasInline = React.useRef(sidebarInline);
+    const columnWasOpen = React.useRef(false);
+    React.useLayoutEffect(() => {
+        if (wasInline.current === sidebarInline) return;
+        wasInline.current = sidebarInline;
+        if (!sidebarInline) {
+            columnWasOpen.current = isSidebarOpen;
+            if (isSidebarOpen) actions.closeSidebar();
+        } else if (columnWasOpen.current && !isSidebarOpen) {
+            actions.openSidebar();
+        }
+    }, [sidebarInline, isSidebarOpen, actions]);
+
     if (!mounted) return null;
 
     if (!isOpen && effectiveMode === 'floating' && !embedded) {
+        if (launcher !== undefined) return <>{launcher}</>;
         return (
             <button
+                ref={setFrame}
                 type="button"
-                className="cb-chat-launcher cb-launcher-btn"
+                className={['cb-chat-launcher', 'cb-launcher-btn', ...placementClasses(side, direction)].join(' ')}
                 data-theme={themeAttribute(theme)}
+                lang={language}
                 onClick={actions.open}
                 aria-label={labels.openChat}
             >
@@ -127,6 +195,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         `cb-mode-${effectiveMode}`,
         isOpen ? 'cb-open' : 'cb-closed',
         embedded ? 'cb-embedded' : null,
+        ...placementClasses(side, direction),
         noBackground ? 'cb-no-background' : null,
         className || null,
     ].filter(Boolean).join(' ');
@@ -136,7 +205,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
     return (
         <ChatPresentationContext.Provider value={presentation}>
-            <div className={containerClasses} data-theme={themeAttribute(theme)}>
+            <div ref={setFrame} className={containerClasses} data-theme={themeAttribute(theme)} lang={language}>
                 <div className="cb-chat-body-wrapper">
                     {showSidebar && (
                         <div className={`cb-drawer-wrapper ${isSidebarOpen ? 'open' : ''}`}>
@@ -168,6 +237,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                     </div>
                 </div>
                 <CreditUsageDialog />
+                <StandingContextDialog />
             </div>
         </ChatPresentationContext.Provider>
     );
