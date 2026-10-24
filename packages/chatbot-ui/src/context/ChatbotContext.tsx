@@ -15,6 +15,7 @@ import type { ClientSkillDefinition, ToolConfig } from '../common/toolConfig';
 import { isHostRequestSlug } from '../common/hostCatalogue';
 import type { AttachedFile, ConversationDetail, UserCredits } from '../api/types';
 import { summarizeUsage } from '../common/usageSummary';
+import { creditAlertFor, creditAlertKey } from '../common/creditAlert';
 import { resolveChatbotConfig } from '../common/chatbotConfig';
 import { formattingLocale, labelledError } from '../common/i18n';
 import { blockLanguagesOf } from '../common/markdownBlocks';
@@ -553,13 +554,56 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     // --- Credit usage: the user's own allowance, read when the dialog opens ---
     const [isCreditUsageOpen, setCreditUsageOpen] = useState(false);
     const canShowCredits = Boolean(activeClient && 'getCredits' in activeClient);
+    // The figures as last read, by whoever read them — the composer's notice
+    // shows what the dialog just read too.
+    const [credits, setCredits] = useState<UserCredits | null>(null);
+
+    // Another client is another user, perhaps: their figures are not these.
+    useEffect(() => {
+        setCredits(null);
+    }, [activeClient]);
 
     const fetchCredits = useCallback((): Promise<UserCredits> => {
         if (!activeClient || !('getCredits' in activeClient)) {
             return Promise.reject(new Error('This client cannot read credit usage.'));
         }
-        return (activeClient as GatewayStreamClient).getCredits();
+        return (activeClient as GatewayStreamClient).getCredits().then(read => {
+            setCredits(read);
+            return read;
+        });
     }, [activeClient]);
+
+    // A failed read leaves the last figures in place: a notice that vanished
+    // because the network blinked would let a user who is out try to send.
+    const refreshCredits = useCallback(
+        (): Promise<UserCredits | null> => fetchCredits().catch(() => null),
+        [fetchCredits]
+    );
+
+    // --- The composer's credit notice (since 4.3) ---
+    const creditAlertsOn = resolvedConfig.composer.creditAlerts && canShowCredits;
+    const creditWarningThresholds = resolvedConfig.composer.creditWarningThresholds;
+    const pendingCreditAlert = useMemo(
+        () => creditAlertFor(credits, creditWarningThresholds),
+        [credits, creditWarningThresholds]
+    );
+    // The warning the user closed, by `creditAlertKey`: a higher threshold
+    // passed later is another warning, and shows.
+    const [dismissedCreditAlert, setDismissedCreditAlert] = useState<string | null>(null);
+    const creditAlert = creditAlertsOn
+        && pendingCreditAlert
+        && (pendingCreditAlert.kind === 'blocked' || creditAlertKey(pendingCreditAlert) !== dismissedCreditAlert)
+        ? pendingCreditAlert
+        : null;
+
+    // Each opening shows a closed warning again, from figures read afresh.
+    useEffect(() => {
+        if (isOpen) setDismissedCreditAlert(null);
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (isOpen && creditAlertsOn) void refreshCredits();
+    }, [isOpen, creditAlertsOn, refreshCredits]);
 
     // --- The composer, which registers itself when it mounts ---
     const composerRef = useRef<ComposerControl | null>(null);
@@ -574,12 +618,17 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         }, 0);
     }, []);
 
+    // When a turn ends: back to the composer, and the allowance read again — a
+    // turn is what spends it, and the next one may not be admitted.
     const wasBusyRef = useRef(false);
     useEffect(() => {
         const busy = isThinking || isResuming;
-        if (wasBusyRef.current && !busy) focusComposer();
+        if (wasBusyRef.current && !busy) {
+            focusComposer();
+            if (creditAlertsOn) void refreshCredits();
+        }
         wasBusyRef.current = busy;
-    }, [isThinking, isResuming, focusComposer]);
+    }, [isThinking, isResuming, focusComposer, creditAlertsOn, refreshCredits]);
 
     const titleRefreshTimers = useRef<number[]>([]);
     useEffect(() => () => titleRefreshTimers.current.forEach(timer => window.clearTimeout(timer)), []);
@@ -743,6 +792,8 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         canStop: Boolean(activeClient && 'cancelTurn' in activeClient),
         canShowCredits,
         isCreditUsageOpen: canShowCredits && isCreditUsageOpen,
+        credits,
+        creditAlert,
 
         storageClient,
         isFilesPanelOpen: Boolean(storageClient) && isFilesPanelOpen,
@@ -831,6 +882,10 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
         share: () => onShare?.(),
         openCreditUsage: () => setCreditUsageOpen(true),
         closeCreditUsage: () => setCreditUsageOpen(false),
+        refreshCredits,
+        dismissCreditAlert: () => {
+            if (creditAlert?.kind === 'warning') setDismissedCreditAlert(creditAlertKey(creditAlert));
+        },
         // One at a time: the files panel covers the chat, the Artifacts view
         // takes its place, and the view can open a conversation the files
         // panel would then describe.
@@ -1011,6 +1066,8 @@ function delegateActions(latest: React.MutableRefObject<ChatActions>): ChatActio
         share: () => latest.current.share(),
         openCreditUsage: () => latest.current.openCreditUsage(),
         closeCreditUsage: () => latest.current.closeCreditUsage(),
+        refreshCredits: () => latest.current.refreshCredits(),
+        dismissCreditAlert: () => latest.current.dismissCreditAlert(),
         openFiles: () => latest.current.openFiles(),
         closeFiles: () => latest.current.closeFiles(),
         openArtifacts: () => latest.current.openArtifacts(),

@@ -3,6 +3,7 @@ import type { EnablableTool, GatewayStreamClient } from '../api/GatewayStreamCli
 import type { AttachedFile, ConversationFile, ConversationSummary, SaveFileOptions, UserCredits } from '../api/types';
 import type { StorageClient } from '../api/StorageClient';
 import type { ChatbotConfig, ResolvedChatbotConfig } from '../common/chatbotConfig';
+import type { CreditAlert } from '../common/creditAlert';
 import type { ToolConfig } from '../common/toolConfig';
 import type { TurnUsageSummary } from '../common/usageSummary';
 import type { ChatMode } from '../components/ChatContainer/presentation';
@@ -52,6 +53,19 @@ export interface ChatSnapshot {
     /** The client can read the user's own allowance, so "Credit usage" has something to show. */
     canShowCredits: boolean;
     isCreditUsageOpen: boolean;
+    /**
+     * The user's own allowance as last read: when the chat opened, after each
+     * turn, or by the "Credit usage" dialog. `null` before the first read, when
+     * the client cannot read it, or with `composer.creditAlerts` off and the
+     * dialog never opened. Since 4.3.
+     */
+    credits: UserCredits | null;
+    /**
+     * What the composer's credit notice shows, or `null`: nothing to say,
+     * `composer.creditAlerts` off, or the user closed this warning since the
+     * chat opened. Being out of credits cannot be closed. Since 4.3.
+     */
+    creditAlert: CreditAlert | null;
 
     // --- Files: the conversation's files and the user's artifacts ---
     /**
@@ -132,6 +146,14 @@ export interface ChatActions {
     /** Opens the "Credit usage" dialog, which reads the allowance afresh each time. */
     openCreditUsage: () => void;
     closeCreditUsage: () => void;
+    /**
+     * Reads the user's allowance again — after the host knows it changed, say
+     * — and resolves to it; to `null` when the client cannot read it or the
+     * read failed, which leaves the last figures in place. Since 4.3.
+     */
+    refreshCredits: () => Promise<UserCredits | null>;
+    /** Closes the composer's credit warning until the chat is next opened. Since 4.3. */
+    dismissCreditAlert: () => void;
     /** The "Conversation files" panel, for the open conversation. */
     openFiles: () => void;
     closeFiles: () => void;
@@ -254,7 +276,10 @@ export interface ComposerControl {
 export interface ChatServices {
     fetchAuthenticatedUrl: (url: string) => Promise<string>;
     getFileDownloadUrl: (fileIdOrDownloadUrl: string) => Promise<string>;
-    /** The user's own allowance; rejects when the client cannot read it. */
+    /**
+     * The user's own allowance; rejects when the client cannot read it. A
+     * successful read is also what `credits` shows from then on.
+     */
     fetchCredits: () => Promise<UserCredits>;
 }
 

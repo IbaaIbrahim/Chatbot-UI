@@ -95,6 +95,7 @@ call re-renders on every change unless it is paired with an equality function;
 | `isOpen`, `isSidebarOpen` | Presence. |
 | `hostHandlesOpenChange`, `canSwitchMode`, `canShare`, `canCopyConversationLink`, `canStop` | Whether the provider has `onOpenChange` / `onSwitchMode` / `onShare` / `conversationLink`, and whether the client can cancel a turn on the server. |
 | `canShowCredits`, `isCreditUsageOpen` | Whether the client can read the user's own allowance, and whether the "Credit usage" dialog is open. |
+| `credits`, `creditAlert` | The user's allowance as last read (`UserCredits`, or `null`), and what the composer's credit notice shows (`CreditAlert`, or `null`) — see [The credit notice](#the-credit-notice-above-the-composer). Since 4.3. |
 | `storageClient` | The storage API's client for this user (`StorageClient`), built from `storageApiUrl` and `accessToken`; `null` without both. See [Conversation files and artifacts](#conversation-files-and-artifacts). |
 | `isFilesPanelOpen`, `isArtifactsPanelOpen` | Whether the "Conversation files" panel is open, or the "Artifacts" view is showing in place of the chat (one at a time). |
 | `artifactsOpenings` | Counts the calls to `openArtifacts()` — the view goes back to its list when "Artifacts" is chosen while it already shows. |
@@ -125,6 +126,7 @@ closure to capture: every call acts on the current state.
 | `switchMode(mode)` | Calls the provider's `onSwitchMode`. |
 | `share()` | Calls the provider's `onShare`. |
 | `openCreditUsage()`, `closeCreditUsage()` | The "Credit usage" dialog — see [Credit usage](#credit-usage). |
+| `refreshCredits()`, `dismissCreditAlert()` | Read the allowance again (resolves to it, or `null` when it cannot be read), and close the composer's credit warning until the chat is next opened — see [The credit notice](#the-credit-notice-above-the-composer). Since 4.3. |
 | `openFiles()`, `closeFiles()` | The "Conversation files" panel, for the open conversation. |
 | `openArtifacts()`, `closeArtifacts()` | The "Artifacts" view: everything the answers produced across conversations, saved and not saved, in the chat column in place of the transcript and the composer. |
 | `saveFile(jobUuid, file, options?)` | Stores a `File` or `Blob` in the conversation against the turn `jobUuid` (a block's `jobUuid`): an export by default, an artifact with `isArtifact: true`. Resolves to the stored `ConversationFile`; rejects with the server's reason (after 3 s of retries for a turn not stored yet), or at once without a storage API. See [Saving](#saving-a-file-or-an-artifact). |
@@ -472,6 +474,40 @@ organisation's or the provider's figures, which the Gateway does not send.
   `useChatRuntime().services.fetchCredits()` or `ConversationClient.getCredits()`.
 - Its text is the `credits*` and `creditGrant*` labels.
 
+#### The credit notice above the composer
+
+Since 4.3 the composer tells the user about their allowance before a request is
+refused, in a line directly above its box:
+
+- **A warning** once the allowance passes a threshold — 90% used, by default:
+  "You've used 92% of your credits — 8 credits left." (`labels.creditsWarning`).
+  The user can close it; it stays closed until the chat is next opened (`isOpen`
+  turning true), or until a higher threshold is passed. Set the thresholds with
+  `composer.creditWarningThresholds` — percentages, the highest one passed
+  shown: `[75, 90]` warns at 75% and again at 90%; `[]` never warns. A user with
+  no personal limit is never warned: the Gateway does not send the
+  organisation's figures, so there is nothing to measure against.
+- **Out of credits** — a request submitted now would not be admitted
+  (`can_run: false`) — it says whose limit stops them, with the dialog's
+  sentence (`creditsBlocked*`), and the send button is disabled (Enter too). This
+  one cannot be closed: it is why nothing can be sent. Suggestions and quick
+  actions still send, and the Gateway still refuses them with its own error.
+- "View usage" (`labels.creditsViewUsage`) opens the dialog, while
+  `header.creditUsage` offers it.
+
+The allowance is read when the chat opens and after every turn, and the dialog's
+read updates the notice too; a host that knows it changed calls
+`useChatActions().refreshCredits()`. A failed read keeps the last figures.
+`composer: { creditAlerts: false }` turns all of it off — nothing is read and
+sending is never disabled. A host with a composer of its own renders
+`<CreditNotice />` above it, and disables sending while
+`useChatState(s => s.credits?.can_run) === false`. The warning's tint is
+`--cb-status-warning`.
+
+```tsx
+const config: ChatbotConfig = { composer: { creditWarningThresholds: [80, 95] } };
+```
+
 ### `composer`
 
 | Key | Default | Shows when |
@@ -484,6 +520,8 @@ organisation's or the provider's figures, which the Gateway does not send.
 | `disclaimer` | `true` | "This is AI, and can make mistakes. Verify results." (`labels.disclaimer`). |
 | `mic` | `true` | `onVoiceInput` is set — the library records no audio itself. |
 | `onVoiceInput` | — | Called by the mic button. |
+| `creditAlerts` | `true` | The credit notice above the composer, and the send button disabled while the user is out of credits; needs a client that can read the allowance. `false` reads nothing and never disables sending. See [The credit notice](#the-credit-notice-above-the-composer). Since 4.3. |
+| `creditWarningThresholds` | `[90]` | Not a control: the percentages of the allowance used at which the notice warns. `[]` warns only once the user is out. Since 4.3. |
 
 **The usage card** (`usageDetails`) reads the platform's per-step usage events,
 so every figure is what was metered — the same numbers as the credit ledger.
@@ -665,7 +703,8 @@ attachment viewer (`close`, `closeAttachment`, `attachmentLoadFailed`,
 `creditGrantTopUp`, `creditGrantLeft`, `creditsValidUntil`, `creditsNoLimitTitle`,
 `creditsNoLimitBody`, `creditsUsedThisMonth`, `creditsBlockedUser`,
 `creditsBlockedOrganization`, `creditsBlockedProvider`, `creditsBlockedNoPlan`,
-`creditsLoadFailed`, `creditsUnavailable`).
+`creditsLoadFailed`, `creditsUnavailable`; since 4.3 the composer's notice,
+`creditsWarning` and `creditsViewUsage`).
 
 Since 4.2, what the components and hooks wrote in English: how a label and a
 name are put together (`actionOnItem` "Download: Q3 report",
@@ -1373,6 +1412,7 @@ which supplies the design tokens and theme without the frame:
 | `WelcomeScreen` | `composer` |
 | `Composer` | `disabled`, `placeholder`, `toolMenuPlacement` (`'above'` / `'center'`), `className` |
 | `CreditUsageDialog` | none — draws itself while `isCreditUsageOpen`, covering its nearest positioned ancestor |
+| `CreditNotice` | `id`, `className` — the composer's credit notice, drawn while `creditAlert` is set; `Composer` already has it (since 4.3) |
 | `ConversationFilesPanel` | none — draws itself while the panel is open, covering its nearest positioned ancestor (`ChatContainer` puts it over the chat column) |
 | `ArtifactsPanel` | none — the Artifacts view, drawn while `isArtifactsPanelOpen`, filling the element it is rendered in (see below) |
 | `MarkdownContent` | `content`, `streaming`, `turnInFlight`, `messageId`, `jobUuid`, `conversationId`, `getMessageSource` — the transcript's markdown, with the host's blocks; wrap it in `.cb-markdown-content` for the transcript's typography |
@@ -1870,7 +1910,8 @@ for the focus ring.
 
 What stays the library's own: the multi-hue sparkle (`config.icons.brand`) and
 the welcome screen's badge, the feature cards' illustrations, the suggestion
-categories' hues, and the status colours (`--cb-status-*`), which mean the same
+categories' hues, and the status colours (`--cb-status-*`, `--cb-status-warning`
+since 4.3), which mean the same
 whatever the brand. A browser without `color-mix()` (Chrome/Edge before 111,
 Safari before 16.2, Firefox before 113) gets the brand flat for the hover and
 the gradient, unless the host sets them, and the tints in the old indigo.

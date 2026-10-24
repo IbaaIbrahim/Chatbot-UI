@@ -1,20 +1,14 @@
 import React from 'react';
 import './CreditUsageDialog.css';
-import type { CreditBlock, CreditGrant, UserCredits } from '../../api/types';
-import { formatLabel, type ChatLabels } from '../../common/labels';
+import type { CreditGrant, UserCredits } from '../../api/types';
+import { formatLabel } from '../../common/labels';
 import type { ChatFormat } from '../../common/i18n';
+import { CREDIT_BLOCK_LABEL } from '../../common/creditAlert';
 import { useChatActions, useChatFormat, useChatRuntime, useChatState, useIcons, useLabels } from '../../store/hooks';
 
 const { useEffect, useRef, useState } = React;
 
 const HTTP_NOT_FOUND = 404;
-
-const BLOCK_LABEL = {
-    user_allowance: 'creditsBlockedUser',
-    organization_allowance: 'creditsBlockedOrganization',
-    provider_account: 'creditsBlockedProvider',
-    no_plan: 'creditsBlockedNoPlan',
-} as const satisfies Record<CreditBlock, keyof ChatLabels>;
 
 type LoadState =
     | { status: 'loading' }
@@ -153,7 +147,7 @@ const CreditSummary: React.FC<{ credits: UserCredits }> = ({ credits }) => {
 
             {!credits.can_run && credits.blocked_by && (
                 <div className="cb-credit-blocked" role="status">
-                    {labels[BLOCK_LABEL[credits.blocked_by]]}
+                    {labels[CREDIT_BLOCK_LABEL[credits.blocked_by]]}
                 </div>
             )}
         </>

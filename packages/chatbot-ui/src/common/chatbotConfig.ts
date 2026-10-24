@@ -303,6 +303,21 @@ export interface ComposerConfig {
     mic?: boolean;
     /** The mic button renders only when this is set: the library records no audio itself. */
     onVoiceInput?: () => void;
+    /**
+     * The credit notice above the composer, and the send button it disables
+     * while the user is out of credits. The allowance is read when the chat
+     * opens and after every turn — only when the client can read it
+     * (`GatewayStreamClient`). `false` neither reads it nor disables sending:
+     * the Gateway still refuses a job it cannot admit. On by default. Since 4.3.
+     */
+    creditAlerts?: boolean;
+    /**
+     * Percentages of the user's own allowance used at which the notice warns,
+     * e.g. `[75, 90]`. The highest one passed is shown; closing it keeps it
+     * closed until the chat is next opened, or until the next threshold is
+     * passed. `[]` warns only once the user is out. Defaults to `[90]`. Since 4.3.
+     */
+    creditWarningThresholds?: number[];
 }
 
 export interface SidebarConfig {
@@ -479,6 +494,8 @@ export const DEFAULT_CHATBOT_CONFIG: ResolvedChatbotConfig = {
         usageDetails: true,
         disclaimer: true,
         mic: true,
+        creditAlerts: true,
+        creditWarningThresholds: [90],
     },
     sidebar: {
         enabled: true,

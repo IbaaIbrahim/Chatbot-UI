@@ -145,6 +145,7 @@
   --cb-status-running: #6390f1 !important;
   --cb-status-success: #4caf50 !important;
   --cb-status-failed: #ef4444 !important;
+  --cb-status-warning: #f59e0b !important;
 
   /* What a file or a visual is, as the files lists tint its row's tile
    * (2026-10-14): one hue per kind, used for the icon and, mixed with
@@ -295,6 +296,7 @@
   --cb-status-running: #2563eb !important;
   --cb-status-success: #15803d !important;
   --cb-status-failed: #b91c1c !important;
+  --cb-status-warning: #b45309 !important;
 
   /* Darker hues on white, so an icon keeps its contrast on its tinted tile. */
   --cb-kind-table: #0f766e !important;
@@ -340,6 +342,7 @@
     --cb-status-running: #2563eb !important;
     --cb-status-success: #15803d !important;
     --cb-status-failed: #b91c1c !important;
+    --cb-status-warning: #b45309 !important;
 
     --cb-kind-table: #0f766e !important;
     --cb-kind-kpi: #b45309 !important;

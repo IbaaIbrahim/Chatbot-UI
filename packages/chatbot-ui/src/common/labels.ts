@@ -405,6 +405,14 @@ export interface ChatLabels extends DeprecatedLabels {
     creditsBlockedNoPlan: string;
     creditsLoadFailed: string;
     creditsUnavailable: string;
+    /**
+     * The composer's notice once a warning threshold is passed (since 4.3):
+     * `{percent}` of the allowance used, `{credits}` the count left (filled
+     * from `credits`). Out of credits, the notice says `creditsBlocked*`.
+     */
+    creditsWarning: string;
+    /** The notice's button that opens the "Credit usage" dialog. Since 4.3. */
+    creditsViewUsage: string;
 
     // --- Since 4.2 (2026-10-18): what the components and the hooks wrote in
     // English until then. Every user-visible text is a label now
@@ -891,6 +899,8 @@ const ENGLISH_LABELS: ChatLabelTexts = {
     creditsBlockedNoPlan: "Your organization isn't on a plan yet, so requests can't start.",
     creditsLoadFailed: "Couldn't load your credit usage.",
     creditsUnavailable: "Credit usage isn't available on this server.",
+    creditsWarning: "You've used {percent} of your credits — {credits} left.",
+    creditsViewUsage: 'View usage',
 
     actionOnItem: '{action}: {item}',
     actionOnItemUnavailable: '{action}: {item} — {reason}',

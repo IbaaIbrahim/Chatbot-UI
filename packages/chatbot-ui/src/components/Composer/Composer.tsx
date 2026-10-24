@@ -6,6 +6,8 @@ import { formatLabel, type LabelKey } from '../../common/labels';
 import { describeLabelledError } from '../../common/i18n';
 import { ToolToggles, hasRunnableTools } from '../ToolToggles/ToolToggles';
 import { UsageIndicator } from '../UsageIndicator/UsageIndicator';
+import { CreditNotice } from '../CreditNotice/CreditNotice';
+import { useStableId } from '../../common/useStableId';
 import {
     resolveStorageUploadUrl,
     parseUploadedFileResponse,
@@ -96,6 +98,9 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     const hasPendingQuestions = useChatState(s => s.pendingQuestions !== null);
     const composerConfig = useChatState(s => s.config.composer);
     const hasMessages = useChatState(s => s.messages.length > 0);
+    // A request sent now would not be admitted: the notice above says why.
+    const outOfCredits = useChatState(s => s.config.composer.creditAlerts && s.credits?.can_run === false);
+    const creditNoticeId = useStableId('cb-credit-notice');
     const actions = useChatActions();
     const { registerComposer } = useChatRuntime();
     const format = useChatFormat();
@@ -220,7 +225,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     const isUploading = uploadingCount > 0;
     const hasText = Boolean(input.trim());
     const hasFiles = attachedFiles.length > 0;
-    const canSend = (hasText || hasFiles) && !disabled && !isUploading;
+    const canSend = (hasText || hasFiles) && !disabled && !isUploading && !outOfCredits;
 
     const uploadFile = useCallback(async (file: File): Promise<AttachedFile | null> => {
         if (!ALLOWED_TYPES.includes(file.type)) {
@@ -434,6 +439,8 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                 />
             )}
 
+            <CreditNotice id={creditNoticeId} />
+
             <div className="cb-composer-input-wrapper">
                 <div className="cb-composer-upper">
                     {hasNotices && (
@@ -587,6 +594,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                                     disabled={!canSend}
                                     title={isUploading ? labels.waitingForUploads : labels.send}
                                     aria-label={labels.send}
+                                    aria-describedby={outOfCredits ? creditNoticeId : undefined}
                                 >
                                     {icons.send}
                                 </button>
