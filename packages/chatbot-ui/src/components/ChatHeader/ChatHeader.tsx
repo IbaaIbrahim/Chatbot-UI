@@ -2,6 +2,7 @@ import React from 'react';
 import './ChatHeader.css';
 import { useChatActions, useChatState, useIcons, useLabels } from '../../store/hooks';
 import type { ChatViewOption } from '../../common/chatbotConfig';
+import { standingContextParts } from '../../common/standingContext';
 import { ChatMode, useChatPresentation } from '../ChatContainer/presentation';
 
 const { useState, useRef, useEffect } = React;
@@ -126,7 +127,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ className = '', style })
         : [];
     const showSwitchView = views.some(view => !view.active);
     const showCreditUsage = header.creditUsage && canShowCredits;
-    const showStandingContext = header.standingContext && canManageStandingContext;
+    const standingParts = standingContextParts(header.standingContext);
+    const showStandingContext = canManageStandingContext && (standingParts.personal || standingParts.workspace);
     // A conversation's files exist only once it does, and the storage API
     // needs the user's token to list them. Not while the Artifacts view
     // stands in the conversation's place: the conversation the panel would

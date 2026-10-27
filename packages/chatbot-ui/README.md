@@ -410,7 +410,7 @@ const config: ChatbotConfig = {
 | `switchView` | `true` | A view other than the one in effect — see [Views](#views-the-switch-view-entry). |
 | `views`, `allowedViews` | — | See [Views](#views-the-switch-view-entry). |
 | `creditUsage` | `true` | The client can read the allowance (`GatewayStreamClient`) — see [Credit usage](#credit-usage). |
-| `standingContext` | `true` | The client can reach the user's standing context (`GatewayStreamClient`) — see [Memory & instructions](#memory--instructions). Since 4.4. |
+| `standingContext` | `true` | The client can reach the user's standing context (`GatewayStreamClient`) — see [Memory & instructions](#memory--instructions). Since 4.4; since 4.5 also `{ personal, workspace }`, choosing the dialog's parts. |
 | `copyConversationId` | `true` | A conversation is active. Copies the provider's `conversationLink` when it has one ("Copy conversation link"), the id otherwise. |
 | `deleteConversation` | `true` | A conversation is active. Takes two clicks: the first asks, in place. |
 | `files` | `true` | A conversation is active, the provider has `storageApiUrl` and `accessToken`, and the Artifacts view is not showing in its place. Opens "Conversation files" — see [Conversation files and artifacts](#conversation-files-and-artifacts). |
@@ -523,20 +523,37 @@ it opens:
   (`source: 'agent'`, on a turn the user approved) says so; one past its end date
   is struck through and marked expired — no conversation is told it any more.
 - **From your organization** — the organisation's entries in force, read-only:
-  set by its administrators, for everyone.
+  set by its administrators, for everyone; `standingNoOrganization` when there
+  are none.
+- **Two tabs** (since 4.5), "Personal" and "Organization"
+  (`standingTabPersonal`, `standingTabOrganization`), the user's own first, when
+  the dialog shows both parts; arrow keys move between them. With one part
+  there are no tabs. A kind with nothing yet says so in a dashed frame where its
+  list will be.
 - **Limits are counted as the user types**, the platform's: one memory at most
   300 characters, 50 memories, 4,000 characters of instructions in all; only
   what is in force counts. The Gateway is authoritative, and when it refuses,
   the dialog says why in words (`standingError*`) — the refusal's `reason`
   (`STANDING_CONTEXT_FULL`, `STANDING_ENTRY_TOO_LONG`, …) arrives on the
   rejected error with its `status` (`GatewayError`).
-- Every entry is one line — the Gateway flattens line breaks and removes `<` /
-  `>` — and the text box says so. An end date is the last day, inclusive, in
-  UTC; one before today is refused.
+- An entry keeps its lines (since 4.5; one line in 4.4) — the Gateway tidies
+  spaces and blank lines and removes `<` / `>` — and shows them as written; the
+  text box says so (`standingOneLine`, whose name is from 4.4). An end date is
+  the last day, inclusive, in UTC; one before today is refused.
 
 Shown when `header.standingContext` is on (the default) and the client can
 reach it (`canManageStandingContext`: `GatewayStreamClient`'s
-`listStandingContext()`). A Gateway without the route answers 404, and the
+`listStandingContext()`). Since 4.5 `header.standingContext` also takes
+`{ personal, workspace }` (`StandingContextOptions`): which parts the dialog
+shows, a part left out staying on — `{ workspace: false }` for a host that
+shows the organisation's on its own screens, `{ personal: false }` for one that
+manages each user's itself. With both off the entry is hidden and
+`openStandingContext()` opens nothing, as with `false`.
+
+```tsx
+const config: ChatbotConfig = { header: { standingContext: { personal: true, workspace: false } } };
+```
+ A Gateway without the route answers 404, and the
 dialog says the feature is not available there rather than offering a retry.
 Open it with `useChatActions().openStandingContext()`; `closeStandingContext()`,
 Escape, the close button or a click outside close it. `ChatContainer` renders

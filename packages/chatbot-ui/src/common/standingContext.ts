@@ -1,4 +1,5 @@
 import type { StandingEntry, StandingEntryKind } from '../api/types';
+import type { StandingContextOptions } from './chatbotConfig';
 
 /** The labels that explain a refused entry; each fills `{limit}` from {@link refusalLimit}. */
 export type StandingRefusal =
@@ -22,6 +23,24 @@ export type StandingRefusal =
 
 const HTTP_NOT_FOUND = 404;
 
+/** The parts of "Memory & instructions" a host shows. */
+export interface StandingContextParts {
+    personal: boolean;
+    workspace: boolean;
+}
+
+/**
+ * What `header.standingContext` shows (since 4.5): `true` both parts, `false`
+ * neither, and `{ personal, workspace }` each part it does not turn off.
+ */
+export function standingContextParts(option: boolean | StandingContextOptions | undefined): StandingContextParts {
+    if (option === false) return { personal: false, workspace: false };
+    if (option === true || option === undefined || option === null || typeof option !== 'object') {
+        return { personal: true, workspace: true };
+    }
+    return { personal: option.personal !== false, workspace: option.workspace !== false };
+}
+
 /** One memory, in characters. */
 export const MAX_MEMORY_CHARS = 300;
 /** All of the user's instructions together, in characters. */
@@ -30,13 +49,30 @@ export const MAX_INSTRUCTION_CHARS = 4000;
 export const MAX_MEMORIES = 50;
 
 /**
- * `text` as the Gateway stores it: one line, without `<` or `>`.
- *
- * Every entry is one line in what the assistant is told, so line breaks
- * collapse — the text box says so — and the limits are measured after.
+ * Python's `\s` less the line break (`[^\S\n]`, `lib/standing_context`):
+ * JavaScript's `\s` differs at the edges — it has U+FEFF, lacks U+001C–U+001F
+ * and U+0085 — and one character apart is enough to put a count on the wrong
+ * side of a limit.
  */
-export function flattenEntry(text: string): string {
-    return text.replace(/[<>]/g, '').replace(/\s+/g, ' ').trim();
+const INLINE_WHITESPACE_RUN =
+    /[\t\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/g;
+
+/**
+ * `text` as the Gateway stores it (since 4.5, the platform's amendment of
+ * 2026-10-26): without `<` or `>`, its **lines kept** — `\r\n` and `\r` read as
+ * `\n` — each line's whitespace one space with none at either end, runs of
+ * blank lines one, none leading or trailing. A line break counts as one
+ * character; the limits are measured after.
+ */
+export function normalizeEntry(text: string): string {
+    const kept: string[] = [];
+    for (const raw of text.replace(/[<>]/g, '').replace(/\r\n?/g, '\n').split('\n')) {
+        const line = raw.replace(INLINE_WHITESPACE_RUN, ' ').replace(/^ | $/g, '');
+        // A blank line only after a written one: leading blanks and runs go.
+        if (line || (kept.length > 0 && kept[kept.length - 1])) kept.push(line);
+    }
+    while (kept.length > 0 && !kept[kept.length - 1]) kept.pop();
+    return kept.join('\n');
 }
 
 /**
@@ -44,7 +80,7 @@ export function flattenEntry(text: string): string {
  * emoji is one, where `String.length` would say two.
  */
 export function entryLength(text: string): number {
-    return Array.from(flattenEntry(text)).length;
+    return Array.from(normalizeEntry(text)).length;
 }
 
 /** Today in UTC, `YYYY-MM-DD`: the platform judges an end date against UTC. */

@@ -426,13 +426,21 @@ export interface ChatLabels extends DeprecatedLabels {
     /** The organisation's entries, which the user sees and cannot change. */
     standingOrganization: string;
     standingOrganizationHint: string;
+    /** The organisation's section with nothing in force, when the dialog shows only it (since 4.5). */
+    standingNoOrganization: string;
+    /** The dialog's tabs, when it shows both parts (since 4.5): the user's own, and the organisation's. */
+    standingTabPersonal: string;
+    standingTabOrganization: string;
     standingNoInstructions: string;
     standingNoMemories: string;
     standingAddInstruction: string;
     standingAddMemory: string;
     standingInstructionPlaceholder: string;
     standingMemoryPlaceholder: string;
-    /** Under the text box: every entry is one line, as the Gateway stores it. */
+    /**
+     * Under the text box: what saving does to its lines. Since 4.5 the Gateway
+     * keeps them (the key's name is from 4.4, when it made one line).
+     */
     standingOneLine: string;
     /** The end-date field's label. */
     standingUntilLabel: string;
@@ -961,13 +969,16 @@ const ENGLISH_LABELS: ChatLabelTexts = {
     standingMemoriesHint: 'Facts about you it keeps in mind.',
     standingOrganization: 'From your organization',
     standingOrganizationHint: 'Set by your administrators, for everyone.',
+    standingNoOrganization: 'Nothing from your organization yet.',
+    standingTabPersonal: 'Personal',
+    standingTabOrganization: 'Organization',
     standingNoInstructions: 'No instructions yet.',
     standingNoMemories: 'Nothing remembered yet.',
     standingAddInstruction: 'Add an instruction',
     standingAddMemory: 'Add a memory',
     standingInstructionPlaceholder: 'Answer in German, and keep it short.',
     standingMemoryPlaceholder: 'I manage the Hamburg site.',
-    standingOneLine: 'Line breaks become spaces.',
+    standingOneLine: 'Line breaks are kept; extra spaces are tidied.',
     standingUntilLabel: 'Applies until (optional)',
     standingUntil: 'Until {date}',
     standingExpired: 'Expired',
