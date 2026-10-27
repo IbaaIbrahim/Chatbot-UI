@@ -216,8 +216,24 @@
     font-size: var(--cb-text-sm);
     line-height: 1.45;
     overflow-wrap: anywhere;
-    /* An entry keeps its lines (since 4.5). */
+}
+
+/* An entry's Markdown (since 4.5): its lines kept within a paragraph, lists
+   tight — an entry, not a document. */
+.cb-standing-text p,
+.cb-standing-text li {
+    margin: 0;
     white-space: pre-line;
+}
+
+.cb-standing-text ul,
+.cb-standing-text ol {
+    margin: 0;
+    padding-left: 1.25em;
+}
+
+.cb-standing-text a {
+    color: var(--cb-accent-strong, var(--cb-accent-primary));
 }
 
 .cb-standing-meta {

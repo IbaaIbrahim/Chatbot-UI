@@ -538,7 +538,12 @@ it opens:
   rejected error with its `status` (`GatewayError`).
 - An entry keeps its lines (since 4.5; one line in 4.4) — the Gateway tidies
   spaces and blank lines and removes `<` / `>` — and shows them as written; the
-  text box says so (`standingOneLine`, whose name is from 4.4). An end date is
+  text box says so (`standingOneLine`, whose name is from 4.4). Its Markdown is
+  drawn (since 4.5, `StandingEntryText`): `**bold**`, `*italic*`, `~~struck~~`,
+  `- ` and `1. ` lists and `[links](https://…)` — what a host's settings editor
+  writes — through react-markdown with remark-gfm, nothing else (a heading or
+  an image shows as its text), a link in a new tab; the buttons' accessible
+  names use the text without its markers (`entryPlainText`). An end date is
   the last day, inclusive, in UTC; one before today is refused.
 
 Shown when `header.standingContext` is on (the default) and the client can

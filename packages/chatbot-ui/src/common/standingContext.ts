@@ -76,6 +76,21 @@ export function normalizeEntry(text: string): string {
 }
 
 /**
+ * An entry's text without its Markdown, on one line (since 4.5): what a
+ * button's accessible name says of it — "Delete: Always cite the clause", not
+ * "Delete: **Always** cite the clause".
+ */
+export function entryPlainText(body: string): string {
+    return body
+        .replace(/\[([^\]]+)\]\([^)\s]+\)/g, '$1')
+        .replace(/(\*\*\*|\*\*|~~)(?=\S)([\s\S]+?)\1/g, '$2')
+        .replace(/(^|[^*])\*(?=[^*\s])([\s\S]+?)\*(?!\*)/g, '$1$2')
+        .replace(/^\s*(?:[-*+]|\d+[.)])\s+/gm, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/**
  * Characters as the platform counts them (Python's `len`): code points, so an
  * emoji is one, where `String.length` would say two.
  */

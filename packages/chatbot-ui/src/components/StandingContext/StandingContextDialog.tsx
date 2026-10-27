@@ -7,6 +7,7 @@ import {
     characterLimit,
     endDateInstant,
     entryLength,
+    entryPlainText,
     MAX_INSTRUCTION_CHARS,
     MAX_MEMORIES,
     ownBudget,
@@ -20,6 +21,7 @@ import {
 } from '../../common/standingContext';
 import { useStableId } from '../../common/useStableId';
 import { useChatActions, useChatConfig, useChatFormat, useChatRuntime, useChatState, useIcons, useLabels } from '../../store/hooks';
+import { StandingEntryText } from './StandingEntryText';
 
 const { useEffect, useRef, useState } = React;
 
@@ -413,7 +415,7 @@ const OwnEntry: React.FC<OwnEntryProps> = ({ entry, onEdit, onRemoved }) => {
     return (
         <li className={`cb-standing-item${entry.expired ? ' is-expired' : ''}`}>
             <div className="cb-standing-item-main">
-                <span className="cb-standing-text">{entry.body}</span>
+                <StandingEntryText body={entry.body} />
                 <EntryMeta entry={entry} />
                 {failed && <span className="cb-standing-error" role="alert">{labels.standingErrorDelete}</span>}
             </div>
@@ -423,7 +425,7 @@ const OwnEntry: React.FC<OwnEntryProps> = ({ entry, onEdit, onRemoved }) => {
                     className="cb-standing-icon-button"
                     onClick={onEdit}
                     disabled={deleting}
-                    aria-label={formatLabel(labels.actionOnItem, { action: labels.edit, item: entry.body })}
+                    aria-label={formatLabel(labels.actionOnItem, { action: labels.edit, item: entryPlainText(entry.body) })}
                     title={labels.edit}
                 >
                     {icons.rename}
@@ -435,7 +437,7 @@ const OwnEntry: React.FC<OwnEntryProps> = ({ entry, onEdit, onRemoved }) => {
                     disabled={deleting}
                     aria-label={confirming
                         ? labels.standingConfirmDelete
-                        : formatLabel(labels.actionOnItem, { action: labels.standingDelete, item: entry.body })}
+                        : formatLabel(labels.actionOnItem, { action: labels.standingDelete, item: entryPlainText(entry.body) })}
                     title={confirming ? labels.standingConfirmDelete : labels.standingDelete}
                 >
                     {confirming ? <span className="cb-standing-confirm-text">{labels.standingConfirmDelete}</span> : icons.delete}
@@ -566,7 +568,7 @@ const OrganizationSection: React.FC<{ entries: StandingEntry[] }> = ({ entries }
                     {entries.map(entry => (
                         <li key={entry.uuid} className="cb-standing-item is-readonly">
                             <div className="cb-standing-item-main">
-                                <span className="cb-standing-text">{entry.body}</span>
+                                <StandingEntryText body={entry.body} />
                                 <EntryMeta entry={entry} />
                             </div>
                         </li>

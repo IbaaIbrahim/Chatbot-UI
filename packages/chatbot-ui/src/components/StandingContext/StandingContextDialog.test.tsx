@@ -315,6 +315,36 @@ describe('StandingContextDialog', () => {
         expect(await menuEntries({ header: { standingContext: false } })).not.toContain(L.standingContext);
     });
 
+    it('draws an entry\'s Markdown — marks, lists, links in a new tab — and names it plainly', async () => {
+        await open(standingClient([
+            entry({ uuid: 'i1', kind: 'instruction', body: 'For every finding:\n- **cite** the *clause*\n- see [ISO](https://iso.org/9001)' }),
+            entry({ uuid: 't1', scope: 'tenant', kind: 'instruction', body: '~~Old~~ rule', editable: false }),
+        ]));
+
+        const own = sectionOf(L.standingInstructions);
+        expect(own.querySelector('.cb-standing-text strong')!.textContent).toBe('cite');
+        expect(own.querySelector('.cb-standing-text em')!.textContent).toBe('clause');
+        expect(own.querySelectorAll('.cb-standing-text li')).toHaveLength(2);
+        const link = own.querySelector<HTMLAnchorElement>('.cb-standing-text a')!;
+        expect([link.textContent, link.getAttribute('href'), link.target, link.rel]).toEqual([
+            'ISO', 'https://iso.org/9001', '_blank', 'noopener noreferrer',
+        ]);
+        expect(own.textContent).not.toContain('**');
+        expect(own.querySelector(`button[title="${L.edit}"]`)!.getAttribute('aria-label'))
+            .toBe(`${L.edit}: For every finding: cite the clause see ISO`);
+
+        await click(tab(L.standingTabOrganization));
+        expect(sectionOf(L.standingOrganization).querySelector('.cb-standing-text del')!.textContent).toBe('Old');
+    });
+
+    it('draws nothing it was not written with: a heading or an image is its text', async () => {
+        await open(standingClient([entry({ uuid: 'i1', kind: 'instruction', body: '# Title\n![x](https://e.com/x.png)' })]));
+
+        const text = sectionOf(L.standingInstructions).querySelector('.cb-standing-text')!;
+        expect(text.querySelector('h1, img')).toBeNull();
+        expect(text.textContent).toContain('Title');
+    });
+
     it('is offered only by a client that can reach the standing context', async () => {
         const { listStandingContext: _list, ...without } = standingClient([]);
         await open(without);

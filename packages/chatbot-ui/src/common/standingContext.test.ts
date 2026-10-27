@@ -5,6 +5,7 @@ import {
     characterLimit,
     endDateInstant,
     entryLength,
+    entryPlainText,
     normalizeEntry,
     isAcceptableEndDate,
     MAX_INSTRUCTION_CHARS,
@@ -52,6 +53,14 @@ describe('the parts `header.standingContext` shows', () => {
         expect(standingContextParts({ workspace: false })).toEqual({ personal: true, workspace: false });
         expect(standingContextParts({ personal: false })).toEqual({ personal: false, workspace: true });
         expect(standingContextParts({ personal: false, workspace: false })).toEqual({ personal: false, workspace: false });
+    });
+});
+
+describe('an entry as plain text', () => {
+    it('drops its Markdown and puts it on one line', () => {
+        expect(entryPlainText('**Always** cite *the* ~~old~~ [ISO clause](https://iso.org)')).toBe('Always cite the old ISO clause');
+        expect(entryPlainText('Rules:\n- one\n2. two')).toBe('Rules: one two');
+        expect(entryPlainText('***both*** and 2*3')).toBe('both and 2*3');
     });
 });
 
