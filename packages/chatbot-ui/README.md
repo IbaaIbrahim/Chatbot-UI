@@ -1708,6 +1708,11 @@ conversation-scoped loads"):
 - `load_tool` loads an app tool by name. `load_skill` loads an app skill (its
   instructions) or a platform skill, and with either, every app tool whose
   `definition.skills` names that slug.
+- **Tools can load together.** An app tool whose `definition.loads_with` names
+  another tool — the platform's or the app's — loads whenever that one does, by
+  `load_tool` or with a skill, and is listed beside it in the load's result. An
+  image preview that names `generate_image` is there the moment the model has an
+  image to show, without a search and a load first.
 - **Loads belong to the conversation.** A later turn starts with what earlier
   turns loaded, until the conversation is compacted. At most a few tools and
   skills are loaded at once (platform configuration: `MAX_LOADED_TOOLS`,
@@ -1739,6 +1744,14 @@ const SKILLS: ClientSkillDefinition[] = [{
         skills: ['manage_assets'],       // load_skill('manage_assets') loads it too
       },
     },
+    preview_image: {
+      run: ({ step_uuid }) => ({ previewed: true, step_uuid }),
+      definition: {
+        description: 'Show an image the model made to the user.',
+        input_schema: { type: 'object', properties: { step_uuid: { type: 'string' } } },
+        loads_with: ['generate_image'],  // loading generate_image loads it too
+      },
+    },
   }}
 >
 ```
@@ -1750,7 +1763,9 @@ leaves out an entry outside these bounds rather than failing the turn. It ships
 with the app — a deploy changes it, with no sync step. When a platform skill has
 the same slug, a user's or tenant's own skill wins over the app's, and the app's
 wins over the partner's and the platform's. A tool's `definition.skills` may name
-a platform skill as well as one of these. `client.setSkills(list)` and
+a platform skill as well as one of these. Its `definition.loads_with` (at most 16
+tool names, `^[a-zA-Z0-9_-]{1,64}$`) points one way: the tool comes with the ones
+it names, never the reverse, and a name no tool has brings nothing. `client.setSkills(list)` and
 `getSkills()` do the same without the prop.
 
 **How the browser answers.** A request is a `client_tool_call` under the reserved
@@ -1759,13 +1774,14 @@ slug `__host_request` (`HOST_REQUEST_SLUG`), answered through the same
 
 | `tool_input` | Asked for | Answer |
 | --- | --- | --- |
-| `{ op: 'catalogue' }` | a turn's first search | `{ tools: [{ name, description, skills, requires_approval }], skills: [{ slug, name, description }] }` |
-| `{ op: 'definitions', names }` | `load_tool` | `{ tools: [spec…], missing: [name…] }` |
+| `{ op: 'catalogue' }` | a turn's first search | `{ tools: [{ name, description, skills, loads_with, requires_approval }], skills: [{ slug, name, description }] }` |
+| `{ op: 'definitions', names }` | `load_tool` — the names asked for, and the app tools the catalogue says load with them | `{ tools: [spec…], missing: [name…] }` |
 | `{ op: 'skill', slug }` | `load_skill` | `{ skill: { slug, name, description, instructions } \| null, tools: [spec…] }` — `null` for a platform skill, whose app tools still come back |
 | `{ op: 'all_definitions', shared_only }` | a run that offers its whole tool set — a thread an agent already owns, a sub-agent — once, at its start | `{ tools: [spec…] }`; `shared_only` keeps the `share_with_sub_agents` ones |
 
-A spec is an agent-bound job's `client_tools` entry without `defer_loading`:
-`{ name, description, input_schema, requires_approval, share_with_sub_agents, skills }`.
+A spec is an agent-bound job's `client_tools` entry without `defer_loading` and
+with `loads_with`, which only a central-mode run reads:
+`{ name, description, input_schema, requires_approval, share_with_sub_agents, skills, loads_with }`.
 
 - **The client answers by itself.** There is nothing to wire. `answerHostRequest(input,
   tools, skills)` is exported for a host that builds its own client.

@@ -284,6 +284,19 @@ export interface ClientToolDefinition {
      * by name and description, and ``load_tool`` loads it.
      */
     skills?: string[];
+    /**
+     * Names of the tools this one loads together with — the platform's or this
+     * application's (platform ADR-018, "Tools that load together"). In a
+     * central-mode chat, whenever one of them loads, by ``load_tool`` or with a
+     * skill, this tool loads too and is listed beside it, so the model can use
+     * it without a search and a load first: an image preview that loads with
+     * the platform's ``generate_image``, say, so the picture is shown the moment
+     * it is made. Only names, never a promise the other tool exists; a name no
+     * tool has never loads anything. Each must be a valid tool name
+     * (``^[a-zA-Z0-9_-]{1,64}$``); at most 16. An agent-bound chat offers every
+     * tool from the start, so it has no use for this and does not send it.
+     */
+    loads_with?: string[];
 }
 
 /**

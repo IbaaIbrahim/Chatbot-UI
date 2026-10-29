@@ -20,7 +20,7 @@
  *
  * | ``op`` | Answer |
  * | --- | --- |
- * | ``catalogue`` | ``{ tools: [{ name, description, skills, requires_approval }], skills: [{ slug, name, description }] }`` — metadata only, for a search |
+ * | ``catalogue`` | ``{ tools: [{ name, description, skills, loads_with, requires_approval }], skills: [{ slug, name, description }] }`` — metadata only, for a search, and for a load to know which tools come with the ones it names |
  * | ``definitions`` (``names``) | ``{ tools: ClientToolSpec[], missing: string[] }`` — for ``load_tool`` |
  * | ``skill`` (``slug``) | ``{ skill: { slug, name, description, instructions } \| null, tools: ClientToolSpec[] }`` — for ``load_skill``; ``tools`` is every host tool naming the slug in its ``skills``, so a *platform* skill's host tools load with it too |
  * | ``all_definitions`` (``shared_only``) | ``{ tools: ClientToolSpec[] }`` — a run that offers its whole tool set (an agent's thread, a sub-agent) fetches them once at its start; ``shared_only`` keeps the ``share_with_sub_agents`` ones |
@@ -58,7 +58,8 @@ export function isHostRequestSlug(slug: unknown): boolean {
 /**
  * One host tool's full definition, as the platform's client-tool validator
  * (``normalize_client_tools``) accepts it — the shape of an agent-bound job's
- * ``client_tools`` entry, without the deprecated ``defer_loading``.
+ * ``client_tools`` entry, without the deprecated ``defer_loading`` and with
+ * ``loads_with``, which only a central-mode run reads.
  */
 export interface ClientToolSpec {
     name: string;
@@ -67,6 +68,7 @@ export interface ClientToolSpec {
     requires_approval: boolean;
     share_with_sub_agents: boolean;
     skills: string[];
+    loads_with: string[];
 }
 
 /** A host tool as a search sees it: no schema, so a catalogue stays small. */
@@ -74,6 +76,7 @@ export interface HostCatalogueTool {
     name: string;
     description: string;
     skills: string[];
+    loads_with: string[];
     requires_approval: boolean;
 }
 
@@ -155,6 +158,7 @@ function toClientToolSpec(name: string, definition: ClientToolDefinition): Clien
         requires_approval: definition.requires_approval ?? false,
         share_with_sub_agents: definition.share_with_sub_agents ?? false,
         skills: [...(definition.skills ?? [])],
+        loads_with: [...(definition.loads_with ?? [])],
     };
 }
 
@@ -196,6 +200,9 @@ export function answerHostRequest(
                     name,
                     description: definition.description,
                     skills: [...(definition.skills ?? [])],
+                    // What a ``load_tool`` of another tool needs to bring this
+                    // one: the platform asks for its definition with that load.
+                    loads_with: [...(definition.loads_with ?? [])],
                     requires_approval: definition.requires_approval ?? false,
                 })),
                 skills: hostSkills(skills).map(skill => ({

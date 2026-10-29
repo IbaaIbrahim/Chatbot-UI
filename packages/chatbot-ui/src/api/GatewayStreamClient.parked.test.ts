@@ -278,6 +278,7 @@ describe('a parked conversation keeps answering host requests', () => {
                 requires_approval: false,
                 share_with_sub_agents: true,
                 skills: [],
+                loads_with: [],
             }],
         });
     });

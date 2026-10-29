@@ -140,7 +140,7 @@ function spec(name: string, overrides: Record<string, unknown> = {}) {
         list_assets: { description: 'List assets.', skills: ['manage_assets'], share_with_sub_agents: false },
         validate_checklist: { description: 'Validate.', skills: ['create_checklist'], share_with_sub_agents: true },
     };
-    return { name, input_schema: schema, requires_approval: false, ...base[name], ...overrides };
+    return { name, input_schema: schema, requires_approval: false, loads_with: [], ...base[name], ...overrides };
 }
 
 function centralClient(registry: Record<string, ToolConfig> = tools()): GatewayStreamClient {
@@ -174,8 +174,8 @@ describe('host requests — each operation is answered from the registry', () =>
                 status: 'completed',
                 tool_output: {
                     tools: [
-                        { name: 'list_assets', description: 'List assets.', skills: ['manage_assets'], requires_approval: false },
-                        { name: 'validate_checklist', description: 'Validate.', skills: ['create_checklist'], requires_approval: false },
+                        { name: 'list_assets', description: 'List assets.', skills: ['manage_assets'], loads_with: [], requires_approval: false },
+                        { name: 'validate_checklist', description: 'Validate.', skills: ['create_checklist'], loads_with: [], requires_approval: false },
                     ],
                     skills: [{ slug: 'manage_assets', name: 'Manage assets', description: 'Assets.' }],
                 },
@@ -294,7 +294,7 @@ describe('host requests — what they never do', () => {
         const [answer] = await sendAndCollect(client, 1);
 
         expect(answer.body.tool_output.tools).toEqual([
-            { name: 'inspect_site', description: 'Inspect a site.', skills: [], requires_approval: false },
+            { name: 'inspect_site', description: 'Inspect a site.', skills: [], loads_with: [], requires_approval: false },
         ]);
     });
 
