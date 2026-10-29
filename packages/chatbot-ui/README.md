@@ -410,7 +410,7 @@ const config: ChatbotConfig = {
 | `switchView` | `true` | A view other than the one in effect — see [Views](#views-the-switch-view-entry). |
 | `views`, `allowedViews` | — | See [Views](#views-the-switch-view-entry). |
 | `creditUsage` | `true` | The client can read the allowance (`GatewayStreamClient`) — see [Credit usage](#credit-usage). |
-| `standingContext` | `true` | The client can reach the user's standing context (`GatewayStreamClient`) — see [Memory & instructions](#memory--instructions). Since 4.4. |
+| `standingContext` | `true` | The client can reach the user's standing context (`GatewayStreamClient`) — see [Memory & instructions](#memory--instructions). Since 4.4; since 4.5 also `{ personal, workspace }`, choosing the dialog's parts. |
 | `copyConversationId` | `true` | A conversation is active. Copies the provider's `conversationLink` when it has one ("Copy conversation link"), the id otherwise. |
 | `deleteConversation` | `true` | A conversation is active. Takes two clicks: the first asks, in place. |
 | `files` | `true` | A conversation is active, the provider has `storageApiUrl` and `accessToken`, and the Artifacts view is not showing in its place. Opens "Conversation files" — see [Conversation files and artifacts](#conversation-files-and-artifacts). |
@@ -523,20 +523,42 @@ it opens:
   (`source: 'agent'`, on a turn the user approved) says so; one past its end date
   is struck through and marked expired — no conversation is told it any more.
 - **From your organization** — the organisation's entries in force, read-only:
-  set by its administrators, for everyone.
+  set by its administrators, for everyone; `standingNoOrganization` when there
+  are none.
+- **Two tabs** (since 4.5), "Personal" and "Organization"
+  (`standingTabPersonal`, `standingTabOrganization`), the user's own first, when
+  the dialog shows both parts; arrow keys move between them. With one part
+  there are no tabs. A kind with nothing yet says so in a dashed frame where its
+  list will be.
 - **Limits are counted as the user types**, the platform's: one memory at most
   300 characters, 50 memories, 4,000 characters of instructions in all; only
   what is in force counts. The Gateway is authoritative, and when it refuses,
   the dialog says why in words (`standingError*`) — the refusal's `reason`
   (`STANDING_CONTEXT_FULL`, `STANDING_ENTRY_TOO_LONG`, …) arrives on the
   rejected error with its `status` (`GatewayError`).
-- Every entry is one line — the Gateway flattens line breaks and removes `<` /
-  `>` — and the text box says so. An end date is the last day, inclusive, in
-  UTC; one before today is refused.
+- An entry keeps its lines (since 4.5; one line in 4.4) — the Gateway tidies
+  spaces and blank lines and removes `<` / `>` — and shows them as written; the
+  text box says so (`standingOneLine`, whose name is from 4.4). Its Markdown is
+  drawn (since 4.5, `StandingEntryText`): `**bold**`, `*italic*`, `~~struck~~`,
+  `- ` and `1. ` lists and `[links](https://…)` — what a host's settings editor
+  writes — through react-markdown with remark-gfm, nothing else (a heading or
+  an image shows as its text), a link in a new tab; the buttons' accessible
+  names use the text without its markers (`entryPlainText`). An end date is
+  the last day, inclusive, in UTC; one before today is refused.
 
 Shown when `header.standingContext` is on (the default) and the client can
 reach it (`canManageStandingContext`: `GatewayStreamClient`'s
-`listStandingContext()`). A Gateway without the route answers 404, and the
+`listStandingContext()`). Since 4.5 `header.standingContext` also takes
+`{ personal, workspace }` (`StandingContextOptions`): which parts the dialog
+shows, a part left out staying on — `{ workspace: false }` for a host that
+shows the organisation's on its own screens, `{ personal: false }` for one that
+manages each user's itself. With both off the entry is hidden and
+`openStandingContext()` opens nothing, as with `false`.
+
+```tsx
+const config: ChatbotConfig = { header: { standingContext: { personal: true, workspace: false } } };
+```
+ A Gateway without the route answers 404, and the
 dialog says the feature is not available there rather than offering a retry.
 Open it with `useChatActions().openStandingContext()`; `closeStandingContext()`,
 Escape, the close button or a click outside close it. `ChatContainer` renders
@@ -1686,6 +1708,11 @@ conversation-scoped loads"):
 - `load_tool` loads an app tool by name. `load_skill` loads an app skill (its
   instructions) or a platform skill, and with either, every app tool whose
   `definition.skills` names that slug.
+- **Tools can load together.** An app tool whose `definition.loads_with` names
+  another tool — the platform's or the app's — loads whenever that one does, by
+  `load_tool` or with a skill, and is listed beside it in the load's result. An
+  image preview that names `generate_image` is there the moment the model has an
+  image to show, without a search and a load first.
 - **Loads belong to the conversation.** A later turn starts with what earlier
   turns loaded, until the conversation is compacted. At most a few tools and
   skills are loaded at once (platform configuration: `MAX_LOADED_TOOLS`,
@@ -1717,6 +1744,14 @@ const SKILLS: ClientSkillDefinition[] = [{
         skills: ['manage_assets'],       // load_skill('manage_assets') loads it too
       },
     },
+    preview_image: {
+      run: ({ step_uuid }) => ({ previewed: true, step_uuid }),
+      definition: {
+        description: 'Show an image the model made to the user.',
+        input_schema: { type: 'object', properties: { step_uuid: { type: 'string' } } },
+        loads_with: ['generate_image'],  // loading generate_image loads it too
+      },
+    },
   }}
 >
 ```
@@ -1728,7 +1763,9 @@ leaves out an entry outside these bounds rather than failing the turn. It ships
 with the app — a deploy changes it, with no sync step. When a platform skill has
 the same slug, a user's or tenant's own skill wins over the app's, and the app's
 wins over the partner's and the platform's. A tool's `definition.skills` may name
-a platform skill as well as one of these. `client.setSkills(list)` and
+a platform skill as well as one of these. Its `definition.loads_with` (at most 16
+tool names, `^[a-zA-Z0-9_-]{1,64}$`) points one way: the tool comes with the ones
+it names, never the reverse, and a name no tool has brings nothing. `client.setSkills(list)` and
 `getSkills()` do the same without the prop.
 
 **How the browser answers.** A request is a `client_tool_call` under the reserved
@@ -1737,13 +1774,14 @@ slug `__host_request` (`HOST_REQUEST_SLUG`), answered through the same
 
 | `tool_input` | Asked for | Answer |
 | --- | --- | --- |
-| `{ op: 'catalogue' }` | a turn's first search | `{ tools: [{ name, description, skills, requires_approval }], skills: [{ slug, name, description }] }` |
-| `{ op: 'definitions', names }` | `load_tool` | `{ tools: [spec…], missing: [name…] }` |
+| `{ op: 'catalogue' }` | a turn's first search | `{ tools: [{ name, description, skills, loads_with, requires_approval }], skills: [{ slug, name, description }] }` |
+| `{ op: 'definitions', names }` | `load_tool` — the names asked for, and the app tools the catalogue says load with them | `{ tools: [spec…], missing: [name…] }` |
 | `{ op: 'skill', slug }` | `load_skill` | `{ skill: { slug, name, description, instructions } \| null, tools: [spec…] }` — `null` for a platform skill, whose app tools still come back |
 | `{ op: 'all_definitions', shared_only }` | a run that offers its whole tool set — a thread an agent already owns, a sub-agent — once, at its start | `{ tools: [spec…] }`; `shared_only` keeps the `share_with_sub_agents` ones |
 
-A spec is an agent-bound job's `client_tools` entry without `defer_loading`:
-`{ name, description, input_schema, requires_approval, share_with_sub_agents, skills }`.
+A spec is an agent-bound job's `client_tools` entry without `defer_loading` and
+with `loads_with`, which only a central-mode run reads:
+`{ name, description, input_schema, requires_approval, share_with_sub_agents, skills, loads_with }`.
 
 - **The client answers by itself.** There is nothing to wire. `answerHostRequest(input,
   tools, skills)` is exported for a host that builds its own client.

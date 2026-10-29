@@ -40,6 +40,14 @@ function registry(): Record<string, ToolConfig> {
                 defer_loading: true,
             },
         },
+        preview_asset_photo: {
+            run: vi.fn(),
+            definition: {
+                description: 'Show an asset photo to the user.',
+                input_schema: schema,
+                loads_with: ['generate_image'],
+            },
+        },
         read_page_context: { run: vi.fn() },
         generate_checklist: { preview: vi.fn() },
     };
@@ -76,9 +84,11 @@ describe('answerHostRequest — catalogue', () => {
 
         expect(answer).toEqual({
             tools: [
-                { name: 'list_assets', description: 'List the assets of the current site.', skills: ['manage_assets'], requires_approval: false },
-                { name: 'validate_checklist', description: 'Validate a checklist draft.', skills: ['create_checklist', 'manage_assets'], requires_approval: false },
-                { name: 'delete_asset', description: 'Delete an asset.', skills: [], requires_approval: true },
+                { name: 'list_assets', description: 'List the assets of the current site.', skills: ['manage_assets'], loads_with: [], requires_approval: false },
+                { name: 'validate_checklist', description: 'Validate a checklist draft.', skills: ['create_checklist', 'manage_assets'], loads_with: [], requires_approval: false },
+                { name: 'delete_asset', description: 'Delete an asset.', skills: [], loads_with: [], requires_approval: true },
+                // A load of the platform's generate_image brings it (ADR-018, "Tools that load together").
+                { name: 'preview_asset_photo', description: 'Show an asset photo to the user.', skills: [], loads_with: ['generate_image'], requires_approval: false },
             ],
             skills: [
                 { slug: 'manage_assets', name: 'Manage assets', description: 'Create, edit and retire assets.' },
@@ -154,11 +164,11 @@ describe('answerHostRequest — definitions', () => {
             tools: [
                 {
                     name: 'delete_asset', description: 'Delete an asset.', input_schema: schema,
-                    requires_approval: true, share_with_sub_agents: false, skills: [],
+                    requires_approval: true, share_with_sub_agents: false, skills: [], loads_with: [],
                 },
                 {
                     name: 'list_assets', description: 'List the assets of the current site.', input_schema: schema,
-                    requires_approval: false, share_with_sub_agents: false, skills: ['manage_assets'],
+                    requires_approval: false, share_with_sub_agents: false, skills: ['manage_assets'], loads_with: [],
                 },
             ],
             missing: ['gone_tool'],
@@ -170,11 +180,20 @@ describe('answerHostRequest — definitions', () => {
 
         for (const spec of answer.tools) {
             expect(Object.keys(spec).sort()).toEqual(
-                ['description', 'input_schema', 'name', 'requires_approval', 'share_with_sub_agents', 'skills'],
+                ['description', 'input_schema', 'loads_with', 'name', 'requires_approval', 'share_with_sub_agents', 'skills'],
             );
         }
         // The wire name is the registration key, never `definition.name`.
         expect(answer.tools[0].name).toBe('list_assets');
+    });
+
+    it('carries the tools a definition loads with, as its own copy', () => {
+        const tools = registry();
+        const answer = answerHostRequest({ op: 'definitions', names: ['preview_asset_photo'] }, tools, []) as any;
+
+        expect(answer.tools[0].loads_with).toEqual(['generate_image']);
+        answer.tools[0].loads_with.push('mutated');
+        expect((tools.preview_asset_photo as any).definition.loads_with).toEqual(['generate_image']);
     });
 
     it('reports a name without a definition as missing — a backend tool, a server tool, the questionnaire', () => {
@@ -229,11 +248,11 @@ describe('answerHostRequest — skill', () => {
             tools: [
                 {
                     name: 'list_assets', description: 'List the assets of the current site.', input_schema: schema,
-                    requires_approval: false, share_with_sub_agents: false, skills: ['manage_assets'],
+                    requires_approval: false, share_with_sub_agents: false, skills: ['manage_assets'], loads_with: [],
                 },
                 {
                     name: 'validate_checklist', description: 'Validate a checklist draft.', input_schema: schema,
-                    requires_approval: false, share_with_sub_agents: true, skills: ['create_checklist', 'manage_assets'],
+                    requires_approval: false, share_with_sub_agents: true, skills: ['create_checklist', 'manage_assets'], loads_with: [],
                 },
             ],
         });
@@ -278,7 +297,7 @@ describe('answerHostRequest — all_definitions', () => {
     it('every tool with a definition, for a run that offers its whole tool set', () => {
         const answer = answerHostRequest({ op: 'all_definitions', shared_only: false }, registry(), SKILLS) as any;
 
-        expect(answer.tools.map((tool: any) => tool.name)).toEqual(['list_assets', 'validate_checklist', 'delete_asset']);
+        expect(answer.tools.map((tool: any) => tool.name)).toEqual(['list_assets', 'validate_checklist', 'delete_asset', 'preview_asset_photo']);
         expect(answer).not.toHaveProperty('missing');
     });
 
@@ -289,7 +308,7 @@ describe('answerHostRequest — all_definitions', () => {
     });
 
     it('treats a missing or non-boolean shared_only as false', () => {
-        const all = ['list_assets', 'validate_checklist', 'delete_asset'];
+        const all = ['list_assets', 'validate_checklist', 'delete_asset', 'preview_asset_photo'];
         expect((answerHostRequest({ op: 'all_definitions' }, registry(), []) as any).tools.map((t: any) => t.name)).toEqual(all);
         expect((answerHostRequest({ op: 'all_definitions', shared_only: 'yes' }, registry(), []) as any).tools.map((t: any) => t.name)).toEqual(all);
     });

@@ -29,13 +29,25 @@
 }
 
 @keyframes cb-standing-fade {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 @keyframes cb-standing-rise {
-    from { opacity: 0; transform: translateY(6px) scale(0.98); }
-    to { opacity: 1; transform: none; }
+    from {
+        opacity: 0;
+        transform: translateY(6px) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
 }
 
 .cb-standing-header {
@@ -62,6 +74,48 @@
     color: var(--cb-text-secondary);
     font-size: var(--cb-text-xs);
     line-height: 1.45;
+}
+
+/* "Personal" and "Organization", when the dialog shows both parts (since 4.5):
+   a segmented control under the intro, the selected tab on an accent tint. */
+.cb-standing-tabs {
+    display: inline-flex;
+    align-self: flex-start;
+    gap: 2px;
+    margin-bottom: var(--cb-space-3);
+    /* padding: 3px; */
+    background-color: var(--cb-bg-tertiary);
+    border-radius: var(--cb-radius-full);
+    overflow: hidden;
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--cb-text-primary) 12%, transparent);
+}
+
+.cb-standing-tab {
+    padding: var(--cb-space-1) var(--cb-space-3);
+    color: var(--cb-text-secondary);
+    font: inherit;
+    font-size: var(--cb-text-sm);
+    font-weight: 500;
+    background: transparent;
+    border: 0;
+    border-radius: var(--cb-radius-full);
+    cursor: pointer;
+    transition: var(--cb-transition-state);
+}
+
+.cb-standing-tab:hover {
+    color: var(--cb-text-primary);
+}
+
+.cb-standing-tab[aria-selected="true"] {
+    color: var(--cb-accent-strong, var(--cb-accent-primary));
+    background-color: var(--cb-bg-elevated);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--cb-text-primary) 12%, transparent);
+}
+
+.cb-standing-tab:focus-visible {
+    outline: none;
+    box-shadow: var(--cb-focus-ring);
 }
 
 /* The lists scroll; the header stays. */
@@ -107,8 +161,12 @@
     margin-top: calc(-1 * var(--cb-space-1));
 }
 
+/* Nothing of a kind yet: a quiet framed line where the list will be. */
 .cb-standing-empty {
-    font-style: italic;
+    padding: var(--cb-space-3);
+    text-align: center;
+    border: 1px dashed var(--cb-border-medium);
+    border-radius: var(--cb-radius-md);
 }
 
 .cb-standing-list {
@@ -158,6 +216,24 @@
     font-size: var(--cb-text-sm);
     line-height: 1.45;
     overflow-wrap: anywhere;
+}
+
+/* An entry's Markdown (since 4.5): its lines kept within a paragraph, lists
+   tight — an entry, not a document. */
+.cb-standing-text p,
+.cb-standing-text li {
+    margin: 0;
+    white-space: pre-line;
+}
+
+.cb-standing-text ul,
+.cb-standing-text ol {
+    margin: 0;
+    padding-left: 1.25em;
+}
+
+.cb-standing-text a {
+    color: var(--cb-accent-strong, var(--cb-accent-primary));
 }
 
 .cb-standing-meta {
@@ -421,11 +497,19 @@
 }
 
 @keyframes cb-standing-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
+
     .cb-standing-overlay,
     .cb-standing-dialog,
     .cb-standing-skeleton-line {

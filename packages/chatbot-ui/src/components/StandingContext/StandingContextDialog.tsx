@@ -7,17 +7,21 @@ import {
     characterLimit,
     endDateInstant,
     entryLength,
+    entryPlainText,
     MAX_INSTRUCTION_CHARS,
     MAX_MEMORIES,
     ownBudget,
     refusalLabel,
     refusalLimit,
+    standingContextParts,
     todayUtc,
     type StandingBudget,
+    type StandingContextParts,
     type StandingRefusal,
 } from '../../common/standingContext';
 import { useStableId } from '../../common/useStableId';
-import { useChatActions, useChatFormat, useChatRuntime, useChatState, useIcons, useLabels } from '../../store/hooks';
+import { useChatActions, useChatConfig, useChatFormat, useChatRuntime, useChatState, useIcons, useLabels } from '../../store/hooks';
+import { StandingEntryText } from './StandingEntryText';
 
 const { useEffect, useRef, useState } = React;
 
@@ -30,6 +34,10 @@ type LoadState =
     | { status: 'loaded' }
     // `unavailable`: the Gateway has no such route, which no retry will change.
     | { status: 'failed'; unavailable: boolean };
+
+/** A tab of the dialog, when it shows both parts: the user's own, or the organisation's. */
+type Part = keyof StandingContextParts;
+const PARTS: readonly Part[] = ['personal', 'workspace'];
 
 /** Which form is open: a new entry of a kind, or one entry being changed. One at a time. */
 type OpenForm = { mode: 'add'; kind: StandingEntryKind } | { mode: 'edit'; uuid: string };
@@ -51,16 +59,22 @@ interface FormValues {
  * the Gateway's own refusal — with its precise reason — is what is shown when
  * it disagrees. Memories the assistant saved say so.
  *
+ * `header.standingContext` chooses the parts (since 4.5): both, each in a tab
+ * of its own, the user's first; `{ personal: false }` the organisation's
+ * alone, for a host whose own screens manage each user's; `{ workspace: false }`
+ * the user's own alone. With neither, nothing opens.
+ *
  * `ChatContainer` renders it; a host with its own layout renders it once
  * anywhere under the provider, inside a positioned element it should cover.
  */
 export const StandingContextDialog: React.FC = () => {
     const isOpen = useChatState(s => s.isStandingContextOpen);
+    const parts = standingContextParts(useChatConfig().header.standingContext);
     // Mounted per opening, so each one starts from "loading" with fresh entries.
-    return isOpen ? <StandingContextPanel /> : null;
+    return isOpen && (parts.personal || parts.workspace) ? <StandingContextPanel parts={parts} /> : null;
 };
 
-const StandingContextPanel: React.FC = () => {
+const StandingContextPanel: React.FC<{ parts: StandingContextParts }> = ({ parts }) => {
     const { services } = useChatRuntime();
     const actions = useChatActions();
     const labels = useLabels();
@@ -69,8 +83,20 @@ const StandingContextPanel: React.FC = () => {
     const [state, setState] = useState<LoadState>({ status: 'loading' });
     const [attempt, setAttempt] = useState(0);
     const [openForm, setOpenForm] = useState<OpenForm | null>(null);
+    const [part, setPart] = useState<Part>(parts.personal ? 'personal' : 'workspace');
     const closeRef = useRef<HTMLButtonElement>(null);
     const titleId = useStableId('cb-standing-title');
+    const tabsId = useStableId('cb-standing-tab');
+    const tabbed = parts.personal && parts.workspace;
+    const tabLabel = (of: Part) => (of === 'personal' ? labels.standingTabPersonal : labels.standingTabOrganization);
+    // Arrows move between the two tabs, as a tab list's do.
+    const onTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        const next: Part = part === 'personal' ? 'workspace' : 'personal';
+        setPart(next);
+        document.getElementById(`${tabsId}-${next}`)?.focus();
+    };
 
     useEffect(() => {
         let cancelled = false;
@@ -137,8 +163,34 @@ const StandingContextPanel: React.FC = () => {
                     </button>
                 </div>
                 <p className="cb-standing-intro">{labels.standingContextIntro}</p>
+                {tabbed && (
+                    <div className="cb-standing-tabs" role="tablist" aria-labelledby={titleId}>
+                        {PARTS.map(of => (
+                            <button
+                                key={of}
+                                id={`${tabsId}-${of}`}
+                                type="button"
+                                role="tab"
+                                className="cb-standing-tab"
+                                aria-selected={part === of}
+                                aria-controls={`${tabsId}-panel`}
+                                tabIndex={part === of ? 0 : -1}
+                                onClick={() => setPart(of)}
+                                onKeyDown={onTabKeyDown}
+                            >
+                                {tabLabel(of)}
+                            </button>
+                        ))}
+                    </div>
+                )}
 
-                <div className="cb-standing-body" aria-live="polite">
+                <div
+                    className="cb-standing-body"
+                    aria-live="polite"
+                    id={tabbed ? `${tabsId}-panel` : undefined}
+                    role={tabbed ? 'tabpanel' : undefined}
+                    aria-labelledby={tabbed ? `${tabsId}-${part}` : undefined}
+                >
                     {state.status === 'loading' && (
                         <div className="cb-standing-skeleton" aria-label={labels.loading}>
                             <span className="cb-standing-skeleton-line is-wide" />
@@ -158,7 +210,7 @@ const StandingContextPanel: React.FC = () => {
                     )}
                     {state.status === 'loaded' && (
                         <>
-                            {(['instruction', 'memory'] as const).map(kind => (
+                            {part === 'personal' && (['instruction', 'memory'] as const).map(kind => (
                                 <OwnSection
                                     key={kind}
                                     kind={kind}
@@ -169,7 +221,7 @@ const StandingContextPanel: React.FC = () => {
                                     onRemoved={removed}
                                 />
                             ))}
-                            {organization.length > 0 && <OrganizationSection entries={organization} />}
+                            {part === 'workspace' && <OrganizationSection entries={organization} />}
                         </>
                     )}
                 </div>
@@ -363,7 +415,7 @@ const OwnEntry: React.FC<OwnEntryProps> = ({ entry, onEdit, onRemoved }) => {
     return (
         <li className={`cb-standing-item${entry.expired ? ' is-expired' : ''}`}>
             <div className="cb-standing-item-main">
-                <span className="cb-standing-text">{entry.body}</span>
+                <StandingEntryText body={entry.body} />
                 <EntryMeta entry={entry} />
                 {failed && <span className="cb-standing-error" role="alert">{labels.standingErrorDelete}</span>}
             </div>
@@ -373,7 +425,7 @@ const OwnEntry: React.FC<OwnEntryProps> = ({ entry, onEdit, onRemoved }) => {
                     className="cb-standing-icon-button"
                     onClick={onEdit}
                     disabled={deleting}
-                    aria-label={formatLabel(labels.actionOnItem, { action: labels.edit, item: entry.body })}
+                    aria-label={formatLabel(labels.actionOnItem, { action: labels.edit, item: entryPlainText(entry.body) })}
                     title={labels.edit}
                 >
                     {icons.rename}
@@ -385,7 +437,7 @@ const OwnEntry: React.FC<OwnEntryProps> = ({ entry, onEdit, onRemoved }) => {
                     disabled={deleting}
                     aria-label={confirming
                         ? labels.standingConfirmDelete
-                        : formatLabel(labels.actionOnItem, { action: labels.standingDelete, item: entry.body })}
+                        : formatLabel(labels.actionOnItem, { action: labels.standingDelete, item: entryPlainText(entry.body) })}
                     title={confirming ? labels.standingConfirmDelete : labels.standingDelete}
                 >
                     {confirming ? <span className="cb-standing-confirm-text">{labels.standingConfirmDelete}</span> : icons.delete}
@@ -509,16 +561,20 @@ const OrganizationSection: React.FC<{ entries: StandingEntry[] }> = ({ entries }
                 <h3 id={headingId} className="cb-standing-section-title">{labels.standingOrganization}</h3>
             </div>
             <p className="cb-standing-hint">{labels.standingOrganizationHint}</p>
-            <ul className="cb-standing-list">
-                {entries.map(entry => (
-                    <li key={entry.uuid} className="cb-standing-item is-readonly">
-                        <div className="cb-standing-item-main">
-                            <span className="cb-standing-text">{entry.body}</span>
-                            <EntryMeta entry={entry} />
-                        </div>
-                    </li>
-                ))}
-            </ul>
+            {entries.length === 0 ? (
+                <p className="cb-standing-empty">{labels.standingNoOrganization}</p>
+            ) : (
+                <ul className="cb-standing-list">
+                    {entries.map(entry => (
+                        <li key={entry.uuid} className="cb-standing-item is-readonly">
+                            <div className="cb-standing-item-main">
+                                <StandingEntryText body={entry.body} />
+                                <EntryMeta entry={entry} />
+                            </div>
+                        </li>
+                    ))}
+                </ul>
+            )}
         </section>
     );
 };

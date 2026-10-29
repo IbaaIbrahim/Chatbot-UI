@@ -199,6 +199,14 @@ export interface BlockAction {
 /** @deprecated Renamed to {@link ChatbotConfig} in 3.0. */
 export type ChatbotUIConfig = ChatbotConfig;
 
+/** Which parts of "Memory & instructions" the dialog shows (`header.standingContext`, since 4.5). */
+export interface StandingContextOptions {
+    /** The user's own instructions and memories, which they add, change and delete. Default `true`. */
+    personal?: boolean;
+    /** Their organisation's (the tenant's) entries in force, read-only. Default `true`. */
+    workspace?: boolean;
+}
+
 export interface HeaderConfig {
     /** Hide the whole header bar. */
     visible?: boolean;
@@ -240,8 +248,11 @@ export interface HeaderConfig {
      * The "Memory & instructions" entry (since 4.4, ADR-021): the user's own
      * standing instructions and memories, and their organisation's to read.
      * Shown only when the client can reach them (`GatewayStreamClient`).
+     * Since 4.5, `{ personal, workspace }` chooses which of the two the dialog
+     * shows — a part left out stays on — for a host that manages one of them
+     * on its own screens; with both off the entry is hidden, as with `false`.
      */
-    standingContext?: boolean;
+    standingContext?: boolean | StandingContextOptions;
     /**
      * "Delete thread" in the menu, for the open conversation. On by default
      * since the Gateway serves `DELETE /v1/user/conversations/{id}`; a client
