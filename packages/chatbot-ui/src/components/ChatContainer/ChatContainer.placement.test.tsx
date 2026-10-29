@@ -324,6 +324,50 @@ describe('ChatContainer and ChatApp — the launcher', () => {
 });
 
 /**
+ * `welcomeIcon`: the mark above an empty conversation's greeting, passed the
+ * way `launcherIcon` is — on the instance, else `config.icons.welcome`, else
+ * the sparkle (2026-10-29: the host's assistant icon, not the library's).
+ */
+describe('ChatApp — the welcome icon', () => {
+    const badge = (page: HTMLElement) => page.querySelector<HTMLElement>('.cb-welcome-sparkle-badge');
+    const emptyChat = (props: { welcomeIcon?: React.ReactNode; icons?: { welcome: React.ReactNode } } = {}) => (
+        <ChatbotProvider config={props.icons ? { icons: props.icons } : {}} open>
+            <ChatApp mode="floating" welcomeIcon={props.welcomeIcon} />
+        </ChatbotProvider>
+    );
+
+    it('draws the sparkle when the host passes nothing', () => {
+        const page = render(emptyChat());
+        expect(badge(page)!.querySelector('svg path')).not.toBeNull();
+    });
+
+    it("draws the host's icon, and it wins over config.icons.welcome", () => {
+        const page = render(emptyChat({
+            welcomeIcon: <i className="host-mark" />,
+            icons: { welcome: <i className="config-mark" /> },
+        }));
+        expect(badge(page)!.querySelector('.host-mark')).not.toBeNull();
+        expect(badge(page)!.querySelector('.config-mark')).toBeNull();
+    });
+
+    it('falls back to config.icons.welcome', () => {
+        const page = render(emptyChat({ icons: { welcome: <i className="config-mark" /> } }));
+        expect(badge(page)!.querySelector('.config-mark')).not.toBeNull();
+    });
+
+    it('is passed on by ChatApp, as a placement prop: no "ignored" warning under a provider', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        render(emptyChat({ welcomeIcon: <i className="host-mark" /> }));
+        expect(warn.mock.calls.filter(([message]) => String(message).includes('ignored'))).toEqual([]);
+    });
+
+    it('is hidden from screen readers: the greeting under it says what it is', () => {
+        const page = render(emptyChat({ welcomeIcon: <i className="host-mark" /> }));
+        expect(badge(page)!.getAttribute('aria-hidden')).toBe('true');
+    });
+});
+
+/**
  * The conversation sidebar across presentations (2026-10-22): open as
  * fullscreen's column it is part of the page; the same state in an overlay is
  * a drawer over the transcript. Leaving the column closes it, and a column

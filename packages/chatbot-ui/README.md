@@ -234,6 +234,7 @@ same conversation can be floating on one screen and fullscreen on another.
 | `side` | `'end'` | `'end'` | The edge the chat attaches to, in the page's direction: `'end'` is the right in a left-to-right page and the left in a right-to-left one; `'start'` is the other. Embedded, `'start'` leads the host's row and `'end'` keeps the DOM place the host gave it (no `order`). See [Side and right-to-left pages](#side-and-right-to-left-pages). |
 | `noBackground` | `false` | `false` | No frame or background, for native embedding. |
 | `launcherIcon` | `config.icons.launcher` | `config.icons.launcher` | The floating button's icon — any React node. See [The floating button's icon](#the-floating-buttons-icon). |
+| `welcomeIcon` | `config.icons.welcome` | — (`MainChat` takes it) | The mark above an empty conversation's greeting — any React node. See [The welcome screen's icon](#the-welcome-screens-icon). |
 | `launcher` | the round button | the round button | Replaces the floating button; `null` removes it. See [No floating button](#no-floating-button). |
 
 `ChatContainer` also takes slots: `header` (defaults to `<ChatHeader />`, `null`
@@ -338,6 +339,26 @@ The button stays a 56px circle on `--cb-accent-gradient` with a white
 (`currentColor`) icon: an SVG is drawn at 24px, an `<img>` at 28px, a font icon
 at `font-size: 24px`. Restyle the icon's box through `.cb-launcher-icon`, the
 button through `.cb-launcher-btn`. Its accessible name is `labels.openChat`.
+
+### The welcome screen's icon
+
+An empty conversation shows a mark above its greeting ("What would you like to
+do?"): a sparkle by default. It is passed the way the floating button's icon is
+(since 4.6), so a host can put its assistant's own icon in both places:
+
+```tsx
+<ChatApp mode="floating" launcherIcon={<AssistantIcon />} welcomeIcon={<AssistantIcon />} />
+
+// For every instance — or under your own layout, on <MainChat welcomeIcon={…} />.
+<ChatbotProvider config={{ icons: { welcome: <AssistantIcon /> } }}>…</ChatbotProvider>
+```
+
+`welcomeIcon` wins over `config.icons.welcome`, which wins over the default.
+The mark stays on the library's 44px gradient tile and is drawn white
+(`currentColor`): an SVG at its own size (the default is 22px), a font icon at
+`font-size: 22px`, an `<img>` at 26px. Restyle it through
+`.cb-welcome-sparkle-badge`. It is hidden from screen readers: the greeting
+under it says what the screen is.
 
 ### No floating button
 
@@ -607,7 +628,11 @@ counted.
 the right, the text between them — with the disclaimer and the usage ring on the
 footer line beneath. `'auto'`, the default, is comfortable while the
 conversation is empty, where the composer is the page, and compact once it has
-messages, where the height belongs to the transcript.
+messages, where the height belongs to the transcript. On that footer line the
+usage indicator always keeps its full width at the end: in a narrow chat (a
+floating card, a phone) the disclaimer moves off centre and then wraps, rather
+than running under the indicator (*in 4.5.2 and earlier the indicator overlapped
+it, its figure broken onto two lines*).
 
 The input grows with its text up to 180px and keeps one row while empty: it is
 never sized by its placeholder, and it re-fits when its width changes. A compact
@@ -809,7 +834,7 @@ Values are plain React nodes — a font icon, an `<img>` or another icon library
 component — and the defaults are drawn with `currentColor`, so they follow the
 theme.
 
-`brand`, `launcher` (also the `launcherIcon` prop — see [The floating button's icon](#the-floating-buttons-icon)), `sidebarToggle`, `sidebarCollapse`, `newChat`, `search`,
+`brand`, `launcher` (also the `launcherIcon` prop — see [The floating button's icon](#the-floating-buttons-icon)), `welcome` (also the `welcomeIcon` prop — see [The welcome screen's icon](#the-welcome-screens-icon)), `sidebarToggle`, `sidebarCollapse`, `newChat`, `search`,
 `star`, `starFilled`, `sectionCollapsed`, `sectionExpanded`, `promptRow`, `delete`,
 `rename`, `more`, `share`, `viewFloating`, `viewSidebar`, `viewFullscreen`, `switchView`,
 `check`, `creditUsage`, `copy`, `link`, `close`, `attach`, `tools`, `mic`, `send`, `stop`,

@@ -12,6 +12,11 @@ import React from 'react';
 export interface ChatIcons {
     brand: React.ReactNode;
     launcher: React.ReactNode;
+    /**
+     * The mark above an empty conversation's greeting, drawn white on its
+     * gradient tile. Also the `welcomeIcon` prop. Since 4.6.
+     */
+    welcome: React.ReactNode;
     /** Opens the sidebar. One panel drawn twice with {@link sidebarCollapse}, the chevron reversed. */
     sidebarToggle: React.ReactNode;
     /** Closes it: the same panel as {@link sidebarToggle}, so the pair reads as one control. */
@@ -112,6 +117,11 @@ export const DEFAULT_ICONS: ChatIcons = {
     ),
     launcher: (
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden focusable={false}>
+            <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z" fill="currentColor" />
+        </svg>
+    ),
+    welcome: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden focusable={false}>
             <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z" fill="currentColor" />
         </svg>
     ),

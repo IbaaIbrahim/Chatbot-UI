@@ -16,6 +16,8 @@ const SCROLL_BUTTON_THRESHOLD_PX = 100;
 export interface MainChatProps {
     /** Shown in the centre of an empty fullscreen chat, under the greeting. */
     emptyComposer?: React.ReactNode;
+    /** The mark above the greeting. See `WelcomeScreenProps.icon`. Since 4.6. */
+    welcomeIcon?: React.ReactNode;
     className?: string;
     style?: React.CSSProperties;
 }
@@ -27,7 +29,7 @@ export interface MainChatProps {
  * It follows the stream while the reader is at the bottom and stops following
  * once they scroll up to read, with a button to jump back.
  */
-export const MainChat: React.FC<MainChatProps> = ({ emptyComposer, className = '', style }) => {
+export const MainChat: React.FC<MainChatProps> = ({ emptyComposer, welcomeIcon, className = '', style }) => {
     const messages = useChatState(s => s.messages);
     const activeConversationId = useChatState(s => s.activeConversationId);
     const isBusy = useChatState(s => s.isThinking || s.isResuming);
@@ -167,7 +169,7 @@ export const MainChat: React.FC<MainChatProps> = ({ emptyComposer, className = '
                                 )}
                             </>
                         ) : (
-                            <WelcomeScreen composer={emptyComposer} />
+                            <WelcomeScreen composer={emptyComposer} icon={welcomeIcon} />
                         )}
                     </div>
                 </div>
