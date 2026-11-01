@@ -286,4 +286,26 @@ describe("MessageBubble — a user's own message", () => {
         });
         expect(writeText).toHaveBeenCalledWith(CHART);
     });
+
+    // 2026-10-29: lines typed with Shift+Enter were drawn as one, markdown
+    // reading a single newline as a space.
+    const LINES = 'Translate these:\nfirst row\nsecond row';
+    const paragraph = (page: HTMLElement) => page.querySelector('.cb-markdown-content p')!;
+
+    it.each([
+        ['as one text', { id: 'u3', role: 'user' as const, content: LINES }],
+        ['made of steps', { id: 'u4', role: 'user' as const, steps: [text('u-s2', LINES)] }],
+    ])('keeps the lines the user typed, %s', (_, props) => {
+        const page = render(props);
+
+        expect(paragraph(page).querySelectorAll('br')).toHaveLength(2);
+        // The newline mdast-util-to-hast writes after each <br> is not drawn.
+        expect(paragraph(page).innerHTML.replace(/<br>\n/g, '<br>')).toBe('Translate these:<br>first row<br>second row');
+    });
+
+    it("leaves the assistant's answer to markdown, where one newline is a space", () => {
+        const page = render({ id: 'a2', role: 'assistant', steps: [text('a-s1', LINES)] });
+
+        expect(paragraph(page).querySelectorAll('br')).toHaveLength(0);
+    });
 });

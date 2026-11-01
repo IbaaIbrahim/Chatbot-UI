@@ -1176,6 +1176,11 @@ How it behaves:
 - **Whose messages.** Only the assistant's answers draw blocks. A user's own
   message shows a fence they pasted as code, and its "Copy" gives back exactly
   what they wrote. `MarkdownContent`'s `blocks={false}` does the same for a host.
+- **A user's lines.** A user's own message keeps the lines they typed (Shift+Enter):
+  each newline is a line break, where markdown would draw it as a space and run
+  the lines together (*in 4.5.2 and earlier it did*). Code keeps its own
+  newlines. The assistant's answers keep markdown's rule. `MarkdownContent`'s
+  `breaks` does the same for a host (since 4.6).
 - **Expanded.** A modal overlay portalled to `document.body`, carrying `.cb-root`
   and the chat's `data-theme` so the tokens apply there too. Escape and the
   scrim close it; Tab stays inside (a popup your component portals out of it
@@ -1207,7 +1212,7 @@ How it behaves:
 
 Exports for a host that renders or exports answers itself: `MarkdownContent`
 (the one markdown renderer every answer goes through; `blocks={false}` keeps
-every fence as code), `toPlainText(markdown, renderers)`, `extractBlocks(markdown,
+every fence as code, `breaks` draws each newline as a line break), `toPlainText(markdown, renderers)`, `extractBlocks(markdown,
 languages, messageId?)` (every block of those languages, with the same
 `blockKey`), `scanBlocks(markdown, languages, messageId?)` (the same, with
 whether each fence has closed), `extractBlockTitle`, `isFenceClosed`, `fnv1a`,

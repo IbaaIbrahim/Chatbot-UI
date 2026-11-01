@@ -619,6 +619,7 @@ const MessageBubbleView: React.FC<MessageBubbleViewProps> = (props) => {
                                                 jobUuid={props.jobUuid ?? null}
                                                 getMessageSource={getMessageSource}
                                                 blocks={drawsBlocks}
+                                                breaks={role === 'user'}
                                             />
                                             {isLast && props.isWaitingForDeltas && (!step.content || step.content.trim().length === 0) && (
                                                 <BlinkingIndicator />
@@ -1313,6 +1314,8 @@ interface TypewriterTextProps {
     getMessageSource?: () => string;
     /** Draw the host's rich blocks — `false` for a user's message. Default `true`. */
     blocks?: boolean;
+    /** Each newline a line break — `true` for a user's message. Default `false`. */
+    breaks?: boolean;
 }
 
 // Typewriter with DUAL-TIMER strategy for background resilience
@@ -1326,6 +1329,7 @@ const TypewriterText = ({
     jobUuid = null,
     getMessageSource,
     blocks = true,
+    breaks = false,
 }: TypewriterTextProps) => {
     const [displayContent, setDisplayContent] = useState(shouldAnimate ? '' : content);
     const hasFiredCompleteRef = useRef(false);
@@ -1405,6 +1409,7 @@ const TypewriterText = ({
                 jobUuid={jobUuid}
                 getMessageSource={getMessageSource}
                 blocks={blocks}
+                breaks={breaks}
             />
             {shouldAnimate && content && displayContent.length < content.length && (
                 <span className="cb-cursor">|</span>
@@ -1662,6 +1667,7 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                                 messageId={props.id}
                                 jobUuid={props.jobUuid ?? null}
                                 blocks={drawsBlocks}
+                                breaks={role === 'user'}
                             />
                             {/* {role === 'assistant' && shouldAnimate && content && displayContent.length < content.length && (
                                 <span className="cb-cursor">|</span>
