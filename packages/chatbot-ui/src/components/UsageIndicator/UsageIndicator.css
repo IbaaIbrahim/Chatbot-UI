@@ -17,6 +17,8 @@
     font-size: var(--cb-text-xs);
     font-variant-numeric: tabular-nums;
     line-height: 1;
+    /* "28 credits" is one figure: never a number over its unit. */
+    white-space: nowrap;
     cursor: pointer;
     transition: background var(--cb-transition-fast), color var(--cb-transition-fast);
 }

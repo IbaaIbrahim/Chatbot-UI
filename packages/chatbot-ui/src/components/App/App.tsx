@@ -29,6 +29,12 @@ export interface ChatAppPresentationProps {
      */
     launcherIcon?: React.ReactNode;
     /**
+     * The mark above an empty conversation's greeting — any React node, as
+     * `launcherIcon` takes. Defaults to `config.icons.welcome`. See
+     * `WelcomeScreenProps.icon`. Since 4.6.
+     */
+    welcomeIcon?: React.ReactNode;
+    /**
      * Replaces the floating button; `null` removes it, for a host that opens
      * the chat from a control of its own. Defaults to the round button drawn
      * with `launcherIcon`. See `ChatContainerProps.launcher`.
@@ -46,11 +52,11 @@ export interface ChatAppPresentationProps {
  */
 export type AppProps = ChatAppPresentationProps & Omit<ChatbotProviderProps, 'children'>;
 
-// Every placement prop decided by `App`'s defaults; the icon and the launcher
-// stay optional, so an omitted icon falls through to `config.icons.launcher`
+// Every placement prop decided by `App`'s defaults; the icons and the launcher
+// stay optional, so an omitted icon falls through to its `config.icons` entry
 // and an omitted launcher to the round button.
-type ChatAppLayoutProps = Required<Omit<ChatAppPresentationProps, 'launcherIcon' | 'launcher'>>
-    & Pick<ChatAppPresentationProps, 'launcherIcon' | 'launcher'>;
+type ChatAppLayoutProps = Required<Omit<ChatAppPresentationProps, 'launcherIcon' | 'welcomeIcon' | 'launcher'>>
+    & Pick<ChatAppPresentationProps, 'launcherIcon' | 'welcomeIcon' | 'launcher'>;
 
 const ChatAppLayout: React.FC<ChatAppLayoutProps> = ({
     mode,
@@ -60,6 +66,7 @@ const ChatAppLayout: React.FC<ChatAppLayoutProps> = ({
     side,
     noBackground,
     launcherIcon,
+    welcomeIcon,
     launcher,
 }) => {
     const isEmpty = useChatState(s => s.messages.length === 0);
@@ -83,7 +90,7 @@ const ChatAppLayout: React.FC<ChatAppLayoutProps> = ({
             launcher={launcher}
             footer={isEmptyFullscreen ? null : composer}
         >
-            <MainChat emptyComposer={isEmptyFullscreen ? composer : undefined} />
+            <MainChat emptyComposer={isEmptyFullscreen ? composer : undefined} welcomeIcon={welcomeIcon} />
         </ChatContainer>
     );
 };
@@ -98,6 +105,7 @@ export const App: React.FC<AppProps> = ({
     side = 'end',
     noBackground = false,
     launcherIcon,
+    welcomeIcon,
     launcher,
     ...providerProps
 }) => {
@@ -124,6 +132,7 @@ export const App: React.FC<AppProps> = ({
             side={side}
             noBackground={noBackground}
             launcherIcon={launcherIcon}
+            welcomeIcon={welcomeIcon}
             launcher={launcher}
         />
     );

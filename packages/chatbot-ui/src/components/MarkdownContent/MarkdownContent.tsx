@@ -9,7 +9,37 @@ import { MarkdownBlock } from '../MarkdownBlock/MarkdownBlock';
 
 const { createContext, useCallback, useContext, useMemo, useRef } = React;
 
+/** The little of the markdown tree {@link remarkLineBreaks} walks. */
+interface MdastNode {
+    type: string;
+    value?: string;
+    children?: MdastNode[];
+}
+
+/**
+ * Each newline in a text is a line break, as remark-breaks does: markdown
+ * draws a single newline as a space, so three lines a user typed
+ * (Shift+Enter) read as one (2026-10-29). Code keeps its own newlines — its
+ * nodes are `code` and `inlineCode`, never `text`.
+ */
+function remarkLineBreaks() {
+    const split = (node: MdastNode) => {
+        if (!node.children) return;
+        node.children = node.children.flatMap(child => {
+            if (child.type !== 'text' || !child.value || !/[\r\n]/.test(child.value)) {
+                split(child);
+                return [child];
+            }
+            return child.value.split(/\r?\n|\r/).flatMap((line, index): MdastNode[] => (
+                index === 0 ? [{ type: 'text', value: line }] : [{ type: 'break' }, { type: 'text', value: line }]
+            ));
+        });
+    };
+    return split;
+}
+
 const REMARK_PLUGINS = [remarkGfm];
+const REMARK_PLUGINS_WITH_BREAKS = [remarkGfm, remarkLineBreaks];
 
 /**
  * What a `pre` needs to decide whether it is a host's block, and to draw it.
@@ -179,6 +209,13 @@ export interface MarkdownContentProps {
      * answer, and a fence the user pasted is text they wrote. Default `true`.
      */
     blocks?: boolean;
+    /**
+     * Draw each newline as a line break, not a space — what a user's own
+     * message shows: the lines they typed stay lines. The assistant's answers
+     * keep markdown's rule, where one newline only wraps the source. Default
+     * `false`. Since 4.6.
+     */
+    breaks?: boolean;
 }
 
 /**
@@ -201,6 +238,7 @@ export const MarkdownContent: React.FC<MarkdownContentProps> = ({
     conversationId,
     getMessageSource,
     blocks = true,
+    breaks = false,
 }) => {
     const { blockRenderers: configured } = useMarkdownConfig();
     const blockRenderers = blocks ? configured : NO_RENDERERS;
@@ -243,7 +281,11 @@ export const MarkdownContent: React.FC<MarkdownContentProps> = ({
 
     return (
         <BlockScope.Provider value={scope}>
-            <ReactMarkdown remarkPlugins={REMARK_PLUGINS} remarkRehypeOptions={remarkRehypeOptions} components={COMPONENTS}>
+            <ReactMarkdown
+                remarkPlugins={breaks ? REMARK_PLUGINS_WITH_BREAKS : REMARK_PLUGINS}
+                remarkRehypeOptions={remarkRehypeOptions}
+                components={COMPONENTS}
+            >
                 {content}
             </ReactMarkdown>
         </BlockScope.Provider>

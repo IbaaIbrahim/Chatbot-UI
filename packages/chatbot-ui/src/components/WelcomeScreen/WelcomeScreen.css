@@ -35,6 +35,18 @@
     justify-content: center;
     box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25);
     flex-shrink: 0;
+    /* Whatever the host put in it (`welcomeIcon` or `config.icons.welcome`) is
+       white and sized for the kinds that do not size themselves: a font icon
+       at this font size, an `<img>` below — as the launcher's icon is. */
+    color: #ffffff;
+    font-size: 22px;
+    line-height: 0;
+}
+
+.cb-welcome-sparkle-badge img {
+    width: 26px;
+    height: 26px;
+    object-fit: contain;
 }
 
 .cb-welcome-title {

@@ -692,6 +692,37 @@ describe('MarkdownContent — blocks={false}', () => {
     });
 });
 
+describe('MarkdownContent — breaks', () => {
+    it('draws each newline as a line break, in lists, quotes and links too', () => {
+        const page = render(
+            <MarkdownContent breaks content={'one\ntwo\r\nthree\n\n- a\n  b\n\n> c\n> d\n\n[e\nf](https://example.com)'} />
+        );
+        // The newline mdast-util-to-hast writes after each <br> is not drawn.
+        const lines = (element: Element) => element.innerHTML.replace(/<br>\n/g, '<br>');
+        const [first, , link] = Array.from(page.querySelectorAll('p'));
+        expect(lines(first)).toBe('one<br>two<br>three');
+        expect(lines(page.querySelector('li')!)).toBe('a<br>b');
+        expect(lines(page.querySelector('blockquote p')!)).toBe('c<br>d');
+        expect(lines(link.querySelector('a')!)).toBe('e<br>f');
+    });
+
+    it('leaves code its own newlines', () => {
+        const page = render(<MarkdownContent breaks content={'```\nx = 1\ny = 2\n```\n\n`a\nb`'} />);
+        expect(page.querySelector('pre code')!.textContent).toBe('x = 1\ny = 2\n');
+        expect(page.querySelectorAll('br')).toHaveLength(0);
+    });
+
+    it("is off by default: one newline is markdown's space", () => {
+        const page = render(<MarkdownContent content={'one\ntwo'} />);
+        expect(page.querySelectorAll('br')).toHaveLength(0);
+    });
+
+    it('keeps two spaces before a newline one break, not two', () => {
+        const page = render(<MarkdownContent breaks content={'one  \ntwo'} />);
+        expect(page.querySelectorAll('br')).toHaveLength(1);
+    });
+});
+
 describe('MarkdownContent — the width a block is given', () => {
     it('is the body\'s content box, measured the same way first and after', () => {
         // The body is 300px wide inside 12px of padding on each side: 276px to draw in.

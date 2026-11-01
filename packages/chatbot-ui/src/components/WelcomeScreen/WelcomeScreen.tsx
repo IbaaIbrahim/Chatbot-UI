@@ -8,6 +8,11 @@ import './WelcomeScreen.css';
 export interface WelcomeScreenProps {
     /** The composer, centred under the greeting in fullscreen. */
     composer?: React.ReactNode;
+    /**
+     * The mark above the greeting — any React node (an SVG, an icon component,
+     * a font icon, an `<img>`). Defaults to `config.icons.welcome`. Since 4.6.
+     */
+    icon?: React.ReactNode;
 }
 
 /** A host-supplied icon is drawn as given; a string picks one of the built-ins. */
@@ -18,7 +23,7 @@ const isCustomIcon = (icon: React.ReactNode): boolean => icon !== undefined && i
  * offers in `config` — suggestion rows when compact, quick-action pills and
  * feature cards when fullscreen. Choosing one sends its prompt.
  */
-export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ composer }) => {
+export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ composer, icon }) => {
     const greeting = useChatState(s => s.config.greeting);
     const suggestions = useChatState(s => s.config.suggestions);
     const quickActions = useChatState(s => s.config.quickActions);
@@ -304,14 +309,11 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ composer }) => {
 
     return (
         <div className={`cb-welcome-container ${isCompactMode ? 'cb-welcome-compact' : 'cb-welcome-expanded'}`}>
-            {/* Mitti / Flowdit Sparkle Brand Icon */}
+            {/* The host's mark (`welcomeIcon`, then `config.icons.welcome`),
+                the sparkle by default, on the library's gradient tile. */}
             <div className="cb-welcome-sparkle-wrapper">
-                <div className="cb-welcome-sparkle-badge">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff">
-                        <path
-                            d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"
-                        />
-                    </svg>
+                <div className="cb-welcome-sparkle-badge" aria-hidden="true">
+                    {icon ?? icons.welcome}
                 </div>
             </div>
 
