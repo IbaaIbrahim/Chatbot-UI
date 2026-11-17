@@ -11,6 +11,8 @@ import { useStableId } from '../../common/useStableId';
 import {
     resolveStorageUploadUrl,
     parseUploadedFileResponse,
+    uploadableType,
+    UPLOAD_ACCEPT,
 } from '../../common/attachmentUtils';
 import { useChatActions, useChatFormat, useChatRuntime, useChatState, useIcons } from '../../store/hooks';
 
@@ -40,17 +42,21 @@ export interface ComposerProps {
     className?: string;
 }
 
-const ALLOWED_TYPES = [
-    'image/jpeg',
-    'image/png',
-    'image/gif',
-    'image/webp',
-    'application/pdf',
-    'text/plain',
-    'text/csv',
-];
-
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
+
+/**
+ * The chip's icon. Not `AttachmentViewer`'s `getFileIcon`: importing that
+ * module loads react-pdf, which needs `DOMMatrix`, and the composer's tests
+ * render it in a jsdom that has none.
+ */
+const getFileIcon = (contentType?: string | null): string => {
+    if (!contentType) return '\u{1F4CE}';
+    if (contentType.startsWith('image/')) return '\u{1F5BC}\u{FE0F}';
+    if (contentType === 'application/pdf') return '\u{1F4C4}';
+    if (contentType.includes('spreadsheetml') || contentType === 'application/vnd.ms-excel') return '\u{1F4CA}';
+    if (contentType.startsWith('text/')) return '\u{1F4DD}';
+    return '\u{1F4CE}';
+};
 const MAX_TEXTAREA_HEIGHT_PX = 180;
 
 /**
@@ -61,14 +67,6 @@ const MAX_TEXTAREA_HEIGHT_PX = 180;
 type UploadError =
     | { key: LabelKey; values?: Record<string, string | number> }
     | { text: string };
-
-const getFileIcon = (contentType?: string | null): string => {
-    if (!contentType) return '\u{1F4CE}';
-    if (contentType.startsWith('image/')) return '\u{1F5BC}\u{FE0F}';
-    if (contentType === 'application/pdf') return '\u{1F4C4}';
-    if (contentType.startsWith('text/')) return '\u{1F4DD}';
-    return '\u{1F4CE}';
-};
 
 /**
  * The usage ring, subscribed on its own: the summary is rebuilt as the turn
@@ -227,11 +225,17 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     const hasFiles = attachedFiles.length > 0;
     const canSend = (hasText || hasFiles) && !disabled && !isUploading && !outOfCredits;
 
-    const uploadFile = useCallback(async (file: File): Promise<AttachedFile | null> => {
-        if (!ALLOWED_TYPES.includes(file.type)) {
-            setUploadError({ key: 'unsupportedFileType', values: { type: file.type } });
+    const uploadFile = useCallback(async (picked: File): Promise<AttachedFile | null> => {
+        const type = uploadableType(picked);
+        if (!type) {
+            setUploadError({ key: 'unsupportedFileType', values: { type: picked.type || picked.name } });
             return null;
         }
+        // Sent under the type it was accepted as: a .docx the browser left
+        // untyped reaches the storage API as Word, not octet-stream.
+        const file = type === picked.type
+            ? picked
+            : new File([picked], picked.name, { type, lastModified: picked.lastModified });
 
         if (file.size > MAX_FILE_SIZE) {
             setUploadError({ key: 'fileTooLarge', values: { size: file.size, max: MAX_FILE_SIZE } });
@@ -522,7 +526,7 @@ export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
                                         type="file"
                                         multiple
                                         onChange={(e) => e.target.files && handleFileSelect(e.target.files)}
-                                        accept={ALLOWED_TYPES.join(',')}
+                                        accept={UPLOAD_ACCEPT}
                                         style={{ display: 'none' }}
                                         disabled={disabled || isUploading}
                                     />

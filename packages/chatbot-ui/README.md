@@ -595,7 +595,7 @@ Its text is the `standing*` labels, plus `edit`, `cancel`, `retry`, `close` and
 
 | Key | Default | Shows when |
 | --- | --- | --- |
-| `attachments` | `true` | The attach button; uploading needs `storageApiUrl` and `accessToken`. |
+| `attachments` | `true` | The attach button; uploading needs `storageApiUrl` and `accessToken`. It takes images (JPEG, PNG, GIF, WebP), PDF, plain text, CSV, Word (`.docx`) and Excel (`.xlsx`, `.xls`) — the storage API's upload types, kept in `UPLOADABLE_TYPES` (`src/common/attachmentUtils.ts`). A file the browser gives no type, or one not in that list (`application/wps-office.xlsx` on Linux with WPS Office), is judged by its extension. *Until 4.5.3, no Word or Excel.* |
 | `tools` | `true` | The tools menu, when there are user-switchable tools (those the client's agent allows, when it has one). `false` also skips fetching them. |
 | `density` | `'auto'` | Not a control: how much room the composer takes — see below. |
 | `usage` | `true` | The consumption indicator under the composer: a ring for the context window, and the conversation's total credits beside it (*until 4.0, the window's percentage, or the latest turn's credits*). |
