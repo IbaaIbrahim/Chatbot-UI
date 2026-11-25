@@ -34,7 +34,22 @@ export default defineConfig(({ mode }) => {
                 fileName: (format) => `index.${format === 'es' ? 'esm' : 'cjs'}.js`
             },
             rollupOptions: {
-                external: ['react', 'react-dom'],
+                /**
+                 * Regexes, not the bare names: Rollup matches a string `external`
+                 * against the **exact** module id, so `'react'` left
+                 * `react/jsx-runtime` to be bundled. The automatic JSX runtime
+                 * imports it from every component, so React's own jsx-runtime
+                 * source — which reads
+                 * `__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED` — was
+                 * inlined into dist at the version built against. React 19
+                 * removed that object, so the inlined copy read
+                 * `ReactCurrentDispatcher` (dev) / `ReactCurrentOwner` (prod) off
+                 * `undefined` and the package threw on import, before any
+                 * component rendered. Keeping every `react` and `react-dom`
+                 * subpath external leaves the host's React to answer them, which
+                 * is also what makes one React instance per app possible.
+                 */
+                external: [/^react($|\/)/, /^react-dom($|\/)/],
                 output: {
                     chunkFileNames: '[name].[format].js',
                     globals: {

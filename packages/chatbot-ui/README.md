@@ -3,7 +3,7 @@
 React chat UI for the AI-EcoSystem gateway. Streams a run over SSE, renders the
 agent's steps, and lets the host application take part in tool calls.
 
-Works with React 17 and 18. State is published through an external store read
+Works with React 17, 18 and 19. State is published through an external store read
 with `use-sync-external-store`, so a component re-renders when the slice it reads
 changes — not on every streamed token.
 
